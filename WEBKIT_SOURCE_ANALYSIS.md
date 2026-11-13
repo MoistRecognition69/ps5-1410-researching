@@ -552,3 +552,56 @@ The fix is to ensure your forged table either:
 2. Has valid WeakPtrImpl pointers that can survive `value.get()` dereferencing
 
 **WebKit_1400.zip is the correct source for PS5 14.10.**
+
+---
+
+## 🎯 THE TRUE ROOT CAUSE (2026-11-13 late, council-verified) — put32-on-DataView
+
+V28's council-mandated gates CAUGHT IT: G1's readback read
+`0x13579BDF02468ACE` = **marker A** at sv+0x20 — the metadata writes NEVER
+landed. `put32(sv, off, val)` uses integer-index assignment `u[o]=x`, which
+on a **DataView is a silent NO-OP** (creates own properties on the wrapper;
+the backing ArrayBuffer is untouched — JSC's JSDataView is not an
+integer-indexed exotic object). Only `hitBuf` (a Uint8Array) writes were real.
+
+**Every V24→V28 run therefore shipped the marker spray's original metadata:**
+`keyCount = 0x13579BDF = 324,508,639, tableSize = 0`. The engine path:
+`removeIf` scanned `tableSize=0` buckets (nothing removed, nothing
+dereferenced) → `computeSize()` returned **324,508,639** → the WeakHashSet
+Mapper's `reserveInitialCapacity(324,508,639 × 8) ≈ 2.6 GB` → fatal
+allocation failure (`FailureAction::Crash`) → the identical LOAD-PRE
+"memory warning" death in **every arm**. No dispatch, removal, promise,
+timer, gadget, or noop difference ever manifested. This explains:
+- why gadget/noop crashed identically (nothing after reserve ever ran)
+- why V27-weaknull crashed despite "zero dispatches"
+- why every timer/promise/client variation changed nothing
+- why the console showed a *memory* warning (a 2.6 GB reservation!)
+- why the v16g-era insert worked (that era used `setUint32(..., true)`)
+
+**The fix:** `sv.setUint32(off, val, true)` (DataView methods only).
+
+**The council's corrections adopted:**
+- my `{3,2}/{5,2}` counter reading was a hex decode error — the REALFACE
+  qword is little-endian `{3, 0x200}` = `{count, 512}` ✓ source-consistent
+- the earlier G1 predicate (unaligned dvGetBig) would false-abort correct
+  metadata — replaced with exact 16-byte hex compares + dword checks
+- integer-index READBACK on sv must also be avoided (reads shadow properties)
+- BASE+0x4001750 (NOPG) is a valid folded empty-method target (it appears
+  in live vtable slots 2/4/5) — but no dispatch was ever proven in V24+
+- V27-weaknull's "zero dispatches" was conditional anyway: deleteBucket →
+  ~Ref<WeakPtrImpl> → deref() fires before the metadata writes
+
+### V29: the fixed forge + the council ladder (`?arm=` selects)
+
+| Arm | Test | Expected witness |
+|-----|------|------------------|
+| born | keyCount=0, buckets empty — pure machinery (empty cleanup + both transitions + timer stop) | RETURN, status 4, opcount(face+0x60)=0, meta {0,0,3,4} unchanged |
+| weak | keyCount=1, impl.m_ptr=0 — removal + deref on our impl copy (rc 3→2, no destroy) | RETURN, bucket=0xFFFF…, meta {1,0,3,4}, opcount=0 |
+| d0 | fake client, ALL 8 vtable slots = NOPG — full no-op dispatch (covers virtual ref/deref at +0x30/+0x38 if applicable) | RETURN, status 4, opcount=1, meta {0,1,3,4} unchanged |
+| d1 | d0 but slot3 = real fontStateChanged — the REAL dispatch (Loading: break; Failure: real-promise path) | RETURN + promise witness (diff if pre-state unfulfilled) |
+
+Then poison (slot3 = 0x4141414141414141) only after positive dispatch
+evidence. Hash position is irrelevant (removeIf/iteration scan linearly);
+a 4-bucket table never shrinks (below minimumTableSize either way).
+Gates G1–G5 (exact-hex metadata, install, counters, sources-zero,
+status/timer predicates) run before every load(); a failed gate = no load.

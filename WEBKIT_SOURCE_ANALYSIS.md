@@ -439,9 +439,39 @@ Once the Timer issue is resolved and `load()` returns successfully:
 3. Gadget writes to cell+0x10
 4. ARW achieved
 
-### If V20 Fails
+### V20 Results (2026-11-13)
 
-Escalate to **LLDB native crash capture** to get actual PC/signal/fault address.
+| Arm | Result | Meaning |
+|-----|--------|---------|
+| **Arm A** | ✅ PASS | Layout confirmed (status byte works) |
+| **Arm B** | ✅ PASS | Success control works (no transition safe) |
+| **Arm C** | ❌ CRASH | Timer repair insufficient OR model wrong |
+
+**Key Finding:** Arm C crashed even with Timer repair (borrowed tVptr/tThread from sibling). This means:
+1. Timer repair was insufficient, OR
+2. The crash is NOT (only) caused by zeroed Timer, OR
+3. Another issue exists in the Pending→Failure transition path
+
+**The crash is in the Pending→Failure transition path**, and it's NOT just the Timer.
+
+### V21: Beacon Bisection (Next Step)
+
+Since LLDB on-device is not available (retail console, no debugging tools), I'll use **beacon bisection** to pinpoint the exact crash location.
+
+**Approach:**
+1. Add beacons BEFORE and AFTER each operation in the `load()` → `pump()` → `setStatus()` path
+2. Find the exact line where it crashes
+3. Compare working face (Arm B) vs crashing face (Arm C) byte-by-byte
+4. Test specific components (Timer, clients, sources) independently
+
+**Components to test:**
+- Timer operations (startOneShot, stop, alignedFireTime)
+- Client iteration (iterateClients, copyToVectorOf, computeSize)
+- Source access (m_sources.size(), source->status())
+- Promise handling (JS binding return value)
+- Status transitions (assertions, field writes)
+
+**Expected outcome:** Identify the exact operation that causes the crash in the Pending→Failure path.
 
 ---
 

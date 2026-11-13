@@ -397,29 +397,51 @@ void CSSFontFace::setStatus(Status newStatus)
 
 ---
 
-## Next Steps
+## Next Steps (Updated After Council Review)
 
-1. **Test Option 1 (all buckets deleted):**
-   - Modify v17.html to forge a table with ALL buckets = 0xFFFFFFFFFFFFFFFF
-   - Set metadata: `{deletedCount=8, keyCount=0, tableSizeMask=7, tableSize=8}`
-   - Call `faces[zi].load()`
-   - **Expected:** No hang, dispatch completes, but no clients called
+**CRITICAL UPDATE:** V18/V18C experiments show that even with all fields crafted, `load()` still crashes. The council has identified the likely cause: **the zeroed Timer is not operationally valid for the Pending/TimedOut status-transition path**.
 
-2. **If Option 1 works, test with ONE valid bucket:**
-   - Set bucket[0] to a valid WeakPtrImpl pointer (from your leaked L2)
-   - Keep buckets[1-7] as deleted
-   - **Expected:** `removeIf()` calls `value.get()` on bucket[0], survives, iterator calls your fake vtable
+### V20 Experiment (Council-Recommended)
 
-3. **If it hangs with ONE valid bucket:**
-   - The WeakPtrImpl pointer is invalid or points to unmapped memory
-   - Check the WeakPtrImpl structure layout
-   - Ensure the object pointer inside WeakPtrImpl is valid or null
+**Three arms to isolate the crash cause:**
 
-4. **Once dispatch works:**
-   - Aim the `fontStateChanged` call at your fake vtable
-   - Slot 3 = fontStateChanged gadget
-   - Gadget writes to cell+0x10
-   - ARW achieved
+#### Arm A: Zero-Risk Status Oracle
+- Write `+0x82 = 0, 1, 3, 4` in turn, read `faces[zi].status`
+- Expected: `0→"unloaded"`, `1→"loading"`, `3→"loaded"`, `4→"error"`
+- **Stop condition:** any mismatch halts all load experiments
+
+#### Arm B: Success, No-Transition Control
+- Set status to Success (`+0x82=3`), empty sources, preserve client table
+- Call `faces[zi].load()` once
+- Expected: no client iteration, no Timer operation, returns successfully
+- **If crash:** stop all load variants, obtain native PC/signal/stack
+
+#### Arm C: Fresh-Session Timer Intervention
+- Reproduce V18C Pending/Block/empty-source/null-client-table craft
+- **Change ONLY the Timer:** harvest `tVptr` and `tThread` from sibling
+- Install non-owning diagnostic Timer state (do NOT copy owning fields)
+- Set Pending last, call `load()` once
+- **Expected:** returns with `.status == "error"` if Timer was the cause
+
+### Key Corrections from Council
+
+1. **Timer is the leading candidate**, not WeakHashSet cleanup
+2. **Reclaimed object is the CSSFontFace backing**, not the JS FontFace wrapper
+3. **document.fonts.add() is NOT an alternative dispatch** — it's registration/insertion only
+4. **Read carrier clobbers Timer bytes** at `+0x90/+0x94` — must rewrite after last read
+5. **Status write must be FINAL write** before `load()`
+
+### If V20 Succeeds
+
+Once the Timer issue is resolved and `load()` returns successfully:
+1. Progress to live-client test with valid WeakPtrImpl
+2. Aim `fontStateChanged` at fake vtable (slot 3)
+3. Gadget writes to cell+0x10
+4. ARW achieved
+
+### If V20 Fails
+
+Escalate to **LLDB native crash capture** to get actual PC/signal/fault address.
 
 ---
 

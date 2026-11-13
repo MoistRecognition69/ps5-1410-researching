@@ -454,24 +454,41 @@ Once the Timer issue is resolved and `load()` returns successfully:
 
 **The crash is in the Pending→Failure transition path**, and it's NOT just the Timer.
 
-### V21: Beacon Bisection (Next Step)
+### V21 Results (2026-11-13)
 
-Since LLDB on-device is not available (retail console, no debugging tools), I'll use **beacon bisection** to pinpoint the exact crash location.
+**CRITICAL FINDING:** Last beacon is `V21-BP4-LOAD-PRE`. NO beacons after that.
+
+This confirms:
+1. **Crash happens INSIDE `faces[zi].load()`** - not before, not after
+2. **All pre-load validation passed** - face object is valid
+3. **All crafting completed** - every field was set correctly
+4. **Crash is in the load() → pump() → setStatus() path itself**
+
+**What this eliminates:**
+- ❌ Invalid face object (validation passed)
+- ❌ Invalid field pointers (all crafted correctly)
+- ❌ WeakHashSet cleanup (Arm B proved Success works)
+- ❌ Timer repair (Arm C crashed even with repair)
+
+**The crash IS in the Pending→Failure transition path.**
+
+### V22: Original Timer Test (Next Step)
+
+Since beacon bisection shows crash is INSIDE `load()`, and Timer repair didn't help, test with **ORIGINAL Timer** (not zeroed, not repaired).
+
+**Hypothesis:** The crash is caused by Timer MODIFICATION (zeroing or repairing), not by the Timer itself.
 
 **Approach:**
-1. Add beacons BEFORE and AFTER each operation in the `load()` → `pump()` → `setStatus()` path
-2. Find the exact line where it crashes
-3. Compare working face (Arm B) vs crashing face (Arm C) byte-by-byte
-4. Test specific components (Timer, clients, sources) independently
+1. Use the ORIGINAL Timer from the reclaimed face
+2. Don't modify it at all (no zeroing, no repair)
+3. Keep all other V18C crafting (empty sources, null clients, Pending status)
+4. Call `load()` and see if it crashes
 
-**Components to test:**
-- Timer operations (startOneShot, stop, alignedFireTime)
-- Client iteration (iterateClients, copyToVectorOf, computeSize)
-- Source access (m_sources.size(), source->status())
-- Promise handling (JS binding return value)
-- Status transitions (assertions, field writes)
+**Expected outcomes:**
+- **If it works:** Timer modification was the cause. Use original Timer for dispatch.
+- **If it crashes:** Timer itself is not the issue. Something else in the transition path.
 
-**Expected outcome:** Identify the exact operation that causes the crash in the Pending→Failure path.
+**Alternative:** If original Timer works, try with ORIGINAL clients (not null) to see if null client table is the issue.
 
 ---
 

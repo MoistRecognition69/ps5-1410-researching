@@ -488,7 +488,44 @@ Since beacon bisection shows crash is INSIDE `load()`, and Timer repair didn't h
 - **If it works:** Timer modification was the cause. Use original Timer for dispatch.
 - **If it crashes:** Timer itself is not the issue. Something else in the transition path.
 
-**Alternative:** If original Timer works, try with ORIGINAL clients (not null) to see if null client table is the issue.
+**V22 Result:** ORIGINAL Timer also crashed (null clients was the actual cause that run).
+**V23 Result:** ORIGINAL clients also crashed — the real client's `fontStateChanged` ran on the broken reclaimed face.
+
+## ROOT CAUSES — PROVEN FROM THE 1400 SOURCE (2026-11-13, after re-reading ZigZagBoi1's WEBKIT_FONTFACE_EXPLOIT_CHAIN_ANALYSIS.md)
+
+| Failure | Root cause (source-proven) |
+|---------|---------------------------|
+| v17r HANG | Real-table copy `{keyCount=1, size=8}` → `shouldShrink() = keyCount()*6 < tableSize()` → `6 < 8` TRUE → `shrinkToBestSize()` → `deallocateTable()` **frees our forged buffer** → bmalloc death → hang |
+| V18/V21/V22 CRASH | `m_table=nullptr` → `removeIf()` → `tableSize()` reads metadata **through nullptr** → SEGV (the council's "m_table=nullptr" control was wrong for this fork) |
+| V18B-T2 / V23 CRASH | Original table → **real client's** `fontStateChanged` dispatched with our broken face as `*this` → crash inside the real handler |
+| v17o latent bug | Promise at S+0x90 **overlapped the vtable at S+0xA8** — the reject write (`promise+0x10..0x2F`) would clobber vtable slots |
+
+### The corrections that unblock everything (from the ZigZagBoi1 doc + device evidence)
+
+1. **The v16g 4-bucket table is the ONLY safe format**: `{deleted=0, keyCount=1, mask=3, size=4}` → `shouldShrink = 1*6 < 4` = FALSE → no shrink, no rehash, no free. The insert already proved this format works.
+2. **ref()/deref() are NON-VIRTUAL** (CRTP from RefCounted, Layout A confirmed by lunarshe11's V65 RIP control at `0x41414141`). **The only virtual call is `fontStateChanged` at vtable+0x18.**
+3. **Fake impl = byte-copy of the real L2** (refcount/threading fields all valid), `m_ptr@+0x08` patched — the +0x08 offset is device-verified: the certified walk chain reads the client at `impl+0x08` every session.
+4. **Fake client = byte-copy of the real wrapper (fbRaw)**, vtable and promise patched. In release, `FontFace::fontStateChanged` reads only the promise field (+0x18) and `newState`.
+5. **`fontStateChanged` (1400 source, line 332)**: `Loading` case = `break` (no-op); `Failure` case = `if (!m_loadedPromise->isFulfilled()) m_loadedPromise->reject(Exception{NetworkError})` → **the COOP write** into `promise+0x10..0x2F`.
+6. **`setStatus(Success/Failure)` unconditionally calls `m_timeoutTimer.stop()`** → the face's Timer must be coherent → borrow the entire `+0x88..0xBF` region byte-faithful from a live sibling face (vptr at +0x88 confirmed in REALFACE dumps).
+7. **`fontLoadTiming()` with override=Block reads ONLY `+0x87`** → returns `{infinity, 0}` → the Loading transition skips `startOneShot` — no Timer risk on the Loading path.
+
+### V24: The V55-faithful dispatch (current probe)
+
+Marker buffer S (0x100) layout — everything fits with NO overlaps:
+```
+S+0x00..0x1F  fake WeakPtrImpl (L2 byte-copy, m_ptr@+0x08 -> S+0x50)
+S+0x20..0x2F  table metadata {deleted=0, keyCount=1, mask=3, size=4}
+S+0x30..0x4F  buckets: [0]=S(impl), [1..3]=0
+S+0x50..0x8F  fake client (fbRaw copy, vtable->S+0x90, promise->S+0xD0)
+S+0x90..0xCF  fake vtable (8x noop, slot3@+0x18 = target)
+S+0xD0..0xFF  zeroed promise (reject writes S+0xE0..0xFF = THE WITNESS)
+```
+Face craft: sources empty, status=Pending, override=Block, sibling Timer, install `+0x58 = S+0x30` LAST. Trigger: `faces[zi].load()`.
+
+Modes (`?t=`): **gadget** (slot3 = real fontStateChanged → Failure → reject → WITNESS WRITE = the COOP write), **noop** (infrastructure proof, returns cleanly with status 0→1→4), **poison** (0x4141414141414141 = classic RIP proof, run after cleanup is exonerated).
+
+Expected: `V24-LOAD-RETURNED` + `V24-STATUS-AFTER=4` + `WIT-V24-DISPATCH-WRITE@S+0xe0:0>...` → **COOP write proven** → aim the promise at `cell+0x10` → ARW → ROP → RIP control.
 
 ---
 

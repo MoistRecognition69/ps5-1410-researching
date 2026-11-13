@@ -591,7 +591,92 @@ timer, gadget, or noop difference ever manifested. This explains:
 - V27-weaknull's "zero dispatches" was conditional anyway: deleteBucket →
   ~Ref<WeakPtrImpl> → deref() fires before the metadata writes
 
-### V29: the fixed forge + the council ladder (`?arm=` selects)
+## 🔒 THE ADDRESS-VALIDATION WALL (2026-11-13 late evening, council-confirmed)
+
+**The PS5 14.10 WebProcess validates the vtable ADDRESS POINT on virtual dispatch.**
+Proven by the cleanest differential in the campaign:
+
+| Experiment | vtable contents | vtable address | Result |
+|---|---|---|---|
+| V36p (head copy) | real VP (from the head) | module rodata | ✅ RETURN |
+| V36R (head copy + clone) | **byte-identical clone** of [VP−0x10, VP+0x40) — negatives (−32, 0) + all 8 slots, alignment matched (both 0x28 mod 0x80) | **our ArrayBuffer (S+0xA8)** | ❌ CRASH |
+
+One variable, one bit: the ADDRESS. Consistent with the Clang CFI/LTO machinery
+in Sony's WebKit build tree (PlayStation ignorelists, no exemption identified for
+the CSSFontFace::Client path). **The arbitrary-fake-vtable route is CLOSED.**
+
+### What this retroactively explains
+
+ALL fake-vtable crashes (d0 ×4, d1, most of d0b) died at the address check at
+the FIRST virtual call (slot 6, ref()) — before any slot content executed.
+The all-NOPG vs slot3=real-FSG "anomaly" was never an anomaly: both died
+identically at the address check. The council's machine-code-gap diagnosis
+("source-complete but not machine-code-complete") was correct.
+
+### The complete solved-cause ledger
+
+| Crash | Root cause |
+|---|---|
+| v17r "hang" | real-table copy {kc=1,size=8} → shouldShrink(1*6<8) → shrinkToBestSize → deallocateTable FREED our buffer → bmalloc death |
+| V18/V21/V22 | m_table=nullptr → removeIf read metadata through nullptr (compounded by zeroed timers) |
+| V18B-T2/V23 | real client's fontStateChanged ran on the broken face |
+| V24→V28 ALL | put32-on-DataView no-op → keyCount=0x13579BDF=324,508,639 → reserveInitialCapacity(324M×8≈2.6GB) → fatal allocation |
+| V29 round 1 (G3/G4) | read-carrier poisons face +0x48..0x67 (counters, sources vector) → 70 phantom sources |
+| V33 d0c | no face craft in the d0c branch → dirty sources |
+| V34 d0c | readAt AFTER the craft → re-poisoned sources + the installed +0x58 |
+| d0b | forward copy → refcount at B'=bucket[3]=0 → real ref/deref thunks (−0x20) → 0→1→0 → delete forged object |
+| d0/d1/V36R | **ADDRESS VALIDATION** — the vtable address point is checked; our ArrayBuffer address is rejected |
+
+### What WORKS (the certified position)
+
+**V36p: the fully client-controlled FontFace head + the REAL vtable.**
+The confirmed layout (device-measured via the d0c head read):
+```
+B+0x00 (FB−0x20): primary vptr      (0x81a061ac0)
+B+0x08 (FB−0x18): context ptr
+B+0x10 (FB−0x10): pending-activity = 0
+B+0x18 (FB−0x08): REFCOUNT (live: 16 or 1)
+B+0x20 (FB+0x00): Client secondary vptr = VP (Δ0x68 from primary)
+B+0x28 (FB+0x08): L2 WeakPtrImpl
+B+0x30 (FB+0x10): m_backing = the reclaimed face
+B+0x38 (FB+0x18): m_loadedPromise
+B+0x40 (FB+0x20): m_mayLoadedPromiseBeScriptObservable (flips 0→1 in load())
+```
+The head copy [FB−0x20, FB+0x28) → S+0x50..0x98 (B'=S+0x50, C'=S+0x70):
+impl.m_ptr = S+0x70. The real thunks run on OUR copied refcount (1→2→1 per
+round), and the real fontStateChanged reads OUR m_backing and OUR
+m_loadedPromise. **Clean return, both dispatch rounds (Loading + Failure).**
+
+**We control every byte of the client except the vtable pointer — and the
+vtable pointer points at real code that operates on our data.** CFI intact,
+data-flow fully ours. That IS the COOP position.
+
+### The COOP write path (real-vtable-only)
+
+The real fontStateChanged (1400 FontFace.cpp:346-351):
+```cpp
+case Status::Failure:
+    if (!m_loadedPromise->isFulfilled())
+        m_loadedPromise->reject(Exception{NetworkError});
+```
+`m_loadedPromise` is the copied pointer at C'+0x18 = S+0x88 — **OURS to aim**.
+reject() (1400 DOMPromiseProxy.h:357-366):
+```cpp
+m_valueOrException = ExceptionOr<void>{WTFMove(exception)};  // WRITES at promise+0x08
+auto deferredPromisesCopy = m_deferredPromises;               // Vector at promise+0x20 (zeroed = safe)
+```
+**V38 = V36p + the promise aimed at a forged unfulfilled promise in our buffer:**
+1. isFulfilled() reads our forged optional → false
+2. reject() WRITES the engaged byte + exception into our forged promise
+3. The FORGE-WRITE diff witnesses the write → **THE ENGINE WRITE PRIMITIVE
+   THROUGH THE REAL DISPATCH — witnessed, no fake vtable**
+
+Then: aim the promise at the final target (cell+0x10 region) → the write
+lands at the target → the ARW construction proceeds from there.
+
+The council's strategic ruling stands: "a LOAD-PRE crash alone is NOT RIP
+proof" — but a witnessed engine write into our aimed structure through the
+real dispatch IS the write primitive the campaign has been hunting since v16.
 
 | Arm | Test | Expected witness |
 |-----|------|------------------|

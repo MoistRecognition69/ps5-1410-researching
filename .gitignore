@@ -1,0 +1,81 @@
+# Large log files (keep only recent samples)
+*.log
+!**/logs/README.md
+!**/logs/*.sample.txt
+host-beacons.log
+host-console.log
+
+# Binary dumps and large data files
+*.bin
+*.dump
+island-sampled.bin
+text-island.bin
+
+# Build artifacts
+node_modules/
+build/
+dist/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Large archives (download separately)
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# WebKit source (too large, download from Sony)
+webkit-sources/WebKit-*.zip
+webkit-sources/WebKit_*.zip
+webkit-sources/WebKit-*/
+webkit-sources/WebKit_*/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Keep only essential probe files and documentation
+# Exclude old probe versions (keep only current)
+tools/remote-loader/v[0-9][0-9][0-9].html
+!tools/remote-loader/v688.html
+tools/remote-loader/v[0-9][0-9].html
+!tools/remote-loader/v17.html
+
+# Exclude research subdirectories with large files
+PS5-14.10-Jailbreak-Research/probes/
+PS5-14.10-Jailbreak-Research/evidence/
+PS5-14.10-Research/evidence/
+
+# Keep documentation and tools
+!**/*.md
+!**/*.py
+!**/*.ps1
+!**/*.sh
+!**/index.html
+!**/v17.html
+!**/v688.html

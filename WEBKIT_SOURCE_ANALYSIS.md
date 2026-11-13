@@ -1,6 +1,6 @@
 # WebKit Source Analysis - PS5 14.10
 
-**Date:** 2026-11-13  
+**Date:** 2026-11-13 (updated end-of-day)  
 **Purpose:** Understand the WeakHashSet dispatch hang from actual Sony source code  
 **Sources:** WebKit_1400.zip (14.00+) and WebKit-1200.zip (12.00-12.60)
 
@@ -15,6 +15,70 @@ The critical difference:
 - **WebKit-1400:** `~CSSFontFace();` (NO vtable - non-virtual)
 
 This matches the device measurement (no vtable on CSSFontFace, rc@+0x00).
+
+## 🏆 CAMPAIGN STATUS: THE COOP WRITE IS REAL (2026-11-13, 23:44)
+
+**V38 witnessed the engine write primitive through the real dispatch:**
+
+```
+V38-LOAD-RETURNED
+COOP-WRITE-@0x10002f04c8:0>0xf | @0x10002f04e0:0>0x1
+COOP-WRITE-CONFIRMED-engine-wrote-into-forged-promise
+REAL-PROMISE-unchanged-OK
+V38-DONE-WRITE-WITNESSED
+```
+
+The real `fontStateChanged(Failure)` executed on our controlled client
+head, read our aimed `m_loadedPromise`, found our forged promise
+UNFULFILLED, and `reject(Exception{NetworkError})` wrote into our buffer:
+
+| Write | Location | Value |
+|---|---|---|
+| Exception code | promise+0x08 | **0xF** (uint32 = NetworkError) |
+| Optional engaged flag | promise+0x20 | **0x1** (byte = true) |
+
+The REAL promise stayed untouched — the engine wrote at **OUR chosen
+address**. No fake vtable anywhere (the address-validation wall forbids
+it); pure data-flow control through the real dispatch. CFI intact.
+
+### The certified primitive inventory
+
+| Primitive | Status |
+|---|---|
+| FontFace UAF + reclaim | ✅ 100% rate, cached |
+| Arbitrary read (the oracle, walk chain) | ✅ ~10s/session, cached |
+| Module base (VP−0x724DB28, ASCII-verified) | ✅ |
+| addrof (JSDataView cell, 6 markers) | ✅ ADDROF-CERTIFIED |
+| Engine insert into forged table | ✅ witnessed (v16g) |
+| **COOP write (reject path, arbitrary address)** | ✅ **WITNESSED (V38)** |
+| RIP control | ⏳ next: ARW construction from the COOP write |
+
+### The COOP write semantics (device-measured)
+
+Aim the promise pointer (head C'+0x18 = S+0x88) at any address X → the
+Failure transition's reject writes:
+- `*(uint32*)(X+0x08) = 0xF` (the NetworkError exception code)
+- `*(byte*)(X+0x20) = 0x1` (the optional engaged flag)
+- Then copies the deferred Vector at X+0x28 (zeroed = empty, safe)
+- Then returns cleanly
+
+**Arbitrary address, engine-generated values, clean return.** The values
+are FIXED (0xF, 0x1) — the ARW construction must turn a fixed-value write
+into a pointer write. The leads (post-V38 strategic question):
+
+1. **Type confusion via structureID**: aim the promise at cell−0x08 → the
+   0xF lands at cell+0x00 = the JSCell's structureID field → the cell
+   adopts whatever Structure has ID 15 → the classic JSC path (the
+   structure table is readable via the arbitrary read)
+2. **The dtor chain**: aim the promise so deref hits 0 → ~FontFace →
+   ~UniqueRef<LoadedPromise> → operator delete(our aimed pointer) → a
+   controlled free
+3. **The resolve variant** (Success transition): `resolve(*this)` writes
+   engaged=1 WITHOUT the code — a cleaner single-byte write (needs a fake
+   source reporting Success)
+4. **The deferred Vector**: blocked — constructing Ref<DeferredPromise>
+   from our data = a virtual call on a fake vtable = **address validation
+   kills it**
 
 ---
 
@@ -195,7 +259,7 @@ inline bool HashTable<Key, Value, Extractor, HashFunctions, Traits, KeyTraits>::
 
 ---
 
-## THE HANG MECHANISM
+## THE HANG MECHANISM *(superseded — see the solved-cause ledger above; the hang was never in removeIf's value.get())*
 
 ### The Problem
 
@@ -269,7 +333,7 @@ Your hypothesis #2 (craft operation counters) **WILL NOT WORK** because:
 
 ---
 
-## What You Need to Fix
+## What You Need to Fix *(superseded — the real fixes are documented above)*
 
 The hang is in `removeIf()` iterating your forged hash table. To make it complete without hanging:
 
@@ -541,7 +605,11 @@ All files are in `webkit-sources/WebKit_1400/WebKit-1400/WebKit-1400/`:
 
 ---
 
-## Conclusion
+## Conclusion (superseded — kept for the historical record)
+
+*The following early conclusion was WRONG — the hang was never in removeIf's
+value.get(). The true chain of root causes is documented above (the solved-cause
+ledger). Kept here only to record the analysis progression:*
 
 The hang is **CONFIRMED** to be in `HashTable::removeIf()` iterating your forged hash table and calling `value.get()` on invalid WeakPtrImpl pointers.
 
@@ -665,18 +733,20 @@ reject() (1400 DOMPromiseProxy.h:357-366):
 m_valueOrException = ExceptionOr<void>{WTFMove(exception)};  // WRITES at promise+0x08
 auto deferredPromisesCopy = m_deferredPromises;               // Vector at promise+0x20 (zeroed = safe)
 ```
-**V38 = V36p + the promise aimed at a forged unfulfilled promise in our buffer:**
-1. isFulfilled() reads our forged optional → false
-2. reject() WRITES the engaged byte + exception into our forged promise
-3. The FORGE-WRITE diff witnesses the write → **THE ENGINE WRITE PRIMITIVE
-   THROUGH THE REAL DISPATCH — witnessed, no fake vtable**
+**V38 = V36p + the promise aimed at a forged unfulfilled promise in our buffer.**
+✅ **EXECUTED AND WITNESSED (2026-11-13 23:44, session 0L7S5F):**
+1. isFulfilled() read our forged optional → FALSE ✓
+2. reject() WROTE into our forged promise: **code=0xF @ promise+0x08,
+   engaged=0x1 @ promise+0x20** (the FORGE-WRITE diff) ✓
+3. The REAL promise stayed UNCHANGED — the write went to OUR aimed
+   address ✓
+4. Clean RETURN, status=4, opcount=1, balanced refcount ✓
 
-Then: aim the promise at the final target (cell+0x10 region) → the write
-lands at the target → the ARW construction proceeds from there.
-
-The council's strategic ruling stands: "a LOAD-PRE crash alone is NOT RIP
-proof" — but a witnessed engine write into our aimed structure through the
-real dispatch IS the write primitive the campaign has been hunting since v16.
+**The write primitive is ACHIEVED.** The measured semantics: aim the
+promise pointer at any X → the Failure transition writes {0xF uint32 at
+X+0x08, 0x1 byte at X+0x20} and returns cleanly. The values are FIXED —
+the ARW construction from here is the open strategic question (see the
+leads in the Executive Summary above).
 
 | Arm | Test | Expected witness |
 |-----|------|------------------|

@@ -187,14 +187,17 @@ try{
       if(!(hitBuf[0x82]===0&&hitBuf[0x87]===1&&g5v!==0n&&g5t!==0n)){gatesOK=false;bs('V36-G5-FAIL');}
       else bs('V36-G5-timer-OK');
 
-      /* GH: the head gates - refcount N>=1 + the vptr */
+      /* GH: the head gates - refcount N>=1 + the vptr (RE-READ at gate time -
+       * the v36r/wr6 arms PATCH the vptr after the head copy, so the stale
+       * headVptr variable would false-fail. Read the CURRENT value.) */
+      var currentVptr=dvGetBig(sv,0x70);
       if(!(headN>=1)){gatesOK=false;bs('V36-GH-FAIL-rcN='+headN);}
       else bs('V36-GH-rcN='+headN+'-OK');
       if(ARM==='v36p'){
-        if(headVptr!==VP){gatesOK=false;bs('V36-GH-FAIL-vptr='+hex(headVptr)+'-expectVP='+hex(VP));}
+        if(currentVptr!==VP){gatesOK=false;bs('V36-GH-FAIL-vptr='+hex(currentVptr)+'-expectVP='+hex(VP));}
         else bs('V36-GH-vptr=REAL-VP-OK');
       }else{
-        if(headVptr!==(S+0xA8n)){gatesOK=false;bs('V36-GH-FAIL-vptr='+hex(headVptr));}
+        if(currentVptr!==(S+0xA8n)){gatesOK=false;bs('V36-GH-FAIL-vptr='+hex(currentVptr)+'-expectClone='+hex(S+0xA8n));}
         else bs('V36-GH-vptr=clone-OK');
         /* the clone's negatives gate: offset-to-top == -32, typeinfo == 0 */
         if(dvGetBig(sv,0x98)!==0xFFFFFFFFFFFFFFE0n){gatesOK=false;bs('V36-GH-FAIL-ot='+hex(dvGetBig(sv,0x98)));}

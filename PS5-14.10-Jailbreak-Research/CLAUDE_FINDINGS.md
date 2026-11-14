@@ -1475,3 +1475,39 @@ V61 (deployed): THE BOUNDED GATE:
   the static StringImpls observed at RVA 0x181E29F8+.
 Everything else (census, FP rejection, decode-after-both-regions, the
 swap) unchanged.
+
+### V61 RESULT: CLEAN RUN - the decode works, the names are located, gate bounds fixed
+
+Session MZPWX5 (no console restart - guide close/reopen sufficed). 468
+beacons, full pipeline, NO CRASH - the bounded gate held. The STRDBG
+beacons FINALLY FIRED (the StringImpl decode is device-tested now):
+
+```
+V61-STRDBG-impl=0x10002b96f8-h0=0x400000008-len=4-f=0x1ddabbf8-s=...
+V61-STRDBG-impl=0x10002ba868-h0=0x700000010-len=7-f=0x1dd90e81-s=...
+V61-STRDBG-impl=0x10002b9c68-h0=0xe00000008-len=14-f=0x1dd4c693-s=...
+```
+The length field decodes correctly from the header qword (len=4/7/14 -
+plausible). Census: BSCAN 5673 module pointers -> 200 candidates; ASCAN
+4838 -> 239 total.
+
+THE NAMES ARE LOCATED - in TWO regions my V61 gate wrongly excluded:
+1. IN-CAGE EARLY-BOOT STRINGIMPLS at 0x10001d5540-0x10001e7960: the real
+   NE family (fn=0x4057a00-0x4057a20 8 bytes apart, shared ctor
+   0x40569f8, consistent hdr 0x4560) carries namePtrs pointing BELOW the
+   face anchor (lowB=0x1000278180). The heap extends below the face -
+   the V61 "known-mapped" floor was too high.
+2. STATIC MODULE STRINGIMPLS at RVA 0x4018950+ (a long candidate run
+   with namePtrs 8-16 bytes apart at 0x81ae509xx): interned name strings
+   in a module DATA section - the engine reads them constantly
+   (Math.abs.name works), so they must be readable data pages; they sit
+   far below the known-fatal text read (RVA 0x4C31760). My rodata bound
+   (>= 0x7000000) rejected them.
+
+V62 (deployed): both bounds corrected from this evidence:
+- Cage floor -> 0x1000110000 (the ST at 0x10001100a0 is device-proven
+  mapped from V53/V54; covers the observed StringImpl region).
+- Module window + RVA [0x4000000, 0x4100000) (the observed interned-name
+  cluster, 1MB window, well below the fatal 0x4C31760).
+Everything else unchanged. With names decoding for both real-NE
+families, the swap should finally find its named pair.

@@ -790,3 +790,41 @@ Expected on the next guide cycle: V52-V39-PRECHK with all five variables,
 then the full V39 setup (sibling scan -> forge -> timer borrow -> craft),
 then V45/V48/V49/V50 stages, then V51's purpose: the code-exec recon
 (ELF program-header walk for writable module segments - the GOT/.data hunt).
+
+### V52 POSTMORTEM + V53 (the recon redesigned: zero module dereference)
+
+V52 ran twice (02:41 and 02:44 sessions, 8ML0ZT/NG6XT2) - both times the FULL
+pipeline succeeded (PRECHK green, V39 setup, V45 shot, drift discriminator,
+real-impl expansion, JS byteLength 72PB, 64MB OOB view, R/W confirmed, full
+self-repair) - and both times the process died at the SAME point: inside
+readAt(BASE,64), the recon stage's first line of work. 205 beacons both
+sessions, identical last beacon (V52-OOB-SIZE), no result, no exception
+beacon - the WebProcess died mid-dereference.
+
+ROOT CAUSE (leading, twice-proven): the module base page is likely UNMAPPED
+in the WebProcess. Sony's loader maps SEGMENTS, not the file header, so
+BASE=VP-0x724DB28 (computed module base) points at an unmapped page. Every
+earlier module read targeted vtable addresses (mapped rodata) and worked.
+The v688-lineage probe header excluded "executable-text reads (no T1/T2
+exec tests / ELF scanning)" from day one - Claude's V51/V52 recon walked
+into exactly that excluded territory. Presenting as a mem-warning dialog.
+
+V53 (deployed, fresh filename): the recon replaced wholesale. It needs NO
+module reads at all:
+- All module structure is already known from COOP_ANALYSIS.md RVAs
+  (run()=0x4C31760, ST vtable=0x715A200, FSG=0x5B3D6B0, NOPG=0x4001750).
+- The code-exec target (the SharedTask singleton) lives IN THE CAGE, inside
+  the 64MB view's range - readable through the view.
+
+The V53 recon (all view-based, all in-cage, zero readAt, zero module):
+1. ST address via the live authority's m_destructor (+0x18) - bounds-checked.
+2. ST object bytes (0x40): vtable pointer VALUE (RVA'd against BASE, never
+   dereferenced), refcount, functor payload qwords.
+3. One level of functor deref (in-cage only, bounds-checked).
+4. Singleton cross-check: stale A's destructor must match the live one's.
+5. The JSArrayBuffer cell through the view: structureID/type header, m_impl
+   vs the live authority - the drift confirmed from raw memory.
+
+Watch for: V53-ST-ADDR-VIA-LIVE, V53-ST-BYTES, V53-ST-VTADDR (RVA should be
+0x715a200), V53-ST-REFCOUNT, V53-ST-FUNCTOR, V53-FUNCTOR-PAYLOAD,
+V53-ST-SINGLETON-CHECK=SAME-CONFIRMED, V53-JSAB-CELL-BYTES, V53-DONE.

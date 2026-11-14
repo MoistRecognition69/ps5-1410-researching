@@ -1590,3 +1590,26 @@ THE NEXT EXPERIMENT (V64 - the icall discriminator, one crash of budget):
 - Clean weird return -> icall unchecked -> arbitrary PC -> gadget hunting.
 - Crash (with the write verified pre-call) -> icall checked -> same-
   signature stands; pivot to COOP forms.
+
+### V64 (deployed): THE ICALL DISCRIMINATOR - the cross-signature fork
+
+V63 achieved M1 (same-signature PC redirection: round->sign, clean,
+battery-identified, restored). V64 runs the same machinery and adds ONE
+final stage - the cross-signature test that decides the M1 endgame:
+
+THE TEST: redirect the SAME confirmed builtin m_function (the pair-A that
+produced the V63 diff) to the FOLDED-EMPTY function (BASE+0x4001750) - a
+REAL address, WRONG signature for a JSC_HOST_CALL slot.
+
+THE FORK:
+- Clean weird return (garbage in x0/rax becomes the "result") ->
+  ICALL UNCHECKED -> ARBITRARY PC, including mid-function gadgets ->
+  M1 at full strength -> gadget hunting + chain construction begin.
+- Crash (with the write verified BEFORE the call, so the crash is
+  unambiguous) -> ICALL CHECKED -> same-signature redirection stands
+  (the entire JSC native-call surface with controlled arguments) ->
+  pivot to the COOP-form routes.
+
+DISCIPLINE: the discriminator runs AFTER the family-swap loop (the V63
+result banks first); restore-first on survival; the throw path restores
+too. One crash of budget - the only intentional risk in the probe.

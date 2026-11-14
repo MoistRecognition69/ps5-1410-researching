@@ -2336,3 +2336,68 @@ WITNESSES:
   V73-JFUP-CHUNK-0..N -> V73-JF-CAND-0-...hdrOK=true-type=0x1a
   V73-SCOPE-G=...-src=jsfunction -> V73-VM-TRY-0-PRE-@+0x38
   V73-VM-RESULT=CALIBRATED@...-G+0x38 -> V73-DONE
+
+### V73 RESULT: *** THE FULL CLEAN RUN *** - the whole recon chain collected in one boot; the VM signature missed only on my stack band
+
+Session R09VSJ. ZERO deaths, no mem-rash (the u32-first census + no
+floor-crossing walks = the memory chapter closed), V73-DONE +
+PATHB-DONE. And every link of the chain IN ONE BOOT:
+
+```
+V73-ANCHOR-RESULT=FOUND-@0x10002d4130-src=rawscan      <- census missed (cap), rawscan caught it
+V73-VERIFY-DIFF=round:-6>-1-restored=true
+V73-JFUP-DONE-chunks=3-hits=1                          <- the up-walk, unconditional, works
+V73-JF-CAND-0-base=0x1000713620-execOK=true-scopeOK=true-hdrOK=true-bflyOK=true-type=0x1a
+                                                       <- THE JSFunction, ACCEPTED (the V69 cell
+                                                          header 0xe1a0000005b40, structureID 0x5b40)
+V73-SCOPE-G=0x10004fdb68-src=jsfunction                <- m_scope@[JF+0x10] = the globalObject
+V73-G-DUMP-*                                           <- the member run, 3rd confirmation
+  (m_globalThis@+0x40=0x100018e108, m_globalLexicalEnvironment@+0x48,
+   m_globalScopeExtension@+0x50=NULL, m_globalCallee@+0x58,
+   m_stackOverflowFrameCallee@+0x60)
+V73-VM-TRY-0-PRE-@+0x38-v=0x1000300000                 <- the predicted slot, tested FIRST
+V73-VM-WIN-0: cageN=17, 0x7efa2c000 @+0x20, stack@EMPTY -> not confirmed
+```
+
+WHY THE VM SIGNATURE MISSED - MY STACK BAND WAS WRONG FOR PS5: the
+[G+0x38] window is strongly VM-shaped (17 cage pointers in 0x200
+bytes; 0x7efa2c000 at +0x20 = a live low-mmap pointer, very plausibly
+VM::topCallFrame) - but my STACK band assumed the classic x86-64
+0x7fff... high range. PS5 THREAD STACKS LIVE AT ~0x7exxxxxxx (the
+low-mmap band). [G+0x38] across boots: 0x1000200000 (V69) /
+0x1000300000 (V73) - a boot-varying early-heap address, read fresh
+each run, exactly where a fastMalloc'd VM (allocated before the
+JSGlobalObject) belongs.
+
+ALSO BANKED: the JF block is boot-stable at ~0x100071xxxx (3 samples:
+0x100070f620 / 0x1000713620 / 0x100071f620); the G member run is
+3-for-3; and the mem-rash is GONE (census u32-first + the floor cap =
+two clean consecutive runs before this one died... no - this one was
+FULLY clean).
+
+### V74 (deployed): the low-mmap band + the DEPTH-DIFFERENTIAL topCallFrame witness
+
+1. Classifier: MMAP? band [0x400000000, 0x1000000000) - checked AFTER
+   all known bands (module/cage/heap first, so no real pointer
+   misclassifies).
+2. The VM witness upgraded to a true counterfactual: a topCallFrame
+   read returns the reading call's OWN cfr (the trampoline stores it
+   pre-call) - so a static double-read is self-masking and shows no
+   change. But reading ONE JS FRAME DEEPER shifts the cfr by a frame:
+     t1 = read at depth D, t2 = read at depth D+1, t3 = read at D again
+     WITNESS: t1===t3 AND t1!==t2 AND all values stack/mmapped-band
+   - the slot tracks the reader's stack position = VM::topCallFrame.
+   This also BANKS the topCallFrame OFFSET for the fake-scope record.
+   Tier-2 (mmap present + cageN>=4 but differential failed) is
+   beaconed as STRUCTURAL-ONLY, not accepted.
+
+WITNESSES:
+  V74-JF-CAND-0-...hdrOK=true-type=0x1a  (routine now)
+  V74-VM-WIN-0-...cageN=17-mmap=...-0x7e...   <- the band now sees it
+  V74-VM-DIFF-0-0-@+0x20:t1=0x7e.../MMAP?-t2=0x7e.../MMAP?-t3=t1-witness=true
+  V74-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0x20   <- THE CALIBRATION
+
+If CALIBRATED lands, the recon phase is DONE and the next build is the
+fake-scope ret-only preflight (V75, the council R2 gate) with every
+offset device-measured: JF via the up-walk, scope@[JF+0x10],
+VM*@[G+0x38], topCallFrame offset banked.

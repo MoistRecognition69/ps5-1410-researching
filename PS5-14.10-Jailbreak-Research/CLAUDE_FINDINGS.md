@@ -3157,3 +3157,35 @@ runs the detector was hunting. THE GOT MAY ALREADY BE IN THE SWEPT
    predicate - ZERO new risk; the GOT, if it is there, lights up.
 3. THE HOLE SKIP: jump from 0x7392000 (the banked boundary) to
    0x73C0000, continue chunk-beaconed to 0x8000000.
+
+### V89 RESULT: the core is 8-for-8; the re-sweep with the fixed detector: NO GOT in the first 1.25MB; the hole is BOOT-STABLE at 0x7392000
+
+Session CS2LRP. The routine core re-banked perfectly: gate #8,
+REALBODY=-6 (SIXTH consecutive boot), the out-of-cage write (4th
+boot), calibration clean. The victim NE at 0x10007f4130 (another
+high-layout variant; the JF hunt machinery handled it).
+
+THE RE-SWEEP (with the fixed sub-4GB detector): the full proven
+1.25MB [0x724E000, 0x7392000) scanned - NO GOT runs, NO dynstr
+names. The import tables are NOT in the first 1.25MB of
+.data.rel.ro.
+
+THE HOLE IS BOOT-STABLE AT 0x7392000: V88 and V89 both died at the
+same RVA boundary, mid-chunk-20 - a SEGMENT boundary (most likely
+the end of the RELRO segment). The 64KB chunks straddled it: the
+death lands inside chunk 20s scan, before the skip range (which
+started at 0x7392000) could fire. NOTE: .dynstr may live in the
+execute-only text segment (ELF convention: the first PT_LOAD),
+which would leave the GOT (writable, second segment) as the
+findable prize past the hole.
+
+### V90 (deployed): 16KB chunks + the widened skip
+
+1. The hunt chunk size 64KB -> 16KB: a boundary can never straddle
+   a chunk; the skip now reliably fires before any read of the
+   death zone.
+2. The skip widened: [0x738F000, 0x73C0000) - the boot-stable
+   0x7392000 boundary is well inside; resume at 0x73C0000 and
+   continue chunk-beaconed to 0x8000000.
+3. Everything else unchanged; the name scan stays (cheap) but the
+   GOT run is the priority.

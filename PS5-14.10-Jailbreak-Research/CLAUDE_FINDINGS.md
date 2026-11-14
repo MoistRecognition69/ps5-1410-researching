@@ -2172,3 +2172,72 @@ If CALIBRATED lands, the recon phase is DONE and the next build is the
 council-roadmap V68-stage (our V71): the fake-scope ret-only preflight.
 RISK: R0/R1 (all reads; the only new derefs are the VM window and the
 below-lowB walk chunks, both PRE-beaconed).
+
+### V70 RESULT: walk mapped the below-lowB band clean - and exposed my JSFunction layout error
+
+Session TWWCC5. Anchor + verify clean again (victim NE @0x10002d4130,
+BASE=0x8155EC000). Then:
+
+```
+V70-JFSCAN-B: 61520 scanned, 0 hits
+V70-JFSCAN-A: 524288 scanned, lohits=1, hits=0      <- nothing in view+4MB
+V70-JFDN-CHUNK-0..23: 1.5MB below lowB, all mapped, 0 hits
+                     <- death here (mem-warning storm; JFDN-DONE never fired)
+```
+
+THE JSFunctions ARE NOWHERE IN [cage+0xF8180, view+4MB]. And the walk
+banked a mapped-range fact: the early heap reads clean down to
+cage+0xF8180 (below the hypothesized VM at 0x1000200000 - the walk
+read straight through that band).
+
+*** MY JSFunction LAYOUT DERIVATION WAS WRONG. *** Source re-read:
+JSCallee : public JSNonFinalObject - DIRECTLY (JSNonFinalObject.h, and
+JSCallee.h line 38) - NOT via JSScope. There is NO m_next in the
+JSFunction chain. The true layout (device-confirmed by re-decoding the
+V69 banked dump, slot for slot):
+  JSCell@+0x00 | butterfly@+0x08 | m_scope@+0x10 |
+  m_executableOrRareData@+0x18 | sizeof 0x20
+The V69 "table" WAS THE JSFunction IsoSubspace: its entries are real
+JSFunctions - [f620]=cell (structureID 0x5b40, type byte b6=0x1A =
+JSFunctionType - the same byte position the V48 DataView TYPE=0x32
+decode validated), [f628]=butterfly, [f630]=scope=G (the globalObject),
+[f638]=exec=roundNE; the adjacent 0x20 block = SIGNS JSFunction, same
+structure, same G. My V70 hdrOK read hit-0x20 = the PREVIOUS cells exec
+field (ab's NE) and rejected the genuine article. The V70 boot simply
+had the functionSpace block above view+4MB (V69: at view+4.3MB - just
+past the cap). Everything downstream SURVIVES: the G-dump analysis
+(m_next=NULL@+0x10, symbolTable@+0x18, 250-var SegmentedVector@+0x20,
+m_vm@+0x38 predicted) is JSGlobalObject chain analysis - JSGlobalObject
+DOES descend from JSScope - and was never affected.
+
+THE MEM-RASH ROOT CAUSE IS THE CENSUS: BSCAN+ASCAN still did ~585K
+getBigUint64 BigInt allocations per run (the standing load; two of the
+last four boots died to mem-warning storms). V71 makes the census
+u32-first too (module pointers share the high u32 - prefilter
+getUint32(off+4) against the module band's high words, ~100x fewer
+BigInt allocations).
+
+### V71 (deployed): corrected layout + up-walk + census u32-first
+
+1. jfb = hit-0x18; scope = [jfb+0x10]; acceptance: exec ~ victimNE,
+   scope in cage, cell TYPE BYTE (b6) === 0x1A (JSFunctionType,
+   compile-time constant), butterfly NULL-or-cage. The type byte is a
+   NEW structural signal - boot-stable, layout-independent.
+2. UP-WALK FIRST (the V69 evidence says the functionSpace block sits
+   above view+4MB): beaconed 64KB chunks from view+4MB to stAddr (the
+   ST functor address - a live object, so the band is inhabited), max
+   80 chunks. The down-walk is kept (proven mapped; other layout family).
+3. Census BSCAN/ASCAN u32-first (the mem fix).
+4. G/VM stage unchanged: G from [JF+0x10], m_vm predicted slot [G+0x38]
+   tested first, topCallFrame stack signature + cage density, PRE
+   beacons per candidate.
+
+WITNESSES TO WATCH:
+  V71-ANCHOR-CONFIRMED=round
+  V71-JFUP-CHUNK-0..N-@...      <- the new up-walk (the likely hit zone)
+  V71-JF-CAND-n-...hdrOK=true-type=0x1a   <- the REAL JSFunction, finally
+  V71-SCOPE-G=...-src=jsfunction-PRED-m_vm@+0x38
+  V71-VM-TRY-0-PRE-@+0x38 -> V71-VM-WIN-0-...stack@+0x...
+  V71-VM-RESULT=CALIBRATED@...-G+0x38      <- THE CALIBRATION
+
+RISK: R0/R1. Expected: no mem rash (census fixed), zero deaths.

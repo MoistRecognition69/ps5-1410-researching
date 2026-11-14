@@ -1450,3 +1450,28 @@ V60 (deployed):
 4. (Build note: my first V60 transform had a dropped '+ before the string
    in the gate line - caught by the mandatory node --check before deploy.
    The discipline works.)
+
+### V60 RESULT: died in the decode pass - the unbounded module gate (my bug)
+
+Session ODEVQO. Full pipeline clean; census BOTH regions fired:
+BSCAN-TOTAL-MOD=4645 -> 169 candidates; ASCAN-TOTAL-MOD=1444 -> 300 total
+(cap). Then death during the name-decode pass, ZERO STRDBG beacons -
+the crash was on one of the FIRST gate-passed reads.
+
+ROOT CAUSE (my V60 bug): I widened readStr56's gate to accept ANY module
+address in [0x800000000, 0x900000000) - INCLUDING TEXT. V55-B proved
+module text is read-fatal (execute-only; death at RVA 0x4C31760). Region
+B's 169 candidates include objects with text-range pointers at +0x40
+(function pointers misread as namePtrs) - the first one through the gate
+was read via the rewritten DataView -> execute-only page -> death.
+
+V61 (deployed): THE BOUNDED GATE:
+- Cage namePtrs: only within the KNOWN-MAPPED observed heap
+  [lowB, ri_mData+oobSize) - lowB = the face anchor (the lowest
+  proven-mapped address of the session).
+- Module namePtrs: only RODATA (RVA >= 0x7000000). The boundary is
+  sourced from our own device data: text fatal at least through RVA
+  0x4C31760; rodata readable from 0x715A200 (the ST vtable) upward;
+  the static StringImpls observed at RVA 0x181E29F8+.
+Everything else (census, FP rejection, decode-after-both-regions, the
+swap) unchanged.

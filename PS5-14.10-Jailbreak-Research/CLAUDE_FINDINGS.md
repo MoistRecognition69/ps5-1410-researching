@@ -1613,3 +1613,33 @@ THE FORK:
 DISCIPLINE: the discriminator runs AFTER the family-swap loop (the V63
 result banks first); restore-first on survival; the throw path restores
 too. One crash of budget - the only intentional risk in the probe.
+
+### V64 RESULT: the ICALL test SURVIVED - but it was a FALSE POSITIVE (my index bug)
+
+Session 2X216F. The V63 result re-banked cleanly (round->sign diff,
+PC-REDIRECTION-CONFIRMED, restored). The ICALL stage then ran:
+write round.m_function := BASE+0x4001750 (readback verified) -> call ->
+V64-ICALL-SURVIVED-returned=-6 -> V64-ICALL-UNCHECKED-ARBITRARY-PC-CONFIRMED.
+
+*** THAT CONFIRMED BEACON IS A FALSE POSITIVE. ***
+
+THE TELL: returned=-6 = floor(-5.7) - and floor is battery entry [0],
+which is exactly what my code called: `icResult=batt63[0][1]()` with
+the comment "the battery entry that identified A" - but A was round
+(battery index [3]), NOT floor. The write went to round.m_function
+(correctly); the CALL invoked floor - an UNTOUCHED builtin. The
+corrupted pointer was never invoked. The process survived because
+nothing was actually tested. A folded-empty function returning via a
+bare ret would leave garbage in rax - not conveniently exactly
+floor(-5.7).
+
+V65 (deployed): the fix - look up the battery entry by the DIFF-
+IDENTIFIED name (idName63, stored when the family-swap diff fires) and
+call THAT entry. Fallback to round if the name misses. The fork is
+genuinely tested for the first time:
+- clean weird return -> ICALL UNCHECKED -> arbitrary PC
+- crash (write verified pre-call) -> ICALL CHECKED -> same-sig stands
+
+LESSON for the record: a witness must be COUNTERFACTUALLY VALID - the
+V64 "survival" satisfied the beacon but not the experiment. The
+returned-value tell (floor answer from a floor call) is what exposed it.

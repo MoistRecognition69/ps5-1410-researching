@@ -2688,3 +2688,75 @@ WITNESSES (unchanged from the V79 design):
   V80-BASELINE-RETURNED=function round() { [native code] }   <- V65 re-proven
   V80-FAKE-RESULT-returned=<weird> + V80-POST-...battery=baseline-ok
       <- THE R2 GATE PASSES: the fake scope works, [G+0x38] IS the VM
+
+### V80 RESULT: earliest-ever death - ambient memory kill in the exploit stage (no probe change)
+
+Session VKRZP1. Died after FORGED-1, before the census - code that has
+run clean 20+ times. An unlucky-boot ambient memory kill, not a probe
+bug. Reboot and re-run.
+
+### EXTERNAL INTEL BANKED (ZigZagBoi1/PS5-14.10-Research, read 2026-11-14)
+
+A PARALLEL PS5 14.10 RESEARCH EFFORT exists (multi-contributor,
+AI-assisted, public). Read and integrated:
+
+1. *** THE PS5 WEBPROCESS IS LLINT-ONLY *** (their OptionsPlayStation
+   reproduction: ENABLE_JIT/DFG/FTL/B3/WASM all OFF; a faithful GTK
+   build measures JSC .text 11.36MB of the >=42.87MB on-device text).
+   THIS CORRECTS MY V74 THEORY: with no JIT, every DataView read
+   dispatches the LLInt nativeCallTrampoline and writes topCallFrame
+   with the reading call's OWN cfr - reads are SELF-MASKING, never
+   transparent. Consequence: the topCallFrame slot reads as the
+   reader's cfr, WHICH SHIFTS WITH READ DEPTH - the basis of V81s
+   window-differential witness. Also: wasmContext does not exist in
+   this build; sizeof(VM) interpretation tightened.
+2. THEIR VTABLE RESOLUTION SOURCE-CONFIRMS OUR COOP CHAIN: the leaked
+   VP is FontFaces CSSFontFace::Client SECONDARY vtable (FontFace+0x20);
+   fontLoaded/fontPropertyChanged/updateStyleIfNeeded are inherited
+   empty Client bodies, ICF-folded to one address (our s2=s4=s5 noop);
+   s3 (fontStateChanged, the real body - our COOP dispatch) is the
+   discriminating slot. Independent source-level confirmation.
+3. THEIR KERNEL LANE (D2-gate gold): the live 14.10 syscall table ends
+   at 677 entries - calls beyond it PANIC THE CONSOLE (our sys_532/
+   558/536 candidates are within range). The public Lapse/Prolapse
+   AIO route is DEAD on 14.10 (no aio_submit/aio_create; a 663
+   mode-0/count>1 guard rejects the public shape). A SIG_IGN oracle
+   distinguishes absent (ENOSYS) from lethal slots. Per-boot kernel
+   addresses via a Lua-side fault-oracle KASLR defeat: kernel_text
+   0xFFFFFFFFD5000000, allproc 0xFFFFFFFFD85B9EA0, security_flags
+   0xFFFFFFFFD6A84064, rootvnode 0xFFFFFFFFD8E3B510. A 145-doc kernel
+   corpus (copyin/copyout censuses, ucontext/mcontext family,
+   sysent maps, 13.60 kernel dumps with decompiled handlers).
+4. THEIR BROWSER LANE IS BEHIND OURS: their hard blocker is NO
+   ARBITRARY READ PRIMITIVE (L1/L2 leak + a blind hash-bucket write;
+   the variant forge crashes; style-reads gated by backing()=null).
+   WE HOLD THE ONLY WORKING WEBPROCESS CHAIN OF THE TWO EFFORTS
+   (absolute R/W + arbitrary PC + the R2 gate armed).
+5. THEIR CONFIRMED BLOCKERS corroborate ours: NX heap (bmalloc/libpas,
+   no PROT_EXEC), no WASM, no SAB, LLInt-only, WebProcess restarts on
+   navigation (single-shot). Note: their p600 claims gigacage
+   butterfly isolation holds; OUR V55-A device evidence (identity
+   caged(), module deref via stored pointers) stands - different
+   aspects, no conflict.
+
+Also noted: their team independently converged on the same
+FontFace-load/then-getter reclaim, the same spray geometry (spray
+buffer 0x1000384480 - our band), and the same beacon/guide
+infrastructure shape.
+
+### V81 (deployed): the WINDOW-DIFFERENTIAL topCallFrame witness + the preflight
+
+The V81 VM stage replaces the capped hunts with a mechanism the
+LLInt-only discovery enables: read the candidates 128KB window TWICE,
+one JS frame apart; the changed mmap-band slots are the depth-tracking
+slots (topCallFrame among them); confirm each with the depth
+differential (u1===u3, u2!==u1, all stack-band). No offset guessing,
+no listing caps. Calibration de-risks the preflight, which runs
+immediately after in the same probe (the R2 gate). The wide rawscan
+and everything else from V80 retained.
+
+WITNESSES:
+  V81-VM-WINDIFF-0-changed=N-+0xNNN:...   <- the depth-tracking slots found
+  V81-VM-CONFIRM-0-0-...w=true            <- topCallFrame confirmed
+  V81-VM-RESULT=CALIBRATED@...-topCallFrame@+0xNNN
+  V81-BASELINE-RETURNED=... -> V81-FAKE-RESULT-returned=... -> V81-POST-...

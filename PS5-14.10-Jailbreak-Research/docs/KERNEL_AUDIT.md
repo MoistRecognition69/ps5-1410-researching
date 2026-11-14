@@ -57,3 +57,23 @@ WebKit code execution
     -> kernel R/W
     -> GPU DMA for SMAP bypass
 ```
+
+## External Intel Update (2026-11-14, from ZigZagBoi1/PS5-14.10-Research)
+
+- The live 14.10 syscall table ends at 677 entries; calls beyond it
+  PANIC the console (index lands in a pointer-pair table and jumps a
+  text pointer -> kernel fault). sys_532 / sys_558 / sys_536 are in
+  range; AIO-family numbers (661/665/668) are ABSENT (ENOSYS).
+- The public Lapse/Prolapse aio_multi_delete route is DEAD on 14.10:
+  aio_submit/aio_create do not exist, and 663 rejects mode 0 with
+  count > 1 (EINVAL before id copy-in) - the public shape is patched.
+- SIG_IGN-for-SIGSYS oracle distinguishes absent (ENOSYS, survives)
+  from present-and-faulting; every old "kills" row must be re-derived
+  with it before use as evidence.
+- Per-boot kernel addresses (their Lua-side fault-oracle KASLR
+  defeat): kernel_text 0xFFFFFFFFD5000000, kernel_data
+  0xFFFFFFFFD5CE0000, allproc 0xFFFFFFFFD85B9EA0, security_flags
+  0xFFFFFFFFD6A84064, rootvnode 0xFFFFFFFFD8E3B510.
+- Their 145-doc kernel corpus (copyin/copyout censuses, ucontext/
+  mcontext, sigreturn frame layout, capability tags) is the reference
+  set for our D2 gate.

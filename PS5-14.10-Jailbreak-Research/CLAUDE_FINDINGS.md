@@ -2760,3 +2760,64 @@ WITNESSES:
   V81-VM-CONFIRM-0-0-...w=true            <- topCallFrame confirmed
   V81-VM-RESULT=CALIBRATED@...-topCallFrame@+0xNNN
   V81-BASELINE-RETURNED=... -> V81-FAKE-RESULT-returned=... -> V81-POST-...
+
+### V81 RESULT: *** THE VM IS CALIBRATED *** - the window-differential worked first try; the preflight skipped on a gate bug (fixed)
+
+Session ZLXRSR. THE RECON PHASE IS COMPLETE:
+
+```
+V81-RAWSCAN-DONE-chunks=21-hits=1                  <- 4th layout family (victim @0x10007e8130); wide rawscan works
+V81-ANCHOR-CONFIRMED=round (rawscan route; census missed again)
+V81-JF-CAND-0-...hdrOK=true-type=0x1a  (@0x100071b620 - the boot-stable family)
+V81-SCOPE-G=0x10004fa768-src=jsfunction
+V81-VM-WINDIFF-0-changed=2:
+    +0x9ce8: 0x7ef12a750 > 0x7ef12a760   <- shifted by EXACTLY 0x10 = one LLInt frame
+    +0x12a58: 0x7ef12a468 > 0x7ef12a458  <- the second depth-tracking slot (banked, unconfirmed)
+V81-VM-CONFIRM-0-0-@+0x9ce8: u1===u3=0x7ef12a6d0, u2=0x7ef12a6e0, all MMAP?-band, w=true
+V81-VM-RESULT=CALIBRATED@0x1000200000-G+0x38-topCallFrame@+0x9ce8-reread0=0x4
+```
+
+*** VM CALIBRATED: [G+0x38] = the VM, topCallFrame at VM+0x9ce8 *** -
+the counterfactual witness the whole V74-V81 hunt was after: two
+window reads one JS frame apart differ at exactly two slots, the cfr
+values shifting by exactly one LLInt frame (0x10), and the depth
+differential confirms the slot tracks the readers stack position. The
+LLInt-only discovery (external intel) did what four capped hunts
+could not: +0x9ce8 is ~40KB deep - it was INSIDE V78s 64KB window all
+along, but below every run-adjacent test slot. The theory (self-
+masking reads; the slot reads as the readers own cfr) is vindicated
+by the exact 0x10 frame shift.
+
+ALL OFFSETS NOW DEVICE-MEASURED: JF via the up-walk (type 0x1a check),
+m_scope@[JF+0x10], G (the globalObject), VM*@[G+0x38],
+topCallFrame@[VM+0x9ce8]. The second depth-tracking slot (+0x12a58,
+likely m_lastStackTop-family) is banked for the record.
+
+THE PREFLIGHT SKIPPED ON A GATE BUG (mine): the fake-scope build used
+in-view oobDV writes, gated on MBUF > ri_mData - and on this
+high-layout boot the frozen marker buffer sits BELOW the view base.
+V82 FIX: absWrite56 reaches any mapped cage address - the fake scope
+is built with absolute writes; the gate only requires MBUF to exist.
+
+### V82 (deployed): the R2 preflight, armed with the calibrated VM
+
+Unchanged design (the council R2 gate): BASELINE (ret-only call with
+the REAL scope - the V65 operation re-proven per boot) -> FAKE-SCOPE
+(a zeroed 0x40B fake scope at MBUF+0x80 with [fake+0x38] = the
+CALIBRATED VM value, built via absolute writes; JF m_scope swapped,
+openSwap-tracked, no beacons in the swap-to-restore window; round
+called through the ret-only function; scope restored immediately) ->
+POST (both slots verified, battery at baseline).
+
+WITH THE CALIBRATION IN HAND THE RISK ANALYSIS IS NOW EXACT: the
+trampolines pre-call store writes cfr to [VM+0x9ce8] - a known,
+harmless, routinely-written slot; the post-call exception check reads
+[VM+m_exceptionOffset] - a read of the calibrated VM. The fake scope
+needs ONLY [fake+0x38]=VM* (the trampoline reads nothing else from
+it). Survive + weird return = THE GATE PASSES.
+
+WITNESSES:
+  V82-VM-RESULT=CALIBRATED@...-topCallFrame@+0x9ce8   <- routine now
+  V82-BASELINE-RETURNED=function round() { [native code] }
+  V82-FAKE-RESULT-returned=<weird>                     <- THE GATE
+  V82-POST-scope=...scopeOK=true-fnOK=true-battery=baseline-ok

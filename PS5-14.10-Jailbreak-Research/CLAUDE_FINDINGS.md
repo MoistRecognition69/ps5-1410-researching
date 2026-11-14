@@ -2946,3 +2946,53 @@ WITNESSES:
   V84-REALBODY-returned=-6-expect=-6            <- THE NEW WITNESS
   V84-DYN-CHUNK-0..N-@0x...                     <- the proven-live band
   V84-DYN-FOUND-STRTAB-SYMTAB-PAIR / V84-IMPORT-strlen-...
+
+### V84 RESULT: *** THE REAL-BODY WITNESS PASSED *** - E1 materially complete; the .data import route is dead (pivot to the stack)
+
+Session K6IUSE. THE DEBUGGER-CALL WITNESS:
+
+```
+V84-REALBODY-returned=-6-expect=-6
+V84-POST-scope=0x10004f9a68-scopeOK=true-fnOK=true-battery=baseline-ok
+```
+
+Math.round(-5.7) executed through the FORGED scope with its REAL
+body and returned exactly -6. Chosen code + forged context +
+PREDICTED result read back as JS data. Round happy path never
+dereferences RDI - real function bodies tolerate the fake scope.
+E1s EVIDENCE SET IS MATERIALLY COMPLETE: baseline (4 boots),
+forged-scope ret-only preflight (4 boots), controlled-return
+real-body call (NEW - the councils "equally strong controlled
+witness" clause), negative controls, clean restoration. Also: the
+rawscan caught a SIXTH layout family (victim @0x10002c0130).
+
+TWO MORE FACTS:
+1. THE CALIBRATION FLAKED (WINDIFF changed=0 on all candidates) yet
+   the preflight passed anyway - IN-FIRE VALIDATION (the cfr write
+   through [candidate+0x9ce8] harmless). The validation that
+   matters happened regardless. V85 adds a windiff retry + an
+   explicit VALIDATED-IN-FIRE beacon.
+2. [0x4018000,0x401C000) IS ALSO UNMAPPED (second chunk-0 death).
+   Observed pointer VALUES are not dereference proof - the doctrine,
+   twice. The .data import route is dead.
+
+### V85 (deployed): the STACK/AUXV CHANNEL (the councils V71-stage)
+
+[VM+0x9ce8] = a live CallFrame address on a mapped stack (+0x9ce8 is
+the trampolines baked offset - boot-stable). Walk UP in 4KB
+page-beaconed steps to the auxv (signature: the AT_PAGESZ pair
+(6, 4096)); collect AT_BASE (the dynamic linker base -> the
+link_map chain -> every modules _DYNAMIC = the import library
+WITHOUT the unmapped bands), AT_PHDR (an independent module-BASE
+derivation), AT_RANDOM, AT_EXECFN (the executable path string).
+Read-only; 192 pages max; a death above the stack top localizes to
+the page beacon.
+
+WITNESSES:
+  V85-REALBODY-returned=-6-expect=-6 (re-bank)
+  V85-VM-VALIDATED-IN-FIRE (the calibration fallback)
+  V85-STK-P0..N-@0x7e...            <- the stack walk
+  V85-AUXV-FOUND-@... / V85-AUXV-TAGS=...
+  V85-AT-BASE-ldso=0x...            <- the link_map route opens
+  V85-AT-PHDR=...-impliedBASE=0x...  <- an independent BASE check
+  V85-AT-EXECFN=/app0/...           <- the process identity

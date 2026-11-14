@@ -1692,3 +1692,119 @@ NEXT DECISION POINT (per the plan of record): the M1->M2 transition -
 gadget strategy (call-differential gadget discovery vs known-RVA
 chaining), the sustained-execution construction, and the kernel
 attack surface. Council-worthy.
+
+### COUNCIL CONVENED (M1->M2 TRANSITION DESIGN): THE VERDICT
+
+Four models (kimi-k3.1-pro orchestrator + GLM-5.3 + deepseek-v4.1-flash +
+qwen3.8), 2 cross-examination rounds, authorization block verbatim in the
+brief. The council did NOT fully converge; the orchestrator made recorded
+tie-breaking calls. Conclusion adopted:
+
+CORE CORRECTION (accepted, and it corrects ME): V63/V65 prove repeatable
+SINGLE-CALL PC redirection, NOT sustained WebProcess code execution. No
+reusable native-argument bridge, no out-of-cage write, no raw syscall, no
+kernel primitive exists yet. ROP and kernel triggering are NOT next steps.
+Path adopted: source/rodata recon -> forged-m_scope preflight ->
+controlled non-host calls -> native return/argument bridge -> benign
+memory + syscall witnesses -> WebProcess sandbox survey -> only then
+select and test a kernel candidate.
+
+THE NATIVE-CALL ABI (source-derived; to be device-confirmed - this is
+the central constraint):
+- RDI derives from the JSFunction m_scope - NOT a freely selectable
+  scalar. A forged scope must remain scope-like through the trampoline's
+  pre/post-call VM accesses and carry the real VM* at the
+  device-calibrated offset.
+- RSI = CallFrame; RDX = the executable pointer (separate, higher-risk
+  forge). JS arguments are EncodedJSValues in CallFrame slots, NOT raw
+  SysV 64-bit arguments; RCX/R8/R9/stack not controlled.
+- RAX is consumed as a JS return value - arbitrary native returns are
+  encoding-dependent and unsafe to ignore.
+- The libc syscall(number,...) shortcut is INVALID: a small syscall
+  number cannot simultaneously satisfy the scope/VM* requirement in RDI.
+
+MILESTONE GATES (submission-readiness criteria; NOT verified Sony tier
+criteria - no member could supply policy text for Sony's gate):
+- E1 (first native execution evidence): real-scope ret-only baseline;
+  fake-scope ret-only preflight with full restoration; the strlen
+  quartet (ret 2->null, 6->false, 7->true, 10->undefined - behavior AND
+  exact return encodings both controlled); negative controls; clean
+  battery. E1 is NOT WebProcess compromise.
+- E2 (kernel-work readiness): E1 from a fresh boot; safe native return
+  handling; full argument control (incl. r10 for raw syscalls) directly
+  or via verified adapters; independently witnessed out-of-cage read +
+  controlled write; one benign syscall with a memory-based witness;
+  clean resource handling.
+
+FIRST THING TO VERIFY (V66 core): whether a forged m_scope carrying the
+real VM* survives both sides of the trampoline when calling the
+validated ret-only function. Everything external builds on it.
+
+DISCOVERY DOCTRINE: rodata vtable harvesting is the primary channel
+(slot shape + inheritance + behavioral differentials cross-checked
+against WebKit 1400 source, NOT RTTI). Source is strong evidence for
+semantics, weak for shipped bytes - every new offset used for a write
+needs device validation; imports need stable repeated reads +
+relocation/symbol attribution before being called (if strlen cannot be
+resolved to that standard, it must not be called by guesswork).
+Call-differential order: ret-only/real-scope -> ret-only/fake-scope ->
+resolved source-consistent leaf with exact return witnesses -> only
+then new external calls. Every risky call: PRE beacon before corruption,
+readback of BOTH m_scope and m_function, explicitly identified victim
+(never a probe/battery index - the V64 lesson as doctrine), finally-
+restore, post-call battery. Execute-only evidence is MODULE-LOCAL: it
+does not establish libc/other-module/JIT/stack permissions - foreign
+module text and JIT mappings are separately testable channels
+(existence != readability != writability != control).
+
+KERNEL SURFACE: no trigger justified now. Post-E2 WebProcess capability
+survey first (firmware/build identity, syscall invocation + error
+reporting, process/thread creation, poll/select with valid pollfd,
+fd passing, exec alternatives, sandbox credentials). Loader/game-process
+results are NOT WebProcess facts; a lethal zero-argument probe is NOT an
+absence proof. Conditional priority after the survey: CVE-2026-7270 (if
+unpatched on 14.10 AND a usable exec strategy) > CVE-2026-45251 (if
+reachable in WebProcess AND second-context/reclaim prerequisites real;
+pdfork is a prerequisite of the PUBLIC chain, not the bug) > sys_532 (if
+14.10 behavior + WebProcess accessibility verified; 13.60 does not
+carry over) > sys_558/536 > UMTX (reachability never properly tested -
+open, low priority) > nullfs jail escapes. Choice deferred to the D2
+offline gate: reconcile patch evidence + survey, select exactly ONE
+candidate, write its expected primitive and failure matrix before any
+trigger.
+
+ROADMAP ADOPTED (risk classes R0=validated reads, R1=bounded new walks,
+R2=redirected call/one possible death, R3=new external deref/write/
+syscall in its own boot):
+V66 exact-victim scope recon + VM calibration (R0/R1)
+V67 script-JIT + import recon (R1)
+V68 fake-scope ret-only preflight (R2) - the gate for everything
+V69 strlen quartet = banks E1 (R2/R3)
+V70 foreign-text read via validated external impl pointer (R3)
+V71 topCallFrame stack read channel, read-only (R3, optional)
+V72 native adapter dry-run (R3, gated on defensible adapter semantics)
+V73 owned out-of-cage write (R3, conditional on an independently owned
+    writable target; no speculative module .data/GOT/stack writes)
+V74 benign syscall witness via the validated bridge - scrubbed time(B)
+    qualifies; gettimeofday(tp=B, tzp=cfr) does NOT (frame corruption)
+V75 WebProcess capability survey (R3, multiple small runs)
+D2 kernel-candidate decision gate (offline, no device probe)
+
+DISAGREEMENT CALLS (recorded): probe order = preflight -> quartet ->
+foreign read (foreign read allowed after preflight if no strlen
+resolves; do not combine an unproven writability test with the first
+foreign read). Benign syscall: NO time/getcwd until a return-normalizing
+adapter or full bridge is validated (kimi's objection decisive).
+setcontext resumption: theoretically possible, unproven here -
+escalation-only. thr_new: real-argument loader executions mean the
+zero-argument row is not absence proof, but establishes neither current
+nor WebProcess availability. SCM_RIGHTS: contradictory records even for
+the loader - no reclaim design may depend on it before V75-style recon.
+UMTX: open, low priority, loader-bound. Kernel order: deferred to D2.
+Bounty acceptance: UNVERIFIED - E1/E2 are our readiness gates, not
+representations of Sony's decision.
+
+LESSON (mine): I had been framing M1 as near-code-exec. The ABI
+analysis (scope-derived RDI, EncodedJSValue args, RAX-as-JSValue) is
+the corrective. V63/V65 standing unchanged: arbitrary PC on call,
+repeatable, restorable. The bridge to sustained execution is the work.

@@ -988,3 +988,253 @@ STATUS: the V55 SharedTask-functor RIP model is RETIRED. The proven
 primitive inventory (COOP write station, absolute in-cage R/W, OOB views,
 oracle, addrof) stands; the exploitation plan for converting it to RIP
 control remains an open design question.
+
+---
+
+## Source Homework Results (pre-V55)
+
+### NativeExecutable Layout (1400 source, confirmed)
+
+NativeExecutable.h / ExecutableBase.h / CallData.h / NativeFunction.h:
+
+```
+NativeExecutable : ExecutableBase : JSCell
++0x00  JSCell header          (8B: structureID + type + flags + cellState)
++0x08  m_function             (TaggedNativeFunction = raw function pointer, 8B)
++0x10  m_constructor          (TaggedNativeFunction = raw function pointer, 8B)
++0x18  m_implementationVisibility (unsigned bitfield + padding)
++0x20  m_name                 (WTF::String, 8B)
++0x28  m_asString             (WriteBarrier<JSString>, 8B)
+```
+
+**Call path (Interpreter.cpp:1069-1121):**
+```
+callData.native.function → nativeFunction.taggedPtr() → vmEntryToNative(ptr, &vm, &protoCallFrame)
+```
+This is a **RAW INDIRECT CALL** — not vtable-dispatched. The CFI vtable-address
+wall (V36R) does not apply. On x86_64 (PS5 = AMD Zen 2) there is no PAC tagging.
+`TaggedNativeFunction` = `FunctionPtr<HostFunctionPtrTag>` = plain sizeof(void*)
+pointer on non-PAC platforms.
+
+NativeExecutable objects are JSCell subclasses allocated in `vm.nativeExecutableSpace()`
+(IsoSubspace) — they live in the GC heap, which on PS5 is in the cage address range
+(0x1000xxxxxxx). **Reachable via our absolute cage R/W.**
+
+### Gigacage Status (source-confirmed DISABLED on PlayStation)
+
+Three independent source paths all yield GIGACAGE_ENABLED=0:
+
+1. **WTF/Gigacage.h:31-32**: `#if USE(SYSTEM_MALLOC)` → `#define GIGACAGE_ENABLED 0`.
+   PlayStation uses SYSTEM_MALLOC.
+2. **bmalloc/Gigacage.h:43-48**: `GIGACAGE_ENABLED 1` only for
+   `(BOS(DARWIN) || BOS(LINUX))`. PS5 is neither → `GIGACAGE_ENABLED 0`.
+3. **WTF/Gigacage.h:80**: `caged(Kind, T* ptr) { return ptr; }` — identity function.
+
+**Implication: CagedPtr returns the raw pointer unchanged.** If this holds at runtime,
+`m_vector` in a DataView cell can point to ANY process address (including module
+data at 0x8xxxxxxx), giving full process ARW via the V54 m_vector rewrite technique.
+**V55-A tests this on the device.**
+
+### JIT Status (source says ENABLED, device unverified)
+
+- PlatformEnable.h:587-588: `ENABLE_JIT 1` for CPU(X86_64) — PS5 qualifies
+- PlatformEnablePlayStation.h: Only sets `ENABLE_LLINT_EMBEDDED_OPCODE_ID 0`.
+  Does NOT disable JIT.
+- No PlayStation-specific JIT override found in the source tree.
+- **However:** runtime Options or Sony's build system may disable JIT. The other
+  agent's review mentions "device table says LLInt-only" — unverified.
+- **V55-C census will settle this**: JIT code pages would appear as executable-
+  region pointers distinct from module addresses.
+
+### WTF::Function Structure (1400 source)
+
+Function.h: `m_callableWrapper` exists (unique_ptr<CallableWrapperBase>).
+CallableWrapperBase has `virtual call()` — vtable-dispatched.
+
+**V36R correction:** overwriting the CallableWrapper vtable pointer would crash
+(address validation wall). The surviving form: use the REAL vtable and corrupt
+the captured state that the real call() operates on. Value depends on census
+data about which captured states are pointer-dense.
+
+---
+
+## M1 Plan of Record: WebProcess RIP Control
+
+### Gating Questions
+
+| # | Question | Answered by |
+|---|----------|-------------|
+| Q1 | Is CagedPtr identity at runtime (can m_vector hold a module address)? | V55-A |
+| Q2 | Is module text readable at JS speed? | V55-A/B |
+| Q3 | Is icall CFI live on raw function pointers? | V57 |
+| Q4 | Can we redirect PC within the same-signature function set? | V56 |
+| Q5 | Where are the raw fps / real-vtable'd objects actually? | V55-C census |
+| Q6 | Does the PS5 build use endbr64/IBT (gadget constraints)? | V55-B |
+| Q7 | The V48 drift mechanism (hygiene + possible 2nd finding)? | V55-D |
+| Q8 | Is JIT truly off (device table says LLInt-only)? | Census/source |
+
+### V55 — Module Read + Census + Drift (4 stages, 1 session)
+
+Runs the full proven pipeline first (cert → V39 setup → V45 → V48 → V49 →
+freshCell machinery), then:
+
+**Stage A — m_vector-at-module test (the CagedPtr identity proof)**
+
+Target: `BASE + 0x715A200` (SharedTask vtable, oracle-read successfully in V41).
+The only unknown being tested is CagedPtr identity.
+
+Sequence: view-write `freshCell+0x10 (m_vector) := BASE+0x715A200`,
+`m_length := 0x40` → read 8 qwords via freshDV → restore both fields.
+
+Witness beacons: V55-VT-SLOT0 should be BASE+0x4001750, SLOT1=BASE+0x404E0C0
+(corrected RVA), SLOT2=BASE+0x4C31760.
+
+Outcomes:
+- All slots match → Q1 answered: identity caging. Full process ARW unlocked.
+- Crash → caging enforced. Module reads remain oracle-only.
+- Garbage, no crash → address transformation. Dump to reverse-engineer it.
+
+**Stage B — Module text read (only if A succeeds)**
+
+Rewrite m_vector to `BASE + 0x4C31760` (run()'s code), read first bytes.
+Bonus: if function entries begin with `f3 0f 1e fa` → endbr64/CET/IBT compiled
+in (Q6 — constrains future gadgets to endbr64 landing sites).
+
+Also read `BASE + 0x5B3D6B0` (fontStateChanged code).
+
+**Stage C — Cage-wide module-pointer census**
+
+Sweep the 64MB OOB view for qwords in module range
+(`> BASE−0x10000000 && < BASE+0x10000000`).
+
+Bucket hits by shape:
+- vtable-at-+0x00 objects (real-vtable'd dispatch candidates for route B)
+- Lone module pointers at non-zero offsets (raw fp fields — route C candidates)
+- NativeExecutable-shaped objects (vtable + two consecutive module pointers at
+  +0x08/+0x10) — dump 0x40 bytes each → V56 swap candidates
+
+Also answers Q8: JIT code pages would appear as non-module executable-region
+pointers if JIT is active.
+
+**Stage D — Drift re-examination**
+
+Full-context dumps of both AB objects (live authority + stale): refcount regions,
+both wrapper-Weak chains, allocation neighbors. The drift is real device data
+(V48/V53/V54 all confirmed it), but "engine mutates m_impl" is not source-
+supported. Any confirmed divergence becomes its own finding.
+
+### V56 — Same-Signature NativeExecutable Swap (graduated PC test)
+
+Using two census-found NativeExecutables A and B:
+
+1. **Identification battery:** run broad builtins (Math.sqrt, Math.abs, parseInt,
+   encodeURIComponent, etc.) before and after the swap. Behavioral diff identifies
+   which is A and what B does.
+2. **The swap:** absolute-write B's m_function over A's m_function at +0x08.
+3. **Witness:** a builtin doing another builtin's job (e.g., Math.sqrt returning
+   abs semantics).
+4. **Safety:** both targets are real, same-signature JSC_HOST_CALL functions. Under
+   full icall CFI, a type-matched target passes. Safe in every CFI scenario.
+5. **Proves Q4:** PC redirection to any real function of matching signature, with
+   controlled arguments.
+
+### V57 — icall Discriminator (intentional crash budget: 1)
+
+With V56 proven, redirect A's m_function to a cross-signature target:
+`BASE + 0x4001750` (folded-empty noop function, wrong signature).
+
+Outcomes:
+- Clean weird return → icall unchecked → arbitrary PC. M1 reduces to gadget/chain.
+- Crash (with write verified via absolute read before invoking) → icall checked →
+  same-signature-only redirection stands. Weight shifts to COOP forms.
+
+### V58+ Endgame Options (gated by V57 discriminator)
+
+**Option B — GOT overwrite (prime route iff V57 says unchecked):**
+GOT must be located dynamically (ELF header unmapped). Scan module writable segments
+through the view for known function addresses. First module write must target a
+verified-writable location.
+
+**Option C-corrected — COOP on WTF::Function wrappers (iff V57 says checked):**
+Use the REAL CallableWrapper vtable (not fake), corrupt captured state that the
+real call() operates on. Value depends on census data.
+
+**Option A — JIT shellcode (PARKED):**
+Requires JIT enabled (unverified), JIT pages writable (W^X says unlikely), and
+icall exempt. Three unverified assumptions in series. Parked until census contradicts.
+
+**Route A — Controlled-free UAF factory (independent branch):**
+Forge 16-byte {real vtable, refcount}, aim AB's m_destructor at it, control m_data,
+trigger → controlled free of a chosen live object. Blocked on deterministic teardown
+trigger (homework §2.4).
+
+**Route B — Census-enumerated real-vtable'd objects (data-driven):**
+Post-census: every in-cage object with a real vtable and a JS-reachable dispatch
+is a candidate. Evaluate each dispatch's use of controlled fields.
+
+### Decision Tree
+
+```
+V55-A (module read via m_vector)
+├─ SUCCESS → V55-B (text + endbr64) → V55-C census → V55-D drift
+│            → V56 same-sig swap
+│            ├─ SUCCESS → V57 icall discriminator
+│            │           ├─ UNCHECKED → arbitrary PC → Option B (GOT) → M1
+│            │           └─ CHECKED   → same-sig callable set
+│            │                          → Option C-corrected + Route B
+│            └─ FAIL → re-audit NativeExecutable offsets, retry
+├─ CRASH → caging enforced → census in-cage → V56 unchanged
+│          (NativeExecutables are in-cage; V56/V57 don't need module reads)
+└─ GARBAGE → transformation → reverse-engineer cage base → re-plan
+```
+
+Every branch lands somewhere useful. Crash-budget-safe by construction
+(only V57 is the intentional risk).
+
+### V55 RESULT: IDENTITY CAGING CONFIRMED AT RUNTIME - and module TEXT is read-fatal
+
+Session RAQZJF (12:55). Stage A: COMPLETE SUCCESS:
+
+```
+V55-A-TARGET=0x818886200-RVA=0x715a200   <- m_vector := SharedTask vtable (module rodata)
+V55-A-READ-OK-8qwords                      <- clean read through the view
+V55-A-SLOT0-RVA=0x4001750  SLOT1-RVA=0x404e0c0  SLOT2-RVA=0x4c31760
+V55-A-MATCH=true/true/true
+```
+
+1. CAGEDPTR IS IDENTITY AT RUNTIME: the m_vector rewrite works at MODULE
+   addresses - the DataView uses stored pointers as-is, matching the
+   GIGACAGE_ENABLED=0 source config. The view primitive now covers the
+   module data segments at native JS speed.
+2. THE CORRECTED DELETING-DTOR RVA (0x404E0C0) IS DEVICE-VALIDATED - the
+   council arithmetic fix confirmed by hardware.
+3. All three SharedTask vtable slots match the historical RVAs.
+
+Stage B: DEATH on the first module-TEXT read (run() prologue at
+BASE+0x4C31760, no result beacon). The module now has THREE page classes:
+
+| Region            | Behavior        | Evidence                    |
+|-------------------|-----------------|-----------------------------|
+| ELF header page   | unmapped        | V52 x2 (instant death)      |
+| rodata/data segs  | readable        | V41 (oracle), V55-A (view)  |
+| text segments     | READ-FATAL       | V55-B (death on first read) |
+
+Likely mechanism: execute-only text via memory protection keys (Zen 2 MPK).
+CORROBORATION: the v688-lineage probe header always excluded "executable-text
+reads (no T1/T2 exec tests)" - the original researchers almost certainly hit
+the same wall.
+
+KILLED: disassembly-by-DataView, the direct endbr64/IBT check, gadget
+hunting by reading text bytes.
+SURVIVES: rodata + writable data segments are readable at JS speed -
+vtables, structure tables, GOT-class pointer tables. The census (Q5) and
+the Option-B GOT prerequisite are INTACT (the GOT lives in readable .data).
+
+Record honesty note: the probe's A-FULL-PROCESS-ARW-CONFIRMED beacon
+overclaims - module READS are proven; module WRITES via the view remain
+untested (and the module is not uniformly touchable per stage B).
+
+NEXT (V56): census-first ordering - the cage-wide module-pointer sweep +
+a module .data/.rodata sweep via the view (fast JS) + the drift re-exam.
+The text test is retired (answer known). NativeExecutable candidates from
+the census feed the same-signature swap.

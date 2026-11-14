@@ -2401,3 +2401,51 @@ If CALIBRATED lands, the recon phase is DONE and the next build is the
 fake-scope ret-only preflight (V75, the council R2 gate) with every
 offset device-measured: JF via the up-walk, scope@[JF+0x10],
 VM*@[G+0x38], topCallFrame offset banked.
+
+### V74 RESULT: clean run #2 - the differential read a FROZEN slot; the [G+0x38] window is CROSS-BOOT INVARIANT
+
+Session OAZGAF. V74-DONE, zero deaths, the chain collected again
+(census anchor this boot, JF @0x1000717620 accepted type=0x1a,
+G=0x10004fdb68, [G+0x38]=0x1000200000 tested first). The
+depth-differential failed informatively:
+
+```
+V74-VM-DIFF-0-0-@+0x20: t1=t2=t3=0x7ef49c000/MMAP?  witness=false
+```
+
+THE SLOT IS FROZEN, NOT SELF-MASKING-AMBIGUOUS: the reads are
+TRANSPARENT - absRead56 is hot/JITd by the time the VM stage runs, and
+DFG inlines DataView accessors, so reads never dispatch the LLInt
+nativeCallTrampoline and never store topCallFrame. The slot holds the
+FROZEN cfr of the last LLInt-dispatched native call (an early
+battery/census call - a stale but valid stack-band cfr). The
+depth-differential could not work because nothing in the read path
+perturbs the slot.
+
+THE STRUCTURAL EVIDENCE STRENGTHENED - THE [G+0x38] WINDOW IS
+CROSS-BOOT INVARIANT (V73 vs V74 boots):
+  +0x00/+0x08: 0x4, 0x4              (both boots - small enum-ish fields)
+  +0x10: cage ptr (0x10001900c0 / 0x10001940c0 - same family)
+  +0x18: 0x10001ec000                 (IDENTICAL both boots!)
+  +0x20: stack-band cfr (0x7efa2c000 / 0x7ef49c000 - same band)
+  +0x28..: NULLs, then 17 cage pointers total
+A boot-stable VM shape with a stack pointer at +0x20 - consistent with
+VM::topCallFrame.
+
+### V75 (deployed): the PERTURBATION-differential
+
+Perturb the slot between reads with COLD, non-DFG-inlinable WebCore
+host calls (document.getElementById - a JSFunction host call ->
+guaranteed LLInt nativeCallTrampoline dispatch -> topCallFrame store)
+at two JS depths:
+  pert(depth D) -> t1; pert(depth D+1) -> t2; pert(depth D) -> t3
+  WITNESS: t1===t3 && t1!==t2 && all stack-band
+Transparent reads + real perturbations = a genuine differential. If it
+still reads flat (the self-masking case), the fake-scope preflight
+itself becomes the decisive test of [G+0x38] - the trampoline writes
+cfr through it on every call, so a wrong VM* would corrupt a random
+object and crash informatively, while the right one survives.
+
+WITNESSES:
+  V75-VM-DIFF-0-0-@+0x20:t1=...-t2=...-t3=...-witness=true
+  V75-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0x20

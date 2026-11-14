@@ -1934,3 +1934,77 @@ WITNESSES TO WATCH:
 
 RISK: unchanged R0/R1. The verification swap is the proven V63 operation;
 everything else is reads. Expected zero deaths.
+
+### V67 RESULT: anchor MISS (my constant was WRONG) + structural miss + the loop-eating error
+
+Session 8S6WYZ. Clean run, no crash, PATHB-DONE. Three findings:
+
+1. MY ARITHMETIC ERROR (recorded against me): the V67 constant 0x377848
+   was wrong. Careful recomputation, two independent derivations:
+     V64: BASE = 0x83F105750 - 0x4001750 = 0x83B104000; round fn
+          0x83f15b848 -> RVA = 0x4057848
+     V65: BASE = 0x80FE75750 - 0x4001750 = 0x80BE74000; round fn
+          0x80fecb848 -> RVA = 0x4057848
+     V63 consistent (BASE 0x81101C000, 4K-aligned). sign = 0x4057850.
+   Method cross-verified on this session's own data: census fn values are
+   RVAs - NE-292 RVA 0x4056b40 = absolute 0x82DEE2B40 - BASE 0x829E8C000.
+   CORRECT CONSTANT: MATH.ROUND NE FN RVA = 0x4057848.
+
+2. STRUCTURAL MISS (new device fact): the Math NE cluster lives BELOW
+   lowB on some boots. This session lowB = self = 0x100037c180; the census
+   fn-RVA spectrum has a GAP (0x40573f0 .. 0x4057a00) with 0x4057848
+   inside it - the whole Math family (past boots: 0x10002d4xxx /
+   0x10003d8xxx) was in the never-scanned region below the reclaimed
+   face. Also noted: the census 200/300 caps and the ASCAN stop at
+   0x1000714xxx left the view tail [0x1000714xxx..+4MB] unscanned.
+
+3. THE LOOP-EATING ERROR: after SWAP-TRY-11 READBACK, an unexpected JS
+   error ("undefined is not an object (evaluating 'x.toString')" - a
+   hex(undefined) somewhere in the post-battery/restore window; the exact
+   site is still unidentified) aborted the V56 block: NODIFF-11,
+   SWAP-ALL-NODIFF, RESTORE-VERIFY and DONE never fired, and try-11's
+   swap (fn 0x4056b40:=0x4056b48 - a getter in the 0x1000714xxx cluster
+   V66 never reached) was likely left UNRESTORED on device (benign for
+   the session tail - PATHB-DONE fired - and cleared by the session-end
+   WebProcess death, but a hygiene violation: no error path restored it).
+   LESSON: every swap must be tracked (openSwap) and restored on ANY
+   error path; loops that swap must be guarded per-iteration.
+
+### V68 (deployed): corrected anchor + three-route hunt + openSwap hygiene
+
+1. Census anchor (fast path, most boots): fn === BASE+0x4057848.
+2. Raw UNCAPPED re-scan of both census regions for the exact fn value
+   (bypasses caps/filters), hit validated as an NE (fn@+0x28 match,
+   ctor@+0x30 in module range).
+3. Chunked walk DOWN from self: 16 x 64KB, beacon per chunk - the FIRST
+   deliberate below-self reads (R1; the region was mapped in the V63
+   boot, which scanned part of it as its region B). Covers the
+   below-lowB case this boot exposed.
+4. Behavioral verify on any hit: the proven round->sign swap, expect
+   exactly round:-6>-1, openSwap-tracked, restored before the beacon.
+5. openSwap hygiene everywhere: tracked before the write, cleared after
+   the verified restore, restored by every catch path INCLUDING the
+   outer V56 catch; the fallback pair loop is per-iteration guarded with
+   LOOP-ERR beacons (the x.toString mystery cannot silently recur - if it
+   ever fires again we get the exact iteration + message + a restored
+   swap).
+6. Then the full V66 recon stage unchanged: control rodata read
+   (abort-on-fail), victim NE dump + classification, JSFunction hunt,
+   scope -> globalObject dump (+0x40 m_vm prediction), VM calibration
+   (topCallFrame stack-band + cage density), UA identity, build strings.
+
+WITNESSES TO WATCH:
+  V68-ANCHOR-CENSUS=FOUND-@... / MISS
+  V68-RAWSCAN-B/A-n=...-hits=N + V68-RAW-VALIDATE-...
+  V68-DNSCAN-CHUNK-0..15-@...   <- first below-self reads; a cutoff here
+                                  localizes the unmapped boundary exactly
+  V68-DNSCAN-DONE / V68-DN-VALIDATE-...
+  V68-ANCHOR-RESULT=FOUND-@...-src=census|rawscan|dnscan
+  V68-VERIFY-DIFF=round:-6>-1-restored=true
+  V68-ANCHOR-CONFIRMED=round -> V68-VICTIM-SRC=rva-anchor
+  -> V68-CONTROL-RODATA=true -> V68-JF-CAND-execOK=true ->
+     V68-SCOPE-G=.../CAGE -> V68-VM-RESULT=CALIBRATED@...-G+0x40
+
+RISK: R0/R1. The only new-deref class is the below-self walk (chunked,
+beaconed). Expected zero deaths; a death would itself be a result (the
+mapped/unmapped boundary below the face).

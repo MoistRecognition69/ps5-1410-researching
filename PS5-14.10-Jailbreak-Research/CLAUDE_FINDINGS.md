@@ -1643,3 +1643,52 @@ genuinely tested for the first time:
 LESSON for the record: a witness must be COUNTERFACTUALLY VALID - the
 V64 "survival" satisfied the beacon but not the experiment. The
 returned-value tell (floor answer from a floor call) is what exposed it.
+
+### V65 RESULT: *** ARBITRARY PC CONFIRMED *** - M1 AT FULL STRENGTH
+
+Session 53DCT1. The V63 result re-banked (round->sign, idName63=round).
+The ICALL stage then ran the GENUINE cross-signature test:
+
+```
+V65-ICALL-PRE-A=@0x10003d8130-target=0x80fe75750   <- round.m_function := BASE+0x4001750
+V65-ICALL-READBACK=true-val=0x80fe75750             <- write verified
+V65-ICALL-SURVIVED-returned=function round() { [native code] }
+V65-RESTORE-VERIFY-BATTERY=true
+```
+
+THE WITNESS AND WHY IT IS REAL (the counterfactual check):
+Math.round(-5.7) returned ITS OWN FUNCTION OBJECT - impossible under
+normal semantics. The name lookup fired correctly (no NAME-MISS;
+idName63=round from the diff), the call went through the corrupted
+pointer, and the result is provably not any builtin's sane behavior.
+
+THE MECHANISM (legible): the folded-empty function is ret-only; it
+returned without touching rax, leaving the trampoline leftover (the
+callee JSFunction pointer, loaded for call setup) interpreted as the
+return JSValue. The call EXECUTED at the wrong-signature target and
+the process SURVIVED -> NO ICALL CFI ON THE NATIVEEXECUTABLE DISPATCH
+PATH.
+
+CONTRAST WITH V64 (the false positive): returned=-6 = a CORRECT floor
+answer from the WRONG builtin (the index bug). V65s returned=function
+round(){[native code]} = an IMPOSSIBLE answer from the RIGHT builtin.
+
+M1 IS COMPLETE:
+- Same-signature redirection (V63): any real JSC_HOST_CALL function,
+  controlled arguments. ✓
+- Cross-signature / ARBITRARY PC (V65): any address - including
+  mid-function gadgets in module text (text is execute-only, not
+  call-prohibited). ✓
+- Restoration clean, every time. ✓
+
+PRIMITIVE STACK NOW: UAF -> COOP write -> AB expansion -> OOB views ->
+absolute in-cage R/W -> module reads (identity caging) -> NE census ->
+PC redirection (same-sig + arbitrary). The remaining M1 work is the
+SUSTAINED EXECUTION construction: each JS call invokes one gadget with
+semi-controlled arguments (the CallFrame carries our JS args) - the
+call-oriented-programming endgame, then the kernel bridge (M2).
+
+NEXT DECISION POINT (per the plan of record): the M1->M2 transition -
+gadget strategy (call-differential gadget discovery vs known-RVA
+chaining), the sustained-execution construction, and the kernel
+attack surface. Council-worthy.

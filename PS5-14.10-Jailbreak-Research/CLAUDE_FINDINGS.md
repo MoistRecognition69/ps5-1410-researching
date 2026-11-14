@@ -3064,3 +3064,34 @@ syscall wrappers are mapped dead ends; the remaining routes: the
 userland-readable Sony dynlib module metadata (the parallel teams
 kernel lane documented it), a GOT-shaped scan in the PROVEN-readable
 [0x7000000,0x10000000) band, or a source-derived C++ adapter).
+
+### V87 (deployed): THE GOT / DYNSTR HUNT in the proven-readable band
+
+The ONE remaining E2 item (the benign syscall) attacks via a LAYOUT
+FACT the parallel efforts VP-slot doc confirms (and our ~10 boots of
+VP-RVA invariance already passed their delta-invariance test): the
+vtables live in .data.rel.ro, and in full-RELRO builds the GOT sits
+IMMEDIATELY AFTER IT - just above the VP-family pages (0x715A200 /
+0x724DB28) we have read since V36. And .dynstr (the import NAME
+strings) is a read-only section that may share the readable band.
+
+TWO SCANS PER CHUNK over [0x724E000, 0x8000000) - anchored
+immediately past the PROVEN string-scan pages (0x724C000-0x724E000,
+V68):
+  (a) ASCII name patterns: strl+en\0 (strlen), memc (memcpy), mpro
+      (mprotect), gett (gettimeofday & friends)
+  (b) pointer-runs: >=8 consecutive plausible-pointer qwords (hi32
+      in (0,0x20)) with >=2 FOREIGN entries (hi32 neither module-hi
+      nor 0x10-cage-hi) - the GOT shape (resolved imports point
+      into FOREIGN modules; the parallel efforts dynlib doc maps
+      libc.prx at the 0x1B/0xF5 VA bands in-process)
+Chunk-beaconed every 4; run dumps AFTER the vector restore; a death
+banks the band boundary. A dynstr hit + a GOT run = the import
+library resolved from readable memory; the JMPREL walk then names
+every slot and the syscall wrappers are ours -> the quartet + the
+E2 syscall item.
+
+WITNESSES:
+  V87-STKWRITE-...-sentinel=true-restored=true (re-bank)
+  V87-NAME-strlen-@0x...                     <- .dynstr located
+  V87-GOTRUN-n-@0x...-foreign=N-first16=...  <- the GOT located

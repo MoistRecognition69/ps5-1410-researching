@@ -1341,3 +1341,38 @@ V57 FIX: the JSCPROBE guard is now CAGE-ONLY
 (>=0x1000000000n && <0x1800000000n) - module addresses never reach readAt
 from that stage again. Census/swap stage unchanged and should now be
 reachable. Dispatcher -> v57.html?v=1.
+
+### V57 RESULT: census works - 30 NEs found - but names all <OOR> (two stacked bugs)
+
+Session 1WM8R4. The census ran cleanly (JSCPROBE fix held - no early death):
+CENSUS-TOTAL-MOD=216 module pointers, CENSUS-NE-FOUND=30 NativeExecutable-
+shaped objects at 0x10004c0xxx, each with fn/ctor module RVA pairs
+(fn clustered 0x4407538-0x4407720, ctor clustered 0x73798xx-0x7379bxx).
+But name=<OOR> for ALL 30 -> the swap auto-skipped (no named pair).
+Also banked: the drift beacons (STALE m_data=0x10003faa00 vs LIVE
+m_data=0x10003f8400 - DIFFERENT backing data, same m_destructor
+singleton 0x10001100a0 - and the LIVE size stays expanded while the view
+lives on its buffer).
+
+DIAGNOSIS (two stacked bugs):
+1. REGION BUG: the census scanned only the first 4MB of the OOB view
+   (upward from the buffer). The 30 finds are page-load DOM binding
+   natives (tight fn cluster = generated binding trampolines) with EMPTY
+   names (m_name=0 -> OOR is CORRECT for them). The Math.* NEs (with
+   names) are VM-era early-boot allocations BELOW the view base - near
+   the SharedTask (0x10001100a0) - a region the census never touched.
+2. STRINGIMPL BUG: Claude's decoder modeled {?, len@+0x08, flags@+0x0C,
+   dataPtr@+0x10} - but WTF StringImpl is {refcount@0, len@+4,
+   hashAndFlags@+8} with the CHARS INLINE at +0x0C. Even with a valid
+   namePtr the decode would have failed (len from the hash field, a data
+   pointer that does not exist).
+
+V58 (deployed): (1) TWO-REGION census - region A (the view, as before)
++ region B ([stAddr, ri_mData) via ONE long freshDV rewrite; stAddr from
+the live authority's m_destructor; both endpoints proven-mapped; the
+early-boot region holds the named Math.* NEs). (2) The corrected
+StringImpl decode. (3) Raw diagnostics: per-candidate hdr (structureID
+consistency check), raw namePtr, and V58-STRDBG beacons (the first three
+StringImpl headers verbatim) so any remaining failure is diagnosable
+offline. Swap stage unchanged (write -> verify -> behavioral test ->
+restore -> verify).

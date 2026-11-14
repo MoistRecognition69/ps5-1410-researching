@@ -3095,3 +3095,36 @@ WITNESSES:
   V87-STKWRITE-...-sentinel=true-restored=true (re-bank)
   V87-NAME-strlen-@0x...                     <- .dynstr located
   V87-GOTRUN-n-@0x...-foreign=N-first16=...  <- the GOT located
+
+### V87 RESULT: zero deaths, clean skip - the imposter anatomy; two bugs found and fixed
+
+Session T5EWZ6. The gate skipped: PREFLIGHT-SKIP-no-vm-or-jf, clean
+exit. The anatomy (from the full beacon set):
+
+- The up-walk (16 chunks) and down-walk (5 chunks) EACH found one
+  hit - both NE-SHAPED FALSE POSITIVES (holders of the victim NE
+  pointer - cell type 0x08, not 0x1A). The acceptance machinery
+  CORRECTLY REJECTED both - the type-byte check works.
+- BUT the V71-era hit-fallback kept the first rejects [jfb+0x10] as
+  G UNVALIDATED - and NativeExecutable-internal garbage rode into
+  the G/VM stages. The G-dump was literally an NE dump (cell
+  0x80000004560, arity checks, SIGNS fn at +0x28, +0x38 NULL). The
+  preflight correctly refused. No harm - zero deaths.
+- THE REAL JF FAMILY WAS NOT FOUND AT ALL: an EIGHTH layout family.
+  The JFs sit ABOVE the old up-walk ceiling (0x10007f0000) - likely
+  in the 0x10008xxxxx band (marker buffers, fresh DV cells). The
+  GOT/dynstr hunt never ran (correctly gated downstream).
+
+### V88 (deployed): two fixes, the hunt re-armed
+
+1. THE FALLBACK-G GATE: the fallback G must have m_next===NULL at
+   [G+0x10] (the scope-chain end - banked 8+ boots). The imposter
+   had a live cage ptr there. Rejected fallbacks beacon with the
+   value for the record.
+2. THE RAISED UP-WALK CEILING: default 0x10007f0000 -> 0x1000900000
+   (the known heap top + margin) - the 8th layout family puts the JF
+   block above the old ceiling. The stAddr-based ceiling stays when
+   stAddr is a valid bound.
+
+Everything else unchanged - the GOT/dynstr hunt re-runs once the
+real JF/G return.

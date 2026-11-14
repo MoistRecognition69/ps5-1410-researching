@@ -872,3 +872,51 @@ cross-check against the historical 0x715a200), the refcount, the functor
 payload, and one functor-deref level. That completes the code-exec dossier:
 real vtable + real run() (RVA 0x4C31760) + controlled functor = the COOP
 call chain, all material now readable regardless of heap layout.
+
+### V54 RESULT: THE TRIFECTA - absolute read proven, code-exec dossier COMPLETE
+
+Session PO5RQY (02:53), clean end-to-end. This boot the singleton landed back
+IN the view range (ST=0x10007e48a0 > view base 0x10007e0100), so the ST was
+read BOTH ways - direct view read AND the m_vector-rewrite absolute read -
+and THE BYTES MATCH EXACTLY (cross-validation of the rewrite primitive):
+
+```
+V54-ST-ABS-VTADDR=0x8350fa200-RVA=0x715a200-EXPECT-0x715a200   <- RVA EXACT MATCH
+V54-ST-ABS-REFCOUNT=161                                        <- 161 Gigacage ABs share it
+V54-ST-ABS-FUNCTOR=0x1000889200-0x500000010-0x3300000001
+V54-FUNCTOR-ABS-@0x1000889200=0x1000707e48|0x1000320a08|0x1000320b68|0x1000320c18|0x100086cf80|0x100086cfc0|0|0
+V54-ABS-READ-OK                                                 <- the rewrite works
+V54-JSAB-STRUCTID=0x8f00-IMPL=0x1000892220-LIVE-AUTHORITY=0x10008927c0  (drift again)
+PATHB-DONE-with-V45
+```
+
+The SharedTask object, fully decoded:
+```
++0x00  vtable   = 0x8350fa200 = BASE+0x715A200 (the historical RVA, EXACT)
++0x08  refcount = 161 (u32; this boot's Gigacage ArrayBuffer population)
++0x10  functor  = 0x1000889200 (in-cage pointer, deref read OK)
++0x18  0x500000010   +0x20 0x3300000001
++0x28  0x10001efeb0  +0x30 0xf7ad000006f81d88  +0x38 0x1d06f39400f74bf8
+```
+
+PRIMITIVE INVENTORY AFTER V54:
+- 64MB OOB view (per-session, upward from the buffer)
+- ABSOLUTE arbitrary in-cage READ via m_vector rewrite (layout-independent,
+  cross-checked byte-exact) - and the same mechanism gives absolute WRITE
+  (setUint8 through the rewritten vector)
+- COOP write station (fixed-pattern, arbitrary ABSOLUTE address incl. below
+  the cage; multi-shot)
+- readAt oracle (heap-only now, per the module-deref law)
+- The complete code-exec dossier: the singleton address (per-boot, via the
+  live authority's m_destructor), its REAL vtable (RVA-verified), refcount,
+  functor payload + one deref level (the lambda capture region)
+
+THE REMAINING MILESTONE: RIP control / code exec via the COOP call chain -
+forge a second SharedTaskFunctor-shaped object in controlled cage memory
+with the REAL vtable pointer copied from the singleton, aim one AB's
+m_destructor at it, force that AB's destruction -> ~ArrayBufferContents ->
+m_destructor->run(m_data) -> REAL vtable dispatch (CFI-clean) -> real run()
+(RVA 0x4C31760) operating on OUR functor state, with m_data as the argument.
+Each deeper virtual level (WTF::Function impl) needs another real-vtable
+copy - all now readable via the absolute read. Leaf call: a controlled
+call with a controlled argument.

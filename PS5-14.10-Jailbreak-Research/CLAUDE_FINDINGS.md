@@ -2904,3 +2904,45 @@ ALSO BANKED (their INDEX rows):
 - p807/p808: JSC deep fuzz + TOCTOU fuzz batches - ALL CLEAN (no new
   bugs in arguments/generator/proxy/TA/clone/iterator/toPrimitive or
   TA.set+resize/proxy-revoke/transfer/sort/Map/DataView vectors).
+
+### V83 RESULT: the gate is 3-for-3; the DYN hunt died at chunk 0 - MY V61-gate violation (fixed)
+
+Session FR4A4G. THE THIRD CONSECUTIVE CLEAN GATE PASS: calibration
+routine, baseline V65 witness, fake-scope survival (FAKE-RESULT +
+POST clean, battery baseline-ok). The R2 result is now 3-for-3
+across boots - rock solid, re-banked every run.
+
+THE DYN HUNT DEATH (chunk 0, RVA 0x3F00000) - MY ERROR: I violated
+the V61 read-gate doctrine. The campaign rule (module reads only
+proven >= RVA 0x7000000) exists precisely because the lower module
+band was never proven, and I overrode it on a misremembering (the
+V60-era name decodes did NOT prove the 0x3F band readable). The live
+static-StringImpl pointers observed at 0x4018xxx are what actually
+proves where .data lives - my scan started 0x100000 below it. The
+chunk beacon localized the death exactly, as designed: [0x3F00000,
+0x3F40000) is UNMAPPED.
+
+### V84 (deployed): the REAL-BODY witness + the DYN hunt at the right band
+
+1. THE REAL-BODY WITNESS (new, needs no imports): the ret-only
+   preflight proves the TRAMPOLINE tolerates the forged scope; the
+   stronger question is whether a REAL function body does.
+   Math.round(-5.7) with the ORIGINAL round function but the FORGED
+   scope: if round happy path never dereferences RDI (the fake
+   globalObject), the call returns exactly -6 - the normal computed
+   value. CONTROLLED-RETURN NATIVE EXECUTION through a forged scope,
+   using only proven machinery. Outcomes:
+   - returned=-6 + POST clean: real bodies tolerate the fake scope -
+     a large part of what the strlen quartet was for, E1 strengthens.
+   - THREW / wrong value: the happy path touches the globalObject -
+     equally informative; the import-quartet route becomes the path.
+2. The DYN scan restarts at 0x4018000 (the proven-live static-
+   StringImpl band), 64KB beaconed chunks. _DYNAMIC must be mapped
+   somewhere (the dynamic linker reads it at load); every crash maps
+   another hole boundary for the record.
+
+WITNESSES:
+  V84-BASELINE-RETURNED / V84-FAKE-RESULT (routine, 4th boot)
+  V84-REALBODY-returned=-6-expect=-6            <- THE NEW WITNESS
+  V84-DYN-CHUNK-0..N-@0x...                     <- the proven-live band
+  V84-DYN-FOUND-STRTAB-SYMTAB-PAIR / V84-IMPORT-strlen-...

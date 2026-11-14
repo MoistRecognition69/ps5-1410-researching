@@ -1415,3 +1415,38 @@ V59 (deployed):
 3. Cap raised to 120 (region B) / 140 (total).
 4. Swap stage unchanged. STRDBG fires once real namePtrs appear, and the
    StringImpl decode finally gets device-tested.
+
+### V59 RESULT: THE REAL NEs FOUND - names stayed null (decode-order bug)
+
+Session GVM1SN. Region B (face-anchored) ran first and region A continued -
+and the census FOUND THE REAL NATIVEEXECUTABLES:
+
+NE-121..139 @ 0x10003004f8-0x10003006c8 (just above the view base):
+- DISTINCT fn values, 8 bytes apart (RVA 0x4018930-0x40189f8) - per-function
+  entry points, NOT the repeated vtable pairs of false positives
+- SHARED ctor (0x7159310 + 0x7159290/0x7159350 variants) - the
+  notAConstructor thrower family, exactly what real NEs show
+- CONSISTENT structureID (0x394b5310) - one object class
+This is the global object's builtin family. Math.* NEs are in this cluster.
+
+THE BUG (one ordering error): region A pushes name:null and the name-decode
+pass only ran INSIDE region B's block - so every region A candidate (the
+real NEs!) kept name=null. The census found them; the names never got read.
+(Also: the region B decode of its own 120 candidates produced OOR/garbage
+- mostly false positives, but several had MODULE-RODATA namePtrs like
+0x8396b7288/0x8396b9b50 - static StringImpls - which the cage-only gate
+rejected. Worth accepting: rodata reads via the view are V55-A proven.)
+
+Also banked this session: DRIFT-STALE m_data=0x10002f2b00 vs DRIFT-LIVE
+m_data=0x10002f0400 (different backing data again; same ST 0x10007e08a0).
+
+V60 (deployed):
+1. THE DECODE-ORDER FIX: the name-decode pass now runs AFTER BOTH regions,
+   covering every candidate (name===null gets decoded).
+2. readStr56's gate extended to accept module-rodata namePtrs (static
+   StringImpls) alongside cage pointers.
+3. Caps raised (region B 200, total 300) - the real NE cluster extends
+   beyond V59's 19 finds.
+4. (Build note: my first V60 transform had a dropped '+ before the string
+   in the gate line - caught by the mandatory node --check before deploy.
+   The discipline works.)

@@ -2645,3 +2645,46 @@ every path (the finally restores both slots before any POST beacon);
 the baseline call MUST reproduce the V65 witness before the fake
 attempt runs (a failed baseline aborts the sequence as
 non-representative).
+
+### V79 RESULT: the R2 gate did not fire - the anchors first all-routes MISS (low-layout boot); budget unspent, zero deaths
+
+Session SXCHSY. Clean exit (V79-DONE, zero deaths, R2 budget UNSPENT -
+the preflight never armed because the victim was never identified):
+
+```
+V79-ANCHOR-CENSUS=MISS-target=0x828a8f848
+V79-ANCHOR-RESULT=MISS-all-routes     <- first time all three failed
+V79-SKIP-no-confirmed-pair           <- correct skip, nothing risked
+```
+
+WHY (low-layout boot, face at cage+0x1080a0): the census filled its
+200-cap with low-band candidates (many false positives - fn values
+like 0x6f1602b are not even code-aligned); the rawscan covered
+[lowB, view+4MB] and found no round fn; the down-walk floored out
+instantly (lowB sits 32KB above the unmapped floor - correct). The
+victim NE was BEYOND the coverage - in the band where the JF block
+(~0x100070f6xx), the marker buffers (~0x100086exxx) and the fresh DV
+cells (~0x100088exxx) live - all proven mapped across many boots.
+The layout spectrum is now fully characterized: the victim NE
+position varies across the WHOLE heap band, not just the two known
+families.
+
+### V80 (deployed): the WIDE rawscan - the R2 gate re-armed
+
+Route 2 widened from [lowB, view+4MB] to [lowB, 0x10008A0000) - the
+ENTIRE known heap band: 256KB beaconed chunks, u32-first (the V71 mem
+lesson), cap 4 hits, same NE validation (fn match + ctor in module
+range). The preflight stage is UNCHANGED and fully armed; the JF
+hunt already covers the band (the up-walk); everything else banked.
+
+THE COVERAGE IS NOW COMPLETE: the victim NE cannot hide anywhere in
+[lowB, heap-top] short of an unprecedented layout. If the anchor
+hits, the chain runs: verify -> JF -> G -> [G+0x38] -> BASELINE ->
+FAKE-SCOPE PREFLIGHT (the R2 gate).
+
+WITNESSES (unchanged from the V79 design):
+  V80-RAWSCAN-CH-0..N -> V80-RAWSCAN-DONE-hits=1
+  V80-ANCHOR-CONFIRMED=round
+  V80-BASELINE-RETURNED=function round() { [native code] }   <- V65 re-proven
+  V80-FAKE-RESULT-returned=<weird> + V80-POST-...battery=baseline-ok
+      <- THE R2 GATE PASSES: the fake scope works, [G+0x38] IS the VM

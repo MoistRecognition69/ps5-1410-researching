@@ -1546,3 +1546,47 @@ decoding entirely:
 3. Up to 5 pairs tried (largest family first); RESTORE-FIRST discipline
    (beacon after restore); final battery re-run verifies zero residual.
 All reads/writes in V61-proven space (the gate that ran clean).
+
+### V63 RESULT: *** PC REDIRECTION CONFIRMED *** - M1 ACHIEVED
+
+Session 74KN3C (fresh console boot). Clean end-to-end run. The FIRST pair
+tried produced the witness:
+
+```
+V63-FAMILIES=48-sizes=34,29,20,18,13        <- 48 NE families; largest = 34
+V63-BATTERY-PRE-OK=20                        <- the 20-builtin baseline
+V63-SWAP-TRY-0-A=@0x10002d4130-fn=0x815073848-B=@0x10002d4180-fn=0x815073850
+V63-READBACK=true-val=0x815073850            <- the m_function write verified
+V63-DIFF=round:-6>-1                         <- Math.round(-5.7) returned -1
+V63-PC-REDIRECTION-CONFIRMED-A-IDENTIFIED=round
+V63-RESTORE-VERIFY-BATTERY=true              <- zero residual; clean exit
+```
+
+THE WITNESS, DECODED: A = Math.round (its JS invocation changed behavior);
+B = Math.sign (round(-5.7) = -1 = sign(-5.7)). The battery diff identified
+BOTH functions - the name-independent design worked exactly as intended.
+The pair: adjacent cells 0x50 apart, fn values 8 bytes apart in the module
+- the Math.* builtin family.
+
+WHAT THIS ESTABLISHES (device-proven):
+1. PC REDIRECTION: the NativeExecutable m_function is a raw function
+   pointer; overwriting it redirects the next JS invocation of that
+   builtin to our chosen REAL function. Whatever icall protection
+   exists, same-signature redirection passes.
+2. The full census -> family -> swap -> battery machinery is validated
+   end-to-end (48 families found; family detection picked the Math
+   cluster on the first try).
+3. THE GRADUATED LADDER HOLDS: this is the SAME-SIGNATURE step. The
+   remaining question is the CROSS-SIGNATURE step (arbitrary PC):
+   redirect to a different-signature real target (the folded-empty
+   function, RVA 0x4001750) - if that survives, we have arbitrary PC
+   including mid-function gadgets; if it crashes, same-signature
+   redirection stands (any JSC_HOST_CALL function with controlled
+   arguments - still a powerful callable set).
+
+THE NEXT EXPERIMENT (V64 - the icall discriminator, one crash of budget):
+- Swap round m_function := BASE+0x4001750 (the folded-empty function,
+  wrong signature for a JSC_HOST_CALL slot).
+- Clean weird return -> icall unchecked -> arbitrary PC -> gadget hunting.
+- Crash (with the write verified pre-call) -> icall checked -> same-
+  signature stands; pivot to COOP forms.

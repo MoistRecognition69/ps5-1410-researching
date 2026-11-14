@@ -1511,3 +1511,38 @@ V62 (deployed): both bounds corrected from this evidence:
   cluster, 1MB window, well below the fatal 0x4C31760).
 Everything else unchanged. With names decoding for both real-NE
 families, the swap should finally find its named pair.
+
+### V62 RESULT: died in the decode pass again - both window extensions were inferential (my error)
+
+Session QG2Y8S. Full pipeline clean through the census (BSCAN 4652 mod
+ptrs -> 156 candidates; ASCAN 1074 -> 300 total), then death during the
+name-decode pass - the same failure class as V60.
+
+ROOT CAUSE (mine, twice over): V62 widened the decode gate on INFERENCE,
+not evidence:
+1. The cage floor 0x1000110000 came from a DIFFERENT BOOTs ST address
+   (0x10001100a0, V53/V54 era). This boots ST is at 0x10007e48a0 - the
+   heap start moves per boot, and 0x100011xxxx may be unmapped in this
+   layout.
+2. The module window RVA [0x4000000,0x4100000) was inferred from
+   namePtrs the V61 gate REJECTED - we never actually read them.
+   (Also suspicious in hindsight: V61s namePtr cluster at RVA 0x4018xxx
+   is BELOW the fatal text read at 0x4C31760 - it may BE text-adjacent
+   data, or the candidates may not be NEs at all.)
+LESSON (now twice-learned): never widen a read gate on inference. Two
+boots spent on unverified reads.
+
+V63 (deployed) - THE NAME-INDEPENDENT APPROACH: the names were only ever
+a convenience for identifying which builtin to call. V63 drops name
+decoding entirely:
+1. FAMILY DETECTION: sort candidates by address; families = clusters
+   within 0x100 spans (IsoSubspace cells are 16-24 bytes apart).
+2. THE SWAP + BATTERY: swap a family pair m_functions, run a
+   20-builtin battery (floor/ceil/abs/round/trunc/sqrt/pow/max/min/
+   sign/log2/hypot/parseInt/parseFloat/isNaN/isFinite/encodeURI/
+   decodeURI/fromCharCode/isInteger) with fixed inputs, pre/post diff.
+   THE DIFF IS BOTH THE WITNESS AND THE IDENTIFICATION: if
+   floor(-5.7) returns -5, A=floor and B=ceil - no names needed.
+3. Up to 5 pairs tried (largest family first); RESTORE-FIRST discipline
+   (beacon after restore); final battery re-run verifies zero residual.
+All reads/writes in V61-proven space (the gate that ran clean).

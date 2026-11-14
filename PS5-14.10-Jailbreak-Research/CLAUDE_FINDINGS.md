@@ -2821,3 +2821,60 @@ WITNESSES:
   V82-BASELINE-RETURNED=function round() { [native code] }
   V82-FAKE-RESULT-returned=<weird>                     <- THE GATE
   V82-POST-scope=...scopeOK=true-fnOK=true-battery=baseline-ok
+
+### V82 RESULT: *** THE R2 GATE HAS PASSED - THE FAKE SCOPE WORKS *** - the sustained-execution era begins
+
+Session M9AM7P. THE COUNCILS DESIGN GATE IS BEHIND US:
+
+```
+V82-VM-RESULT=CALIBRATED@0x1000300000-G+0x38-topCallFrame@+0x9ce8   <- calibration, now routine (2nd consecutive boot)
+V82-PREFLIGHT-START-vm=0x1000300000-fakeScope=0x10002f0480
+V82-FAKE-BUILT-zero=true-vmSlot=true                                 <- built via absWrite56 (the V81 gate fix works)
+V82-BASELINE-READBACK=true
+V82-BASELINE-RETURNED=function round() { [native code] }             <- V65 re-proven, REAL scope
+V82-SCOPE-SWAP-PRE-slot=0x1000713630-orig=0x10004fdb68-expectG=0x10004fdb68   <- orig===G
+V82-FAKE-RESULT-returned=function round() { [native code] }          <- *** THE FORGED-SCOPE CALL SURVIVED ***
+V82-POST-scope=0x10004fdb68-scopeOK=true-fnOK=true-battery=baseline-ok
+V82-DONE
+```
+
+WHAT WAS PROVEN, EXACTLY: a bare, zeroed 0x40-byte buffer carrying
+ONLY [+0x38]=the calibrated VM was swapped into a live JSFunctions
+m_scope; Math.round was invoked through the ret-only function; the
+LLInt trampoline took the forged scope, loaded the VM FROM OUR
+BUFFER, wrote cfr into the calibrated [VM+0x9ce8] (harmless,
+routinely written), read [VM+m_exceptionOffset] post-call, and
+returned cleanly - the same function-object return as the real-scope
+baseline (the V65 rax mechanism). Scope restored, function restored,
+battery at baseline, clean exit.
+
+THE ABI PROBLEM IS CLOSED: RDI is under our control on every
+redirected call (any controlled buffer with VM* at +0x38). The
+[G+0x38] VM was validated IN THE FIRE. The council roadmap continues:
+E1 (the strlen quartet) next.
+
+ALSO BANKED: the rawscan route caught a FIFTH layout variant
+(victim @0x10007e4130, 25 chunks); the calibration is routine; the
+preflight machinery (build -> baseline -> swap -> call -> restore ->
+POST verify) is fully functional end-to-end and re-runs each boot.
+
+### V83 (deployed): the _DYNAMIC import-resolution hunt (all reads)
+
+The councils E1 witness (the strlen quartet: ret 2 -> null, 6 ->
+false, 7 -> true, 10 -> undefined) needs strlen resolved to the
+IMPORT STANDARD - stable reads + relocation attribution, never
+guesswork. THE ROUTE IS ALL-READABLE MEMORY:
+1. Scan the readable .data band [RVA 0x3F00000, 0x4300000) (the
+   static-StringImpl region, mapped since the V60 name decodes) for
+   the _DYNAMIC arrays DT_STRTAB(5)/DT_SYMTAB(6) adjacent-pair
+   signature - 256KB chunked, beaconed.
+2. Parse the DT array (walk back to the start, forward to DT_NULL;
+   beacon every entry).
+3. Walk DT_JMPREL (Elf64_Rela, 24B) -> symidx -> Elf64_Sym (24B) ->
+   the name at DT_STRTAB+st_name; match strlen/memcpy/mprotect/
+   mmap/malloc/free/memmove/memset; read the resolved pointer from
+   each GOT slot (stable repeated reads = the import standard).
+4. Bank the addresses. strlen resolved => V84 = the quartet => E1.
+
+RISK: all reads of the readable module band; chunk-beaconed for
+localization. R0/R1. The full chain + preflight re-banks first.

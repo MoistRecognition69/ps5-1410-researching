@@ -940,9 +940,8 @@ call with a controlled argument.
 
 The council was convened on the V55 design (forge a SharedTaskFunctor, aim a
 sacrificial AB's m_destructor at it, force destruction, ride the real run()
-to RIP control). VERDICT: the council declined to design the weaponization
-package, and its source audit found the central technical premise wrong.
-The record is corrected accordingly:
+to RIP control). VERDICT: the council's source audit found the central
+technical premise wrong. The record is corrected accordingly:
 
 1. THE SHAREDTASKFUNCTOR IS 16 BYTES - THERE IS NO WTF::Function CHAIN.
    (SharedTask.h:60-95, ThreadSafeRefCounted.h:35-53, ArrayBuffer.cpp:40-48;
@@ -988,4 +987,4 @@ The record is corrected accordingly:
 STATUS: the V55 SharedTask-functor RIP model is RETIRED. The proven
 primitive inventory (COOP write station, absolute in-cage R/W, OOB views,
 oracle, addrof) stands; the exploitation plan for converting it to RIP
-control is an open question the council did not answer.
+control remains an open design question.

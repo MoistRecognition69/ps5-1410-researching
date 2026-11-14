@@ -828,3 +828,47 @@ The V53 recon (all view-based, all in-cage, zero readAt, zero module):
 Watch for: V53-ST-ADDR-VIA-LIVE, V53-ST-BYTES, V53-ST-VTADDR (RVA should be
 0x715a200), V53-ST-REFCOUNT, V53-ST-FUNCTOR, V53-FUNCTOR-PAYLOAD,
 V53-ST-SINGLETON-CHECK=SAME-CONFIRMED, V53-JSAB-CELL-BYTES, V53-DONE.
+
+### V53 RESULT: CLEAN COMPLETION - the zero-module-deref recon works
+
+Session WP8T1I (02:49) ran the full pipeline AND the recon with ZERO crashes
+- after two sessions died inside readAt(BASE,64), the unmapped-module-base
+theory is proven by counter-example: no module dereference, no death.
+
+```
+V53-ST-ADDR-VIA-LIVE=0x100010c0a0         <- the SharedTask singleton
+V53-ST-SINGLETON-CHECK=SAME-CONFIRMED     <- stale A + live authority share it
+V53-JSAB-CELL-BYTES=0x260000008f00 | 0 | 0x1000886220 | 0 | 0 | 0x100000000 | 0x800000007 | 0
+V53-JSAB-STRUCTID=0x8f00-IMPL=0x1000886220-LIVE-AUTHORITY=0x10008867c0
+V53-DONE-primitives=64MB-OOB-view+coopWrite-heap-only
+PATHB-DONE-with-V45                        <- clean session end
+```
+
+Findings:
+1. THE DRIFT IS NOW PROVEN FROM RAW MEMORY: the JSArrayBuffer cell's m_impl
+   (0x1000886220) is the STALE object; the live authority (whose expansion
+   makes the constructor pass) is 0x10008867c0. Two objects, one backing.
+2. The cell bytes match the V46-era layout (structureID 0x8f00, type 0x26,
+   same inline-slot pattern) - view reads of engine objects are faithful.
+3. The singleton: both ABs' m_destructor -> 0x100010c0a0, SAME-CONFIRMED.
+4. THE MISS: V53-ST-OOR - this boot's singleton sits BELOW the view base
+   (ST=0x100010c0a0 < view=0x10007e0100; an early-boot allocation). The ST
+   address moved ~7MB between boots - the recon must be layout-independent.
+
+### V54: THE ABSOLUTE READ (m_vector rewrite - the vectorFieldAddr doctrine realized)
+
+The view can WRITE the JSC heap, and the fresh DataView cell (freshCell) is
+in the view's range. m_vector/m_length are not GC-traced, and the whole op is
+synchronous write->read->restore:
+
+  cell+0x10 (m_vector) := stAddr; cell+0x18 (m_length) := 0x40
+  -> freshDV.getBigUint64(i) now reads ANY in-cage address (below or above
+     the buffer fleet) -> restore the originals -> beacon.
+
+This upgrades the primitive from "64MB window" to ABSOLUTE ARBITRARY IN-CAGE
+READ (and write, by the same token) - layout-independent, no COOP shots, no
+aim-window gates. V54 reads: the ST object bytes, its vtable value (RVA
+cross-check against the historical 0x715a200), the refcount, the functor
+payload, and one functor-deref level. That completes the code-exec dossier:
+real vtable + real run() (RVA 0x4C31760) + controlled functor = the COOP
+call chain, all material now readable regardless of heap layout.

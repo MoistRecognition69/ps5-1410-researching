@@ -2878,3 +2878,29 @@ guesswork. THE ROUTE IS ALL-READABLE MEMORY:
 
 RISK: all reads of the readable module band; chunk-beaconed for
 localization. R0/R1. The full chain + preflight re-banks first.
+
+### EXTERNAL INTEL DELTA (ZigZagBoi1, commit dc9ad28, 2026-11-14 ~15:45)
+
+THE PARALLEL EFFORT COMPLETED THEIR WALK CHAIN (their p691-run3):
+SELF=0x1000380b40 (spray buffer VA - their SELF-blocker solved via a
+PH3 brute-force scan), VP=0x80c6a1b28, FO=0x10003e6e40, 8 vtable
+slots read, forgeRead working. In our terms this is the V36-V39-era
+capability: leak -> walk -> forge-read. They have no absolute R/W,
+no arbitrary PC, no scope control - the gap is unchanged (we passed
+the R2 gate at V82).
+
+CROSS-VALIDATIONS BANKED (independent confirmation of our constants):
+- VP low-12 bits: theirs 0xB28, ours 0xB28 (VP_RVA=0x724DB28).
+- Their vtable shape: s2=s4=s5=0x809455750 (the ICF-folded empty
+  noop - same fold pattern as ours); s3 = the real body
+  (fontStateChanged); s1-s0 = 0x30 matches our delta.
+- Two independent efforts, same source structure, same build family.
+
+ALSO BANKED (their INDEX rows):
+- p803: localhost port scan from the browser - ALL 30 ports
+  FAST-REJECT (connection refused, 2-4ms). The browser/WebProcess is
+  fully sandboxed from local services - a D2-relevant datum (no
+  local-daemon pivot from WebProcess).
+- p807/p808: JSC deep fuzz + TOCTOU fuzz batches - ALL CLEAN (no new
+  bugs in arguments/generator/proxy/TA/clone/iterator/toPrimitive or
+  TA.set+resize/proxy-revoke/transfer/sort/Map/DataView vectors).

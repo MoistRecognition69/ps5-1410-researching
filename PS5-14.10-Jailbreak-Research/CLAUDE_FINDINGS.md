@@ -2536,3 +2536,43 @@ tests); topCallFrame moves (fires).
 WITNESS:
   V77-VM-DIFF-0-n-@+0xNNN (a pair-adjacent offset): ...w=true
   V77-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0xNNN
+
+### V77 RESULT: clean run #6 - no pair in 32KB; the layout geometry now localizes it exactly
+
+Session F6X4VY. Clean run #6 (V77-DONE, zero deaths). The 32KB window
+at the predicted candidate [G+0x38]=0x1000200000: cageN=675 (the VMs
+true scale), mmap=13 - but the adjacent "pairs" were packed tag
+patterns (0xf00000010, 0x600000010, 0x400000010 - Bag/HashMap
+internals), and the ONLY stack-band value is the page-aligned limit
+at +0x20. NO topEntryFrame/topCallFrame pair by VALUE in 32KB - the
+pair slots most likely hold NULL: our DataView reads are JIT-inlined
+(no LLInt trampoline dispatch), so nothing has SET topCallFrame during
+this JS entry, and the entry-scope likely cleared it.
+
+THE LAYOUT CRACK (VM.h declaration geometry):
+  class VM (line 294) ... Heap heap; (445) ... lines 446-490 are
+  ALWAYS_INLINE accessor METHODS - NO LAYOUT ... vmType (492) /
+  clientData (493) / topEntryFrame (494) / topCallFrame (499) ...
+  wasmContext ... the Structure-barrier run (structureStructure,
+  stringStructure, ...).
+So in DATA-MEMBER order: the embedded Heap is IMMEDIATELY followed by
+the pair, then wasmContext, then a LONG RUN of consecutive cage
+pointers. THE PAIR SITS AT VM+sizeof(Heap)+{0x10,0x18} - localizable
+via the barrier run WITHOUT knowing sizeof(Heap).
+
+### V78 (deployed): the barrier-run hunt
+
+1. Window 32KB -> 64KB.
+2. Find runs of >=6 consecutive cage pointers (cap 4 runs reported).
+3. Test the slots at runStart-0x28/-0x20/-0x18 (wasmContext size
+   variants) with BOTH differentials. The perturbation differential
+   fires on null->cfr transitions too - a NULL pair is not invisible
+   (pert sets it, the value flips to a stack-band cfr).
+4. On acceptance, the neighbor slot (topEntryFrame, expected
+   constant-or-null) is beaconed for the record.
+
+WITNESS:
+  V78-RUNS-0=... (the barrier runs located)
+  V78-VM-DIFF-0-n-@+0xNNN:...w=true     <- the pair slot fires
+  V78-TCF-NEIGHBOR-@+0xNNN=...          <- topEntryFrame, for the record
+  V78-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0xNNN

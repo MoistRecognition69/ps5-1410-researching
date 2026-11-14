@@ -920,3 +920,57 @@ m_destructor->run(m_data) -> REAL vtable dispatch (CFI-clean) -> real run()
 Each deeper virtual level (WTF::Function impl) needs another real-vtable
 copy - all now readable via the absolute read. Leaf call: a controlled
 call with a controlled argument.
+
+### COUNCIL VERDICT ON V55 (the SharedTask RIP design) - CORRECTIONS TO THE RECORD
+
+The council was convened on the V55 design (forge a SharedTaskFunctor, aim a
+sacrificial AB's m_destructor at it, force destruction, ride the real run()
+to RIP control). VERDICT: the council declined to design the weaponization
+package, and its source audit found the central technical premise wrong.
+The record is corrected accordingly:
+
+1. THE SHAREDTASKFUNCTOR IS 16 BYTES - THERE IS NO WTF::Function CHAIN.
+   (SharedTask.h:60-95, ThreadSafeRefCounted.h:35-53, ArrayBuffer.cpp:40-48;
+   three independent ABI probes agreed): {vtable@+0x00, atomic refcount u32
+   @+0x08, empty-functor byte/pad @+0x0C}. The primitiveGigacageDestructor
+   lambda is stored DIRECTLY and is STATELESS. The V54 bytes at ST+0x10..0x38
+   were NEVER functor fields (slack/adjacent data - indistinguishable in the
+   record). The proposed data flow (forge functor fields -> run() reads a
+   controlled call target from them) DOES NOT EXIST. The route yields at most
+   a fixed leaf with a controlled pointer argument (m_data), not nested
+   call-target control.
+
+2. DELETING-DTOR RVA TRANSCRIPTION ERROR: 0x82405E0C0 - 0x820010000 =
+   0x404E0C0, NOT 0x405E0C0. The docs propagated the wrong value as
+   "cross-validated". Recompute from raw session values before any use.
+
+3. REFCOUNT 161 WAS NOT AN AB POPULATION COUNT: the singleton has a
+   permanent static reference (NeverDestroyed holder, ArrayBuffer.cpp:42-47).
+   At most "160 refs beyond the permanent one at that instant"; temporary and
+   non-AB owners possible.
+
+4. THE V48 "DRIFT" NEEDS RE-EXAMINATION: JSArrayBuffer::m_impl is assigned
+   at construction (JSArrayBuffer.cpp:38, JSArrayBuffer.h:47,67) and has NO
+   mutator in the source. The live/stale split is real device data, but
+   "the engine mutates m_impl" is not source-supported - candidate
+   explanations: object identity confusion, probe logic, or Sony divergence.
+   Keep the observation; drop the assumed mechanism.
+
+5. TRANSFER TIMING IS PATH-SPECIFIC: structuredClone transfer success does
+   NOT inherently destroy the backing synchronously
+   (SerializedScriptValue.cpp:4656-4668,5236-5255); failure-unwind paths may.
+   No synchronous-destruction trigger is established.
+
+6. ALLOCATOR/CFI LABELS DOWNGRADED TO CONDITIONAL: the PlayStation config in
+   this tree has GIGACAGE_ENABLED=0 with identity caged() (BPlatform.h:47-49,
+   bmalloc/Gigacage.h:43-48,211-235); the "32GB cage" framing was a label,
+   not a proven structure - address co-location is consistent with source
+   defaults, provenance unproven. The tree contains both vcall and icall CFI
+   machinery; which shipped is unestablished. The V36p/V36R vtable-address
+   observation stands as device data; "only COOP can ever work" was stronger
+   than the evidence.
+
+STATUS: the V55 SharedTask-functor RIP model is RETIRED. The proven
+primitive inventory (COOP write station, absolute in-cage R/W, OOB views,
+oracle, addrof) stands; the exploitation plan for converting it to RIP
+control is an open question the council did not answer.

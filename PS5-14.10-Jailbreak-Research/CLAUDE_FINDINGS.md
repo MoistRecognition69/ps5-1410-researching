@@ -1875,3 +1875,62 @@ device-calibrated JSGlobalObject::m_vm. V68 (fake-scope preflight) then needs:
 fake scope buffer with VM* at that offset, everything else scope-like. If the
 JSFunction is not found in either region, V67 widens the scan (JIT/import
 recon per the roadmap).
+
+### V66 RESULT: clean run, NODIFF - and the discovery that fixes it
+
+Session VH991P. Zero deaths, battery restored, V66-DONE + PATHB-DONE. But:
+
+```
+V66-FAMILIES=48-sizes=26,25,23,17,14     <- largest family was NOT the Math cluster
+V66-NODIFF-try-0..4-restored             <- all 5 pairs: no battery diff
+V66-SWAP-ALL-NODIFF-5-pairs-tried
+V66-RESTORE-VERIFY-BATTERY=true
+V66-SKIP-no-confirmed-pair               <- recon correctly refused to run
+```
+
+The pair-guess (5 pairs from the largest family) was boot-variance fragile:
+it worked V63/V64/V65 only because the Math cluster happened to be the
+largest family each time. This boot it was not, no battery-visible pair was
+tried, and the recon stage did the right thing - no counterfactually
+identified victim, no victim recon. Design worked as intended; the
+identification heuristic was the weak link.
+
+THE DISCOVERY (from the banked swap-confirmed sessions - the module image
+is identical every boot, so fn RVAs are boot-INVARIANT):
+  V64 (2X216F): round fn=0x83f15b848, BASE=0x83ED04000 (from the known
+                folded-empty target) -> RVA = 0x377848
+  V65 (53DCT1): round fn=0x80fecb848, BASE=0x80FB54000 -> RVA = 0x377848
+  V63 (74KN3C): round fn=0x815073848 -> consistent (BASE 0x814FC000, 4K-aligned)
+  sign = round + 8 = RVA 0x377850 (exactly the V63 pair, 3 boots)
+MATH.ROUNDS NE FN RVA = 0x377848 - a CONSTANT. Victim identification can
+be ANCHORED, not guessed.
+
+### V67 (deployed): RVA-anchored victim + the full V66 recon
+
+1. RVA anchor: find the census candidate with fn-BASE == 0x377848.
+2. Behavioral verify (counterfactual): the proven round->sign swap
+   (fn := BASE+0x377850), expect exactly ONE diff: round:-6>-1, restore.
+   This is the same operation class as V63 (3 boots clean) - the only
+   write in the probe, restored before the recon runs.
+3. Only then the full V66 recon stage, unchanged: control rodata read
+   (abort-on-fail), victim NE dump + classification, JSFunction hunt
+   (m_executableOrRareData == victimNE; counterfactual: exec match +
+   scope-in-cage), scope -> globalObject dump, VM calibration
+   (topCallFrame stack-band invariant + cage density, 3 candidates max,
+   PRE-beaconed), UA firmware identity, bounded chunked build-string scan.
+4. Fallback (anchor MISS or verify-fail): the old pair loop, widened to
+   the top-3 families / 12 pairs, source-tagged in the beacons
+   (V67-VICTIM-SRC=rva-anchor|swap-diff).
+
+WITNESSES TO WATCH:
+  V67-RVA-ANCHOR=FOUND-NE=@...           <- the anchor hits
+  V67-VERIFY-DIFF=round:-6>-1-restored=true
+  V67-RVA-ANCHOR-CONFIRMED=round        <- identification complete
+  V67-VICTIM-SRC=rva-anchor
+  V67-CONTROL-RODATA=true -> V67-JF-CAND-...execOK=true ->
+  V67-SCOPE-G=.../CAGE -> V67-VM-RESULT=CALIBRATED@...-G+0x40
+  (the G+0x40 prediction: JSCell 8 + butterfly 8 + m_next 8 +
+   m_symbolTable 8 + SegmentedVector m_variables 32)
+
+RISK: unchanged R0/R1. The verification swap is the proven V63 operation;
+everything else is reads. Expected zero deaths.

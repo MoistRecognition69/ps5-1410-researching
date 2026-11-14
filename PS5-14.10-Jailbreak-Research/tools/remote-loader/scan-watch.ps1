@@ -34,10 +34,10 @@ function fmt-delta([long]$d){ if($d -ge 0){ '-0x{0:x}' -f $d } else { '+0x{0:x}'
 
 Get-Content $log -Wait -Tail 0 | ForEach-Object {
   $line = $_
-  if ($line -notmatch '/beacon/V(6(78V2|83|84|86|87|88)|17|3[89]|4[0-8])') { return }
+  if ($line -notmatch '/beacon/V(6(78V2|83|84|86|87|88)|17|3[89]|4[0-9])') { return }
   if ($line -notmatch '"t": "([^"]+)".*"path": "([^"?]+).*u=(\w+)') { return }
   $t = $Matches[1]; $p = [uri]::UnescapeDataString($Matches[2]); $u = $Matches[3]
-  $msg = $p -replace '^/beacon/V(6(78V2Z?|83|84|86|87|88)|17|3[89]|4[0-8])-',''
+  $msg = $p -replace '^/beacon/V(6(78V2Z?|83|84|86|87|88)|17|3[89]|4[0-9])-',''
 
   if ($msg -match '^SIFT-START.*-hypo=0x([0-9a-f]+)') {
     $script:psByUid[$u] = [Convert]::ToInt64($Matches[1],16) + 0x5424000

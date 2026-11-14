@@ -1,6 +1,6 @@
 # PS5 14.10 WebKit Exploitation Research
 
-WebKit memory safety research targeting PlayStation 5 firmware 14.10 via CVE-2026-43720 (Canvas `getContext()` reentrant UAF). All data from probes running on retail hardware through the built-in browser.
+WebKit memory safety research targeting PlayStation 5 firmware 14.10. Two live exploit chains, both probed entirely on retail hardware through the built-in browser: the **FontFace UAF chain** (V17-V49, currently leading -- JS-land out-of-bounds read/write achieved via a legitimate 64 MB DataView over a 256-byte buffer) and the **Canvas `getContext()` reentrant UAF** (CVE-2026-43720, arbitrary R/W designed).
 
 > **Disclaimer:** Authorized security research on personally owned hardware. For educational and research purposes only.
 
@@ -32,7 +32,32 @@ Every contribution helps keep the models running and the research moving forward
 
 **Not available:** WebAssembly, SharedArrayBuffer, WebGL, WebAudio, IndexedDB, ServiceWorker, ReadableStream BYOB, WebRTC, WebGPU, OffscreenCanvas, Clipboard API
 
-## Exploit Chain -- CVE-2026-43720
+## Exploit Chain 1 -- FontFace UAF (LEADING -- OOB R/W achieved)
+
+The active chain: a JS-created `FontFace`'s native `CSSFontFace` is freed and reclaimed by a sprayed
+ArrayBuffer (byte control over the reclaimed object), its client `WeakHashSet` table is forged in
+the spray, and the real engine dispatches through our controlled client head. Device-proven on
+retail 14.10 hardware, probe series V17 -> V49 (`tools/remote-loader/v*.html`).
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| FontFace UAF + reclaim | CONFIRMED | Freed `CSSFontFace` reclaimed by ArrayBuffer backing; full byte control |
+| Arbitrary read (oracle) | CONFIRMED | Reclaimed face as style-read carrier; walk chain -> module BASE (ASCII-verified) |
+| addrof (JSDataView) | CONFIRMED | 6 ASCII markers in a 32-buffer spray; cell+0x10 = m_vector |
+| CFI wall discovery | CONFIRMED | PS5 validates the vtable ADDRESS POINT on virtual dispatch (V36p/V36R differential) -- fake vtables permanently dead, COOP (real vtable + controlled data) only |
+| COOP write (reject path) | CONFIRMED | `fontStateChanged(Failure)` -> `reject()` writes {0xF u32, 8B zero, 0x00 byte, 0x01 byte} at an arbitrary aimed address, engine-generated values, clean return (V38/V39) |
+| Multi-shot | CONFIRMED | Re-craft + re-aim between load() calls -- N arbitrary writes per session |
+| Aim-window law | CONFIRMED | Byte at aim+0x20 must be pre-zero (isFulfilled gate); deferred-Vector size slot must be zero |
+| AB size expansion | CONFIRMED | The AB+0x17 surgical shot: exactly 2 bytes changed on the native ArrayBuffer (`m_sizeInBytes` MSB payload, `m_destructor` MSB collateral) -- after the V48 fresh-cell discriminator identified the true `JSArrayBuffer.m_impl` authority (impl drift; the old DataView cells hold a stale object) |
+| **JS-land OOB R/W** | **ACHIEVED** | `new DataView(buf, 0, 0x4000000)` -- a fully legitimate 64 MB JSCell over a 256-byte buffer; OOB read+write confirmed (V48/V49); all collateral bytes self-repaired from the view |
+| Fleet expansion | **NEXT** | Expand the 10 discovered spray AB objects from the view -> full-cage R/W |
+| RIP control | DESIGNED | SharedTask singleton (vtable RVA 0x715A200, run() RVA 0x4C31760) with heap-resident functor payload -- a CFI-clean call primitive |
+| Kernel | BLOCKED | Needs browser code execution first |
+
+Full record: [`CLAUDE_FINDINGS.md`](CLAUDE_FINDINGS.md), campaign history in
+[`docs/PROGRESS_AUDIT.md`](docs/PROGRESS_AUDIT.md) and the WebKit source analysis notes.
+
+## Exploit Chain 2 -- CVE-2026-43720 (Canvas UAF)
 
 | Stage | Status | Description |
 |-------|--------|-------------|
@@ -42,7 +67,7 @@ Every contribution helps keep the models running and the research moving forward
 | Crash Oracle | CONFIRMED | Forged `m_stateStack` reads 8 bytes at arbitrary address (V650-V655) |
 | ASLR Defeat | CONFIRMED | APNG overread leaks 1651 heap pointers (V674) |
 | Arbitrary R/W | DESIGNED | Forge lineDash Vector in AB, `setLineDash` writes in-place |
-| Code Exec | **NEXT** | vtable hijack + ROP (no PAC, no JIT, JSC Config unfrozen) |
+| Code Exec | DESIGNED | vtable hijack + ROP (no PAC, no JIT, JSC Config unfrozen) |
 | Kernel | BLOCKED | Needs browser code execution first |
 
 ### The Bug
@@ -149,7 +174,7 @@ archive/                 -- Old backups and duplicate files
 
 ## Dead Ends
 
-49 vectors investigated and dead-ended across JSC engine, Streams API, RAB, DOM/rendering, CVE audit, kernel syscalls, and Canvas UAF info leak paths. Full documentation in [`docs/DEAD_ENDS.md`](docs/DEAD_ENDS.md). Key dead-ends: MetadataTable overflow (OOM at 3.7GB AST), CSSFontFace UAF (DoS-only, sole 192B occupant), all 2023-2024 WebKit CVEs (JIT-dependent), butterfly UAF (conservative GC pins cells), UMTX (SHM stubbed on 14.10).
+49 vectors investigated and dead-ended across JSC engine, Streams API, RAB, DOM/rendering, CVE audit, kernel syscalls, and Canvas UAF info leak paths. Full documentation in [`docs/DEAD_ENDS.md`](docs/DEAD_ENDS.md). Key dead-ends: MetadataTable overflow (OOM at 3.7GB AST), all 2023-2024 WebKit CVEs (JIT-dependent), butterfly UAF (conservative GC pins cells), UMTX (SHM stubbed on 14.10). *(Historical note: "CSSFontFace UAF -- DoS-only" was recorded here early in the campaign; that assessment was superseded -- the FontFace chain above was subsequently driven from that same UAF to confirmed JS-land OOB read/write.)*
 
 ## Usage
 

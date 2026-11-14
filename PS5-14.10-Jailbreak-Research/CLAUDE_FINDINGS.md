@@ -3035,3 +3035,32 @@ WITNESSES:
   V86-REALBODY-returned=-6-expect=-6 (re-bank, 3rd boot)
   V86-STKWRITE-orig=...-sentinel=true-restored=true   <- E2 ITEM 1
   V86-STKD-P1..8 (or a cutoff = the base banked)
+
+### V86 RESULT: *** E2 ITEM 1 BANKED - THE OUT-OF-CAGE WRITE IS WITNESSED *** - a flawless run
+
+Session DDDNJ7. EVERY BEACON GREEN, zero deaths:
+
+```
+V86-VM-RESULT=CALIBRATED@0x1000300000-G+0x38-topCallFrame@+0x9ce8  <- calibration clean this boot (both slots moved; the flake is intermittent)
+V86-BASELINE / FAKE-RESULT / POST battery=baseline-ok              <- gate #6
+V86-REALBODY-returned=-6-expect=-6                                   <- 3rd consecutive boot
+V86-STKWRITE-orig=0x10000-sentinel=true-restored=true                <- *** E2 ITEM 1 ***
+V86-STKD-P1..8 mapped -> DONE                                        <- 32KB+ of stack below the cfr
+V86-DONE + PATHB-DONE
+```
+
+THE OUT-OF-CAGE WRITE, EXACTLY: the sentinel 0xdeadbeefcafebabe was
+written at [cfr-0x800] = 0x7ef77def0 - the 0x7ef STACK BAND, OUTSIDE
+THE CAGE - read back exactly, restored exactly, orig verified. The
+vector trick reaches ANY mapped address, demonstrated with a
+read-back witness. The scratch (orig=0x10000 - harmless dead-stack
+content) was our own dead frame space; nothing was disturbed.
+
+E2 LEDGER: E1-from-fresh-boot (6 boots) / safe returns / RDI
+argument control / OUT-OF-CAGE R/W (BANKED) / clean resources - all
+green. ONE ITEM REMAINS: the benign syscall or wrapper-mediated
+kernel operation - a DESIGN problem now (the import roads to the
+syscall wrappers are mapped dead ends; the remaining routes: the
+userland-readable Sony dynlib module metadata (the parallel teams
+kernel lane documented it), a GOT-shaped scan in the PROVEN-readable
+[0x7000000,0x10000000) band, or a source-derived C++ adapter).

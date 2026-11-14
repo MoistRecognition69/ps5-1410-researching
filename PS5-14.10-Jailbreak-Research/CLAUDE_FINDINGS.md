@@ -2576,3 +2576,72 @@ WITNESS:
   V78-VM-DIFF-0-n-@+0xNNN:...w=true     <- the pair slot fires
   V78-TCF-NEIGHBOR-@+0xNNN=...          <- topEntryFrame, for the record
   V78-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0xNNN
+
+### V78 RESULT: clean run #7 - the barrier-run hunt ran perfectly; the pair is beyond cheap reach. DECISION: the R2 PREFLIGHT.
+
+Session SC5S8S. Clean run #7 (V78-DONE, zero deaths; census anchor
+route). The barrier-run hunt executed exactly as designed:
+
+```
+V78-RUNS-0=27 runs located in the 64KB window; cageN=2136 (the VMs
+  true scale) - runs at +0x178x48, +0x1f0x30, +0x248x40, +0x1880x98,
+  +0x1938x90, +0x1a50xb0, ... 12 before-run slots tested with BOTH
+  differentials: ALL FLAT (cage ptrs, small ints, NULLs - nothing
+  responded to perturbation or depth).
+```
+
+CONCLUSION OF THE WITNESS HUNT (V75-V78, four read-only attempts):
+the topEntryFrame/topCallFrame pair is beyond cheap reach - most
+likely NULL this entry (JIT-inlined reads never dispatch the LLInt
+trampoline), its offset somewhere past the embedded Heap
+(sizeof(Heap) unknown), and the module text where the offset lives
+as an immediate is execute-only. No further read-only witness is
+worth a boot.
+
+DECISION (per the council's own fallback, recorded at V74): THE
+PREFLIGHT ITSELF IS THE DECISIVE TEST of [G+0x38]. The trampoline
+WRITES cfr through it on every call - a right VM* is harmless, a
+wrong one corrupts informatively. The structural case (5-boot-
+invariant window shape: 0x4,0x4 / cage / IDENTICAL 0x10001ec000 at
++0x18 / JS-stack-bound at +0x20 / VM-scale cage density) is the
+working hypothesis, now on trial. R2: one crash of budget - the
+first deliberately risky call since V65.
+
+### V79 (deployed): THE FAKE-SCOPE RET-ONLY PREFLIGHT
+
+Stage 7, after the full recon chain (anchor -> verify -> JF -> G ->
+[G+0x38] candidate) banks everything:
+
+1. BASELINE: m_function := ret-only (BASE+0x4001750, openSwap-
+   tracked), call round with the REAL scope - the proven V65
+   operation, re-proving arbitrary-PC on this boot. Expect the
+   function-object return.
+2. FAKE-SCOPE: a zeroed 0x40B fake scope at MBUF+0x80 (dead data
+   space of the frozen marker buffer - in-view, no absWrite needed)
+   with [fake+0x38] = the VM candidate [G+0x38]. Swap the JF
+   m_scope := fake (openSwap-tracked, slot 2 = the function swap);
+   verify the write (NO beacons in the swap-to-restore window - the
+   GC window where the JF holds a non-cell m_scope is minimized to a
+   handful of BigInt allocations); CALL round through the ret-only
+   function; restore the scope IMMEDIATELY, then the function.
+3. POST: both slots verified at originals, battery re-verified at
+   baseline.
+
+OUTCOME MATRIX:
+  V79-FAKE-RESULT-returned=<weird> + POST baseline-ok
+      -> THE FAKE SCOPE WORKS: the trampoline accepted the forged
+         scope and wrote cfr through [G+0x38] harmlessly = [G+0x38]
+         IS the VM the trampoline uses. E1s first ingredient banked.
+  V79-FAKE-RESULT-returned=THREW:...
+      -> the candidates m_exception-slot read nonzero - recorded;
+         the POST battery tells whether state survived.
+  crash after V79-SCOPE-SWAP-PRE
+      -> the R2 budget, spent on the designated gate: the candidate
+         is not the VM (or the fake broke an invariant). The PRE
+         beacon localizes it exactly.
+
+WITNESS DISCIPLINE: every write openSwap-tracked and restored on
+every path (the finally restores both slots before any POST beacon);
+the baseline call MUST reproduce the V65 witness before the fake
+attempt runs (a failed baseline aborts the sequence as
+non-representative).

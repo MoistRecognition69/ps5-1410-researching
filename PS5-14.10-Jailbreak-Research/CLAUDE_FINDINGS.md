@@ -2293,3 +2293,46 @@ WITNESSES:
   V72-SCOPE-G=...-src=jsfunction
   V72-VM-TRY-0-PRE-@+0x38 -> V72-VM-WIN-0-...stack@+0x...
   V72-VM-RESULT=CALIBRATED@...-G+0x38      <- THE CALIBRATION
+
+### V72 RESULT: the rawscan route earned its keep; then MY digit-shift error killed the walk
+
+Session AVPRLH. This boot the cage layout shifted low: lowB=self=
+0x10001080a0 (the face landed ~32KB above the cage floor), region B
+grew to 2MB, and the census 200-candidate cap filled before reaching
+the victim NE. THE THREE-ROUTE ANCHOR DESIGN CAUGHT IT:
+
+```
+V72-ANCHOR-CENSUS=MISS          <- the census route missed (cap)
+V72-ANCHOR-RESULT=FOUND-@0x10002d4130-src=rawscan   <- route 2 found it
+V72-VERIFY-DIFF=round:-6>-1-restored=true
+V72-RESTORE-VERIFY-BATTERY=true                 <- all re-banked clean
+```
+
+Then TWO of my gates failed:
+1. THE UP-WALK WAS SKIPPED: its gate required stAddr > view+4MB, but
+   this boot stAddr = 0x10001080a0 (the ST functor landed BELOW the
+   view). Gate false -> no up-walk -> straight to the down-walk.
+2. MY CAGE-FLOOR CAP HAD A DIGIT-SHIFT ERROR: I wrote 0x1000011000n
+   (= cage+0x11000, 68KB!) instead of 0x1000110000n (= cage+0x110000).
+   Down-walk chunk 0 [cage+0xF80A0, cage+0x1080A0) SPANNED the floor at
+   cage+0x100000 and died - the third floor-class SIGSEGV, this time
+   purely my arithmetic. (The 'mem warning' preamble is the browsers
+   stressed state; the kill is geometry.)
+
+### V73 (deployed): two gate fixes
+
+1. The up-walk ALWAYS runs. Ceiling = stAddr when it sits above
+   view+4MB, else the DEFAULT 0x10007f0000n - the band proven mapped by
+   the V70/V71 stAddr values (0x10007e08a0), which brackets the
+   boot-stable functionSpace block family (~0x100070f6xx /
+   0x100071f6xx = view+4.3MB, just past the JFSCAN-A 4MB cap).
+2. The floor cap constant corrected to 0x1000110000n (cage+0x110000).
+
+EXPECTED FLOW: anchor (any route) -> verify -> JF scans -> UP-WALK
+(few chunks) -> JF ACCEPTED (V72s b5 type fix holds) -> G from
+[JF+0x10] -> G dump -> [G+0x38] VM test -> CALIBRATED -> DRIFT -> DONE.
+
+WITNESSES:
+  V73-JFUP-CHUNK-0..N -> V73-JF-CAND-0-...hdrOK=true-type=0x1a
+  V73-SCOPE-G=...-src=jsfunction -> V73-VM-TRY-0-PRE-@+0x38
+  V73-VM-RESULT=CALIBRATED@...-G+0x38 -> V73-DONE

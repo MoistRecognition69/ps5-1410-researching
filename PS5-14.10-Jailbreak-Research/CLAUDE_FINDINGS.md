@@ -2449,3 +2449,46 @@ object and crash informatively, while the right one survives.
 WITNESSES:
   V75-VM-DIFF-0-0-@+0x20:t1=...-t2=...-t3=...-witness=true
   V75-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0x20
+
+### V75 RESULT: perturbation flat too - THE DECODE COMPLETES: +0x20 is a STACK LIMIT, not topCallFrame
+
+Session MTBTU3. Clean run #3 (V75-DONE, zero deaths, the chain
+re-banked: census anchor, JF @0x1000713620 accepted, G=0x10004fdb68,
+[G+0x38]=0x1000300000 tested first). The perturbation-differential read
+flat at BOTH candidate windows - and that completes the mechanism
+decode:
+
+```
++0x20 slot values across THREE boots:
+  V73: 0x7efa2c000   V74: 0x7ef49c000   V75: 0x7ef790000
+  -> ALL PAGE-ALIGNED. CallFrames are NEVER page-aligned.
+```
+
+THE +0x20 SLOT IS A STACK LIMIT (a VM StackLimits member - page-aligned
+bounds of the JS stack region), NOT VM::topCallFrame. Every flat
+differential was the WRONG QWORD: the real topCallFrame is declared at
+VM.h:499 - deep inside the giant VM class, far outside the 0x200-byte
+window I was scanning. The reads themselves were never the problem.
+
+THE STRUCTURAL CASE STRENGTHENED AGAIN: the window shape is now
+4-boot-consistent (0x4,0x4 / cage ptr / IDENTICAL 0x10001ec000 at
++0x18 / PAGE-ALIGNED stack limit at +0x20 / 17 cage ptrs) - and a
+stack-limit member at +0x20 is MORE VM evidence (StackLimits is a VM
+member; the Heap does not carry JS stack bounds).
+
+### V76 (deployed): the 8KB window + BOTH differentials
+
+1. The candidate window widened 0x200 -> 0x2000 (topCallFrame sits
+   deep in the class - VM.h:499).
+2. EVERY mmap-band slot in the window now gets BOTH differentials:
+   - the PERTURBATION test (transparent reads: cold WebCore host
+     calls at two depths move the slot; t1===t3!==t2)
+   - the DEPTH test (self-masking reads: the slot returns the READING
+     call's own cfr, which shifts one JS frame deeper; u1===u3!==u2)
+   Either firing = the slot IS VM::topCallFrame = the candidate IS
+   the VM = the offset is banked. Up to 4 slots tested per candidate.
+3. Stack limits fail both tests (constant) - correctly excluded.
+
+WITNESS:
+  V76-VM-DIFF-0-n-@+0xNNN:pert:t1=...-w=false|depth:u1=...-u2=...-w=true
+  V76-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0xNNN

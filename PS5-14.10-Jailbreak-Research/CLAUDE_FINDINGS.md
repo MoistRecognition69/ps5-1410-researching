@@ -2008,3 +2008,86 @@ WITNESSES TO WATCH:
 RISK: R0/R1. The only new-deref class is the below-self walk (chunked,
 beaconed). Expected zero deaths; a death would itself be a result (the
 mapped/unmapped boundary below the face).
+
+### V68 RESULT: *** THE ANCHOR HIT - identification pipeline COMPLETE *** + recon first light; mem-rash death at the tail
+
+Session P9LQLI. The corrected constant works - and this boot the Math
+cluster was INSIDE the census region (the boot-invariant address again):
+
+```
+V68-ANCHOR-CENSUS=FOUND-@0x10002d4130-target=0x83311b848   <- census route, 0 hits needed from the hunt
+V68-VERIFY-SWAP-PRE-A=@0x10002d4130-orig=0x83311b848-sign=0x83311b850
+V68-VERIFY-READBACK=true
+V68-OPENSWAP-RESTORED-@0x10002d4158                        <- openSwap hygiene worked in production
+V68-VERIFY-DIFF=round:-6>-1-restored=true
+V68-ANCHOR-CONFIRMED=round
+V68-RESTORE-VERIFY-BATTERY=true
+V68-VICTIM-SRC=rva-anchor
+```
+
+THE IDENTIFICATION PIPELINE IS NOW DETERMINISTIC: anchor (RVA constant
+0x4057848, boot-invariant) -> behavioral verify (round->sign, exactly one
+diff) -> openSwap-tracked restore. No pair-guessing, no name decoding.
+
+THE RECON RAN FOR THE FIRST TIME (first victim-NE field map on device):
+```
+V68-CONTROL-RODATA=true-val=0x833cf5760                   <- read path re-proven (BASE+0x4C31760)
+V68-NE-DUMP:
+  +00-cell=0x80000004560/OTHER        (JSCell hdr; structureID family 0x4560 = the host-fn NEs)
+  +08-jitCall=0x10007aa2e0/CAGE       <- m_jitCodeForCall: a CAGE-RESIDENT JITCode object (READABLE)
+  +10-jitCtor=0x10007aa300/CAGE       <- (likely the JITCode::Native-adjacent singleton pair)
+  +18-arityChkCall=0x835b9b289/MOD-TEXT  <- generated arity-check entries: module TEXT (callable, read-fatal)
+  +20-arityChkCtor=0x835b9b2e2/MOD-TEXT
+  +28-fn=0x83311b848/MOD-TEXT         <- the V63/V65 overwrite point, as always
+  +30-ctor=0x83311a9f8/MOD-TEXT
+  +38-implVis=0xfffffffffffffffc/OTHER  (ImplementationVisibility enum, negative constant)
+  +40-name=0x1000212928/CAGE           <- the 'round' StringImpl: IN-CAGE, BELOW the NE cluster
+  +48-asStr=0x0/NULL
+```
+Notable: the JITCode fields point at cage-resident objects - readable
+targets for later JITCode-structure recon (what LLInt/native JITCode looks
+like on device). The arityCheck fields are the LLInt generated entries in
+module text - the callable-with-arity-check slots.
+
+V68-JFSCAN-B-n=61520-hits=0 / JFSCAN-A-n=524288-hits=0:
+THE JSFUNCTION IS NOT IN [lowB, view+4MB]. Combined with the name
+StringImpl at 0x1000212928 (below the NE at 0x10002d4130), the
+JSFunction almost certainly lives in the EARLY HEAP below lowB - the
+same blind spot the Math NEs had on other boots.
+
+V68-UA=Mozilla/5.0 (PlayStation; PlayStation 5/14.10) AppleWebKit/605.1.15 ...
+FIRMWARE IDENTITY SETTLED DIRECTLY: 14.10. The 10.40 experiment-pin
+documentation conflict is resolved - the device is 14.10.
+
+THE DEATH (mem-rash): after the STR-CHUNK-0 beacon of the build-string
+ride-along, the process died under a memory-warning storm. Cause: my
+JFSCAN-A did 512K getBigUint64 calls (a BigInt allocation each) on top of
+the census churn - and the string scan paid the final bill. Everything
+before it banked cleanly. COST ACCOUNTING: the boot death was spent on a
+ride-along of marginal value - a planning error.
+
+### V69 (deployed): JF early-heap walk + mem-rash fixes
+
+1. u32-first matching in ALL new scans: compare getUint32 low-words
+   first (SMI-cheap), confirm only real hits with getBigUint64 - ~1000x
+   fewer BigInt allocations. Beacon now reports scanned/lohits/hits.
+2. NEW: after the standard JF scans miss, walk DOWN from lowB in
+   beaconed 64KB chunks (max 24 = 1.5MB), u32-first, targeting
+   qword ~1 == victimNE. The early-heap band is bracketed by device
+   evidence (StringImpl 0x1000212928 .. NE 0x10002d4130).
+3. The build-string scan is CUT ENTIRELY (the UA answered its question;
+   it is also where the death landed).
+4. Everything else unchanged: census anchor -> round->sign verify ->
+   control read -> NE dump -> JF hunt (+walk) -> scope -> globalObject
+   dump (+0x40 m_vm prediction) -> VM calibration -> UA.
+
+WITNESSES TO WATCH:
+  V69-ANCHOR-* / V69-VERIFY-DIFF=round:-6>-1-restored=true
+  V69-JFSCAN-B/A-scanned=...-lohits=...-hits=N
+  V69-JFDN-CHUNK-0..23-@...  <- the early-heap walk (first reads below
+                                lowB; a cutoff localizes the boundary)
+  V69-JFDN-DONE / V69-JF-CAND-...-execOK=true
+  V69-SCOPE-G=.../CAGE -> V69-G-DUMP-* -> V69-VM-RESULT=CALIBRATED@...-G+0x40
+
+RISK: R0/R1. Below-lowB walk is the only new-deref class (beaconed
+chunks). Expected: no mem rash (u32-first), zero deaths.

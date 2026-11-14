@@ -2996,3 +2996,42 @@ WITNESSES:
   V85-AT-BASE-ldso=0x...            <- the link_map route opens
   V85-AT-PHDR=...-impliedBASE=0x...  <- an independent BASE check
   V85-AT-EXECFN=/app0/...           <- the process identity
+
+### V85 RESULT: gate #5, REALBODY 2nd consecutive boot; the stack ceiling fact kills the auxv route - pivot to the OUT-OF-CAGE WRITE
+
+Session WRIW72. The routine all re-banked: gate #5 (FAKE-RESULT +
+POST clean), REALBODY-returned=-6 (SECOND consecutive boot - the
+debugger-call witness is multi-boot), VALIDATED-IN-FIRE live. The
+windiff this boot showed the SECOND depth-tracking slot (+0x12a58)
+moving while +0x9ce8 stayed static - both slots are real but the
+mechanism is flaky per-boot; in-fire validation remains the reliable
+standard (the retry stays).
+
+THE STACK FACT: the JS threads stack ceiling is ~14KB ABOVE the cfr
+(page-beaconed death at P4 = [0x7ef8ae000,0x7ef8af000) unmapped);
+pages 0-3 scanned with NO auxv signature. THE AUXV IS NOT ON THIS
+STACK - the JS runs on a work-thread/pthread stack; the primordial
+stack (the loader metadata) is elsewhere in the mmap band. The
+walk-up-to-auxv route is structurally dead - recorded, deferred.
+
+THE PIVOT - what the fact unlocked: the cfrs OWN PAGE is proven
+mapped, and [cfr-0x800] (2KB below the frame) is our own dead frame
+space. THE OUT-OF-CAGE WRITE (E2 ITEM 1) is achievable NOW with the
+existing vector trick: the 0x7ef stack band is just an address to
+absWrite56.
+
+### V86 (deployed): the OUT-OF-CAGE STACK WRITE + the base hunt
+
+1. THE WITNESS (E2 item 1): scratch = [cfr-0x800] - inside the cfrs
+   own page (mapped by definition), below all live frames. PRE
+   beacon -> read orig -> write 0xdeadbeefcafebabe -> read back ->
+   restore -> verify. The vector trick writing OUTSIDE THE CAGE,
+   with a read-back witness.
+2. The region-base hunt: a beaconed 8-page down-walk (the stack
+   grows down; the base is the lowest mapped page). A death banks
+   the boundary.
+
+WITNESSES:
+  V86-REALBODY-returned=-6-expect=-6 (re-bank, 3rd boot)
+  V86-STKWRITE-orig=...-sentinel=true-restored=true   <- E2 ITEM 1
+  V86-STKD-P1..8 (or a cutoff = the base banked)

@@ -3128,3 +3128,32 @@ exit. The anatomy (from the full beacon set):
 
 Everything else unchanged - the GOT/dynstr hunt re-runs once the
 real JF/G return.
+
+### V88 RESULT: all re-banks green (gate #7, REALBODY 5th boot, OOC-write 3rd boot); the hunt swept 1.25MB and died at the 0x7392000 hole - AND THE DETECTOR WAS BLIND
+
+Session 8ROYB0. The V88 fixes worked: the JF found at the boot-stable
+family (0x1000713620), the real G accepted (src=jsfunction),
+calibration clean (topCallFrame@+0x9ce8), GATE #7, REALBODY=-6
+(5th consecutive boot), the out-of-cage write (3rd boot). Zero
+issues upstream.
+
+THE HUNT: swept [0x724E000, ~0x7392000) - 1.25MB, chunk-beaconed,
+all mapped - then died at the hole (boundary banked). NO name hits,
+NO GOT runs.
+
+*** THE DETECTOR BUG (mine): *** the plausible-pointer filter
+required hi32>0 - but the PS5s foreign module VAs are ALL sub-4GB
+(libc.prx at 0xF5F74000, boot.bin at 0x6BEE8000 - hi32===0, per the
+parallel efforts dynlib doc). Every libc import pointer BROKE the
+runs the detector was hunting. THE GOT MAY ALREADY BE IN THE SWEPT
+1.25MB, INVISIBLE to the broken predicate.
+
+### V89 (deployed): the detector fix + the hole skip + the re-sweep
+
+1. THE FIXED PREDICATE: plausible = (hi32===0 && lo32>=0x400000)
+   || (hi32>0 && hi32<0x20). Foreign = plausible && hi32!=modHi(8)
+   && hi32!=0x10 - sub-4GB modules (hi=0) automatically foreign.
+2. THE RE-SWEEP: the PROVEN-mapped 1.25MB re-scanned with the fixed
+   predicate - ZERO new risk; the GOT, if it is there, lights up.
+3. THE HOLE SKIP: jump from 0x7392000 (the banked boundary) to
+   0x73C0000, continue chunk-beaconed to 0x8000000.

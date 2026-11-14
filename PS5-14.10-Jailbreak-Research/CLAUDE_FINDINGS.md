@@ -548,6 +548,74 @@ V47-GETTER-CALL=256               ← explicit getter.call also returns 256
 V47-NATIVE-SIZE=0x100000000000100 ← readAt confirms expansion on the object we hit
 ```
 
+### V48 Result: DRIFT CONFIRMED — OOB R/W ACHIEVED
+
+```
+V48-SAME=false                    H1 DRIFT: fresh DV uses DIFFERENT AB from stale A
+V48-FRESH-MBUF=0x100088e5e0      The real authority impl
+V48-JS-BL-POST=72057594037928200 JS sees 72 PB after expanding the RIGHT object
+V48-OOB-RW-CONFIRMED-size=0x1000 4KB OOB R/W confirmed
+```
+
+### V49 Result: 64MB OOB + DESTRUCTORS REPAIRED + AB FLEET MAPPED
+
+```
+V49-OOB-DV-OK-size=0x4000000     64MB DataView created ✓
+V49-OOB-RW-CONFIRMED-size=0x4000000  64MB OOB R/W confirmed ✓
+V49-OOB-BASE=0x10002f0400        Window: 0x10002f0400 → 0x10042f0400
+V49-STALE-DTOR-REPAIRED          Stale A destructor MSB fixed ✓
+V49-STALE-SIZE-REPAIRED          Stale A m_sizeInBytes restored ✓
+V49-REAL-DTOR-REPAIRED           Real impl destructor MSB fixed ✓
+V49-AB-SCAN-found=10             10 spray AB objects visible in OOB window
+V49-JS-BL-FINAL=72057594037928200  JS still sees 72PB ✓
+```
+
+AB objects at 0xC0-byte stride with sequential m_data pointers (0x100 apart).
+All spray buffers are contiguous in Gigacage and writable from JS via the OOB view.
+
+### Current Primitive Set (post-V49)
+
+| Primitive | Status | Scope |
+|-----------|--------|-------|
+| readAt (arbitrary read) | ✅ proven | Any readable process address |
+| COOP write (multi-shot) | ✅ proven | Any writable address, fixed pattern |
+| Module BASE | ✅ proven | BASE = VP - 0x724DB28 |
+| **64MB OOB DataView** | ✅ V49 CONFIRMED | JS R/W over 0x10002f0400..0x10042f0400 |
+| addrof | ✅ proven | JSCell address of any JS object |
+| AB fleet (10 objects) | ✅ mapped | All writable from OOB view |
+| Destructor collateral | ✅ repaired | Both stale and real impl MSBs zeroed |
+
+### Path to Code Execution
+
+From 64MB Gigacage R/W, the escalation chain:
+
+1. **Gigacage → full process ARW**: Use OOB write to modify another spray AB's
+   m_data pointer (CagedPtr) to point outside the Gigacage. BUT CagedPtr PAC
+   tagging may block this. Alternative: use the AB fleet to chain-expand more
+   buffers, or forge a fake structure in the spray buffer that the engine
+   interprets as an uncaged pointer.
+
+2. **Alternative: Overwrite a code pointer in-cage**: If any function pointer
+   or vtable pointer lives within the 64MB Gigacage window, overwrite it for
+   direct code execution. The SharedTask vtable is OUTSIDE the cage (in module
+   data), but other structures may be in range.
+
+3. **Best path: fakeobj via butterfly corruption**: Use OOB to write a crafted
+   JSValue into a JSArray's butterfly (if butterfly storage is in Gigacage).
+   This gives fakeobj → type confusion → full ARW from pure JS.
+
+### V50 Result: 39 ABs Expanded + 31 Cage Views (memory crash)
+
+```
+V50-EXPANDED-39-ABs                 39 spray ABs expanded to 72PB via OOB ✓
+V50-CAGE-VIEWS-TOTAL=31            31 additional 64MB DataViews ✓
+V50-BASE=0x8347d8000               Module base this session
+```
+
+Memory warning crash after creating 31×64MB DataViews (~2GB virtual). The bulk
+expansion worked but was excessive. V51 should use only the original 64MB OOB
+view and focus on code execution via COOP write to module data + readAt for recon.
+
 **The walk loop is confirmed:** V45's chain A → A.m_wrapper → WeakImpl → 
 JSArrayBuffer → cell.m_impl → A was a perfect circle. Every shot (V42, V45, V47)
 expanded the SAME object — the DataView's m_buffer from page-load era. The JS
@@ -690,3 +758,35 @@ then aim views at the JSC cell region (m_vector rewrites on fresh DataViews
 = absolute arbitrary R/W), then RIP work: the SharedTask singleton (vtable
 RVA 0x715A200, run() RVA 0x4C31760) with its heap-resident functor payload,
 called with a pointer we control - CFI-clean by construction.
+
+### V51 ABORT + THE V52 REPAIR (postmortem)
+
+V51 (02:29, session VJ1L1Z) aborted at the COOP gate with every pre-stage green:
+FACE-IDENTITY-OK, addrof certified, V40 recon done, then V45-COOP-OK=false ->
+ABORT, with ZERO V39 beacons and no V39-ERR (the outer catch never fired) ->
+the V39 setup try was never entered: the version the console ran (cached
+v51.html, the "lean code exec recon" build) had the V39 COOP setup disabled,
+but the V45+ stages still hard-require its variables (sv/S/hitBuf/sibBk).
+
+Then the 02:34 "RE-ENABLED" edit of v51.html was NEVER syntax-checked and
+DOES NOT PARSE (two independent defects):
+1. A stray unmatched bare-block wrapper '{' at the V39 re-enable.
+2. The new ELF-recon PH-READ block orphaned its catch:
+   ...closes-for } closes-try } THEN }catch(erph){...} - the leading '}'
+   closed the if, orphaning the catch -> "Missing catch or finally after try".
+   Had it been served under a fresh filename, the whole probe would have been
+   dead on arrival (a SyntaxError kills every stage, not just COOP).
+
+V52 (deployed, fresh filename per the cache doctrine - query params do NOT
+bust the guide cache) = v51 + four repairs, node --check clean:
+1. Stray V39 wrapper brace removed.
+2. PH-READ catch rebound (catch binds to its try; the if closes after).
+3. Beacon prefix bumped to V52- (URL literal + 23 message literals).
+4. V52-V39-PRECHK diagnostic inserted before the formerly-silent V39
+   precondition: one beacon names the missing variable if it ever skips
+   again; if the try is never entered at all, the beacon's ABSENCE says so.
+
+Expected on the next guide cycle: V52-V39-PRECHK with all five variables,
+then the full V39 setup (sibling scan -> forge -> timer borrow -> craft),
+then V45/V48/V49/V50 stages, then V51's purpose: the code-exec recon
+(ELF program-header walk for writable module segments - the GOT/.data hunt).

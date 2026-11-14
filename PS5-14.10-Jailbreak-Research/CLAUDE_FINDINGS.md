@@ -3189,3 +3189,51 @@ findable prize past the hole.
    continue chunk-beaconed to 0x8000000.
 3. Everything else unchanged; the name scan stays (cheap) but the
    GOT run is the priority.
+
+### V90 RESULT: the skip worked; the hole extends past 0x73C0000 - THE CLASSIC-GOT HUNT IS PARKED; the pivot to the libc/libkernel beacon route
+
+Session 8P47R0. The core re-banked: gate #9, REALBODY=-6 (7th
+consecutive boot), the out-of-cage write (5th boot). THE SKIP
+FIRED PERFECTLY: 81 16KB chunks swept the full proven RELRO
+segment right to the 0x7392000 boundary (chunk 80 =
+[0x738E000,0x7392000) scanned clean), then HOLE-SKIP-resume at
+0x73C0000 - and the RESUME ITSELF DIED. The hole extends beyond
+0x73C0000.
+
+CARTOGRAPHY CONCLUSION: the readable RELRO segment [~0x71x,
+0x7392000) is 1.25MB of pure vtables - NO classic GOT, NO dynstr
+(likely in the execute-only text segment, per ELF convention). The
+classic-GOT hunt is PARKED - Sony SELF modules do not keep a
+classic import table in the readable RELRO band.
+
+THE PIVOT (the parallel efforts exec-only doc, measured on 14.10):
+- libkernel text is EXECUTE-ONLY (PKU on Zen2) - never readable.
+- LIBC TEXT IS READABLE - and libc holds strlen/memcpy/the
+  pthread functions, AND ITS OWN EXPORT TABLES.
+- Their loader reads an import slot (0x1E207F9A8 in their process)
+  that resolves into libkernel text, with the SYSCALL INSTRUCTION
+  AT libkernel_base+0xB57 - a callable syscall gadget.
+- The route to libc: the PTHREAD STRUCT at the stack BASE carries
+  function pointers into libc (libpthread merged into libc on
+  FreeBSD). Our stack is mapped 32KB+ below the cfr; the base is
+  deeper. The V89 classifier fix now SEES sub-4GB foreign pointers
+  (libc at the 0xF5-band) and libkernel-band pointers (hi32=8 with
+  LOW lo32 - their measurement: libkernel lo32=0x083Bxxxx vs our
+  module lo32 ~0x1D-0x2B).
+
+### V91 (deployed): the FOREIGN-POINTER HUNT
+
+1. (a) THE VM 128KB WINDOW SCAN: the GC thread structures may hold
+   direct libc/libkernel pointers - scan with the foreign predicate
+   (hi32===0 && lo>=0x400000) || (hi32===modHi && lo<0x10000000).
+2. (b) THE DEEP STACK DOWN-WALK: 64 pages below the cfr, per-page
+   scans for foreign pointers, beaconed every 4 pages - the pthread
+   struct at the stack base is the prize. A death banks the base.
+3. A libc pointer found = the libc base derivation (the parallel
+   corpus has the 14.10 module map) = READABLE LIBC TEXT = strlen
+   for the quartet + the syscall wrappers for E2s last item.
+
+WITNESSES:
+  V91-VMWIN-FP-@+0xNNN=0x...          <- foreign pointers in the VM
+  V91-STK-FP-Pn-@0x...=0x...          <- foreign pointers on the stack
+  V91-STK-DONE / or a cutoff = the stack base banked

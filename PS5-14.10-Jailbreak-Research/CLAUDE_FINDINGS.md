@@ -1808,3 +1808,70 @@ LESSON (mine): I had been framing M1 as near-code-exec. The ABI
 analysis (scope-derived RDI, EncodedJSValue args, RAX-as-JSValue) is
 the corrective. V63/V65 standing unchanged: arbitrary PC on call,
 repeatable, restorable. The bridge to sustained execution is the work.
+
+### V66 (deployed): COUNCIL RECON #1 - exact-victim scope chain + VM calibration (R0/R1)
+
+Per the adopted council roadmap. The full source derivation done in-session
+(WebKit 1400 tree) BEFORE the probe - the ABI is now source-pinned, and V66
+verifies it on device:
+
+THE NATIVE-CALL TRAMPOLINE (LowLevelInterpreter64.asm, nativeCallTrampoline):
+  callee = JSFunction (from CallFrame)
+  NE = [JF+0x20 m_executableOrRareData] (& ~rareDataTag bit0)
+  RDI = [JF+0x18 m_scope] - and JSCallee::m_scope IS the JSGlobalObject for
+        builtins (host functions are created with globalObject as scope)
+  VM* = [scope + JSGlobalObject::m_vm] - m_vm is the FIRST JSGlobalObject
+        member; predicted offset +0x40 = JSCell 8 + butterfly 8 + m_next 8 +
+        m_symbolTable 8 + m_variables[SegmentedVector<size_t m_size +
+        Vector<Segment*>=32B] 32
+  pre-call: trampoline WRITES cfr -> VM::topCallFrame (a forged scope with a
+        wrong VM* dies HERE); post-call: reloads scope->VM, reads
+        VM::m_exception. RSI = cfr. PC from NE+0x28 (our V63/V65 point).
+
+V66 FLOW (full proven pipeline retained to identify the victim, then PURE READS):
+1. Census -> family-swap -> battery diff -> restore: identifies the exact
+   victim NE (now capturing victIdx63 - WHICH pair confirmed; the v65 ICALL
+   stage used pairs63[0] unconditionally, a latent assumption now fixed).
+2. CONTROL: reprove the ST vtable run-slot rodata read (expect BASE+0x4C31760).
+   Failure aborts all new derefs (control-first doctrine).
+3. Victim NE field dump + range classification (cell/jitCall/jitCtor/
+   arityChkCall/arityChkCtor/fn/ctor/implVis/name/asStr). Text-band values
+   are classified but NEVER dereferenced.
+4. JSFunction hunt: scan the two proven-mapped cage regions for
+   qword ~1 == victimNE (m_executableOrRareData; in-cage the only raw NE
+   holder - property slots hold the JSFunction pointer, not the NE).
+   Counterfactual acceptance: [JF+0x20] ~ victimNE AND [JF+0x18] in cage.
+5. Scope chain: G = [JF+0x18] (the JSGlobalObject). Dump G+0x00..0x80 with
+   classification. VM candidates: non-cage plausible pointers from +0x28 up;
+   max 3, PRE beacon before each deref. Validation window (0x200B): must
+   contain a STACK-band qword (VM::topCallFrame invariant - written by every
+   native host call incl. our own DataView reads) and >=4 CAGE pointers.
+6. Ride-along: navigator.userAgent beacon (settles the 10.40-pin doc conflict
+   at zero risk) + bounded 16KB-chunk .data/.rodata build-string scan
+   (anchored on the V60-proven name-impl band 0x4018000 + VP rodata anchor
+   0x724D000), beacon between chunks, 6 hits max.
+
+RISK CLASSIFICATION: R0/R1 per the council. No redirected calls, no
+cross-signature stage (banked V65), no writes except the freshDV vector
+(restored every op). The only new-deref risks: VM candidate windows (3 max,
+PRE-beaconed, real-pointer plausibility filtered) and the .data chunk reads
+(anchored bands). Expected outcome: zero deaths.
+
+WITNESCES TO WATCH (session key on V66-VICTIM-NE):
+  V66-CONTROL-RODATA=true                 <- read path proven, recon proceeds
+  V66-NE-DUMP=...                        <- the victim NE fields + classes
+  V66-JFSCAN-B/A-n=...-hits=N            <- the JSFunction hunt
+  V66-JF-CAND-base=...-execOK=true       <- the JSFunction counterfactual
+  V66-SCOPE-G=0x1000.../CAGE-PRED-m_vm@+0x40
+  V66-G-DUMP-0-7 / 8-F                   <- the globalObject dump
+  V66-VM-TRY-n-PRE / V66-VM-WIN-n        <- candidate windows (stack + cage count)
+  V66-VM-RESULT=CALIBRATED@...-G+0x40    <- THE CALIBRATION (or not-confirmed)
+  V66-UA=...                            <- firmware identity
+  V66-STR-HIT-n-@...-=FreeBSD...         <- build strings, if any
+
+INTERPRETATION GUIDE: if G+0x40 (or nearby) holds a non-cage pointer whose
+window shows stack+cage signatures, that is the VM* - and the +offset is the
+device-calibrated JSGlobalObject::m_vm. V68 (fake-scope preflight) then needs:
+fake scope buffer with VM* at that offset, everything else scope-like. If the
+JSFunction is not found in either region, V67 widens the scan (JIT/import
+recon per the roadmap).

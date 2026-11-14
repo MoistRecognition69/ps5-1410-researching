@@ -2091,3 +2091,84 @@ WITNESSES TO WATCH:
 
 RISK: R0/R1. Below-lowB walk is the only new-deref class (beaconed
 chunks). Expected: no mem rash (u32-first), zero deaths.
+
+### V69 RESULT: FIRST FULL CLEAN RECON RUN - the chain walked end to end; three lessons
+
+Session W0AA3F. ZERO deaths, V69-DONE + PATHB-DONE. The u32-first fix
+worked exactly as designed (JFSCAN-A: 524,288 slots scanned, 2 lo32
+hits, 1 BigInt confirmation - no mem rash). The chain:
+
+```
+V69-ANCHOR-CENSUS=FOUND-@0x10003d8130 (V65-style layout this boot)   <- anchor re-banked
+V69-VERIFY-DIFF=round:-6>-1-restored=true                            <- verify clean
+V69-CONTROL-RODATA=true                                              <- read path proven
+V69-JFSCAN-B: 61520 scanned, 0 hits
+V69-JFSCAN-A: 524288 scanned, 2 lohits, 1 hit -> JF-CAND execOK=true
+V69-SCOPE-G=0x10004fc168/CAGE ... G-DUMP banked ... VM-CANDS=2 -> not confirmed
+```
+
+LESSON 1 - THE JF HIT WAS FALSE (my counterfactual was too weak): the
+"JSFunction" at 0x100071f618 had [+0x00]=0x100071bfb0 - A CAGE POINTER
+in the JSCell header slot (a real header is never that) - and
+[+0x08]=0xe1a0000005b40 (a non-cage immediate as 'butterfly'). It was
+an entry of a repeating {ptr, scope, NE, JSValue} TABLE (period 0x20 -
+it held BOTH round's NE at +0x20 and sign's NE at the next entry). Only
+exec+scope were checked; the structural checks were missing.
+
+LESSON 2 - THE FALSE HIT SUPPRESSED THE WALK: the early-heap walk was
+gated on hits===0, so with the false hit in hand the real JSFunction
+(below lowB, where the early heap lives) was never hunted.
+
+LESSON 3 - THE VM FILTER EXCLUDED THE ACTUAL POINTER: G=0x10004fc168
+dumped as a TEXTBOOK JSSegmentedVariableObject (m_next=NULL = scope
+chain end; m_symbolTable; SegmentedVector m_size=0xFA=250 global
+variables, 16 segments) - and the member run +0x40..+0x60 fits
+m_globalThis / m_globalLexicalEnvironment / m_globalScopeExtension=NULL
+/ m_globalCallee / m_stackOverflowFrameCaffe EXACTLY. That member fit
+puts m_vm at +0x38 (base chain: JSCell 8 + butterfly 8 + m_next 8 +
+m_symbolTable 8 + SegmentedVector{size_t 8 + Vector 16} 24 = 0x38 -
+NOT my predicted 0x40; SegmentedVector is 24 bytes, not 32). And
+[G+0x38]=0x1000200000 - classified CAGE and therefore EXCLUDED from VM
+candidates by my own filter. Source check: VM is allocated with plain
+'new VM' (fastMalloc) - and with GIGACAGE_ENABLED=0 (V55-A), malloc and
+GC share ONE heap band: the VM is plausibly the FIRST BIG ALLOCATION at
+the band start (heap+2MB, before the JSGlobalObject - consistent with
+the early-heap bracket 0x1000212928..0x10002d4130). The two candidates
+my filter did allow (G+0x68/+0x78, module-data, ptr|1-style LazyProperty
+encodings) were correctly rejected by the window signature.
+
+### V70 (deployed): structural JF counterfactual + always-walk + m_vm@+0x38
+
+1. JF acceptance now requires FOUR structural checks: exec ~ victimNE,
+   scope in cage band, [+0x00] NOT a cage pointer (JSCell header),
+   [+0x08] butterfly NULL-or-cage. Rejected hits beacon JF-REJECT with
+   all field values (the table is now evidence, not an impostor).
+2. The early-heap walk runs whenever no VALID JSFunction is found - not
+   just on zero raw hits - and walk hits get the same structural check.
+3. G fallback: a rejected hit's cage-band scope is kept as G (the V69
+   table scope IS a real JSSegmentedVariableObject; its identity gets
+   settled by the VM test itself). G-SRC is beaconed (jsfunction |
+   table-fallback).
+4. VM calibration V2: G dumped to 0x100 bytes (32 qwords, 4 beacons).
+   Candidate order: the PREDICTED SLOT [G+0x38] FIRST, then up to 2
+   band-restricted scan candidates (8-aligned, packed-int-guarded,
+   cage-band now eligible). PRE beacon per candidate. Signature: >=1
+   STACK-band qword (VM::topCallFrame - rewritten by our own DataView
+   reads during the scan) AND >=4 cage-band pointers; backref to G
+   reported as bonus. The stack-qword offsets bank VM::topCallFrame's
+   approximate offset for the record.
+
+WITNESSES TO WATCH:
+  V70-ANCHOR-CONFIRMED=round (routine now)
+  V70-JFSCAN-B/A-scanned=...-hits=N
+  V70-JF-REJECT-0-structural (the table, expected) + V70-JFDN-CHUNK-0..
+  V70-JF-CAND-n-...hdrOK=true-bflyOK=true      <- the REAL JSFunction
+  V70-SCOPE-G=...-src=jsfunction|table-fallback-PRED-m_vm@+0x38
+  V70-VM-TRY-0-PRE-@+0x38-v=0x1000...          <- the predicted slot first
+  V70-VM-WIN-0-...cageN>=4-stack@+0x...        <- the topCallFrame signature
+  V70-VM-RESULT=CALIBRATED@...-G+0x38          <- THE CALIBRATION
+
+If CALIBRATED lands, the recon phase is DONE and the next build is the
+council-roadmap V68-stage (our V71): the fake-scope ret-only preflight.
+RISK: R0/R1 (all reads; the only new derefs are the VM window and the
+below-lowB walk chunks, both PRE-beaconed).

@@ -1376,3 +1376,42 @@ consistency check), raw namePtr, and V58-STRDBG beacons (the first three
 StringImpl headers verbatim) so any remaining failure is diagnosable
 offline. Swap stage unchanged (write -> verify -> behavioral test ->
 restore -> verify).
+
+### V58 RESULT: all 40 census finds were FALSE POSITIVES; region B never ran
+
+Session RI9VSY. The pipeline ran clean end-to-end (JSCPROBE fix held,
+drift beacons banked: ST m_data=0x10007ddc00 vs LIVE m_data=0x10007dc100,
+same ST 0x10007e08a0). But the census produced zero real NEs:
+
+DECODE OF THE 40 "CANDIDATES" (the raw diagnostics did their job):
+- NE-0..9  (0x100084f740-0x100085a518): the probe's OWN beacon-URL string
+  allocations. Repeated fn/ctor pair (0x725a6c0/0x725a6e0) = a class vtable
+  pair, not per-function fps. The "namePtr" values (0x200700001c36 etc.)
+  are timestamp fragments from the URL query text (t=... pairs).
+- NE-10..32 (0x1000898xxx-0x100089bxxx): URL query text (hdr=0x3d743f32 =
+  "2?t=" in ASCII, 0x303d7463 = "ct=0"), same repeated pair 0x7166ab8/
+  0x6fc1f7c. All m_name=0.
+- NE-34..37: freed chunks (hdr=0xffffffff, namePtr=0xffffffffffffffff).
+- NE-38..39: another non-NE class.
+ZERO real NativeExecutables. The StringImpl decode never got exercised
+(no in-range namePtr -> no STRDBG fired - the V58 decode fix is still
+untested on-device).
+
+REGION B NEVER RAN: the trigger required stAddr < ri_mData, but this
+session the ST (0x10007e08a0) sat INSIDE the view (ri_mData=0x10007dc100)
+-> LOWSCAN-SKIP. Meanwhile the region where V57 found REAL NEs with
+DISTINCT fps (0x10004c0xxx - below everything) was covered by neither
+region. The NE IsoSubspace lives well below the DataView cell region
+and below this session's view base.
+
+V59 (deployed):
+1. REGION B REANCHORED ON THE FACE: lowB = min(self, stAddr) - the
+   reclaimed face is the lowest reliable known-mapped address of every
+   session (0x1000278180 here), well below the NE region. Region B runs
+   FIRST (real NEs live below the view).
+2. FALSE-POSITIVE REJECTION: fn-deduplication (max 3 candidates per
+   unique fn value - kills the repeated-vtable families) + hdr rejection
+   (0, 0xffffffff, all-ASCII).
+3. Cap raised to 120 (region B) / 140 (total).
+4. Swap stage unchanged. STRDBG fires once real namePtrs appear, and the
+   StringImpl decode finally gets device-tested.

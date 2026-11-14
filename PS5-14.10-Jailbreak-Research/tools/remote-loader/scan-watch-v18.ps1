@@ -27,9 +27,9 @@ Get-Content $log -Wait -Tail 0 | ForEach-Object {
     $testNum = $Matches[1]
     $testName = $Matches[2]
     $currentTest = "TEST$testNum"
-    Write-Host "`n[$t] ═══════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "`n[$t] =======================================" -ForegroundColor Cyan
     Write-Host "[$t] TEST $testNum : $testName" -ForegroundColor Cyan
-    Write-Host "[$t] ═══════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "[$t] =======================================" -ForegroundColor Cyan
     return
   }
 
@@ -40,10 +40,10 @@ Get-Content $log -Wait -Tail 0 | ForEach-Object {
     $error = $Matches[3]
 
     if ($result -eq 'RETURNED') {
-      Write-Host "[$t] ✅ $testType : SUCCESS" -ForegroundColor Green
+      Write-Host "[$t] [PASS] $testType : SUCCESS" -ForegroundColor Green
       $testResults[$testType] = 'SUCCESS'
     } else {
-      Write-Host "[$t] ❌ $testType : CRASHED - $error" -ForegroundColor Red
+      Write-Host "[$t] [FAIL] $testType : CRASHED - $error" -ForegroundColor Red
       $testResults[$testType] = 'CRASHED'
     }
     return
@@ -51,50 +51,50 @@ Get-Content $log -Wait -Tail 0 | ForEach-Object {
 
   # ==== PRE-LOAD markers (about to call load()) ====
   if ($msg -match '^NULL-TABLE-PRE-LOAD') {
-    Write-Host "[$t] ⚠️  Calling faces[zi].load() with m_table=nullptr..." -ForegroundColor Yellow
+    Write-Host "[$t] [RUN] Calling faces[zi].load() with m_table=nullptr..." -ForegroundColor Yellow
     return
   }
 
   # ==== ANALYSIS markers ====
   if ($msg -match '^TIMER-REGION=(.+)$') {
     $timerData = $Matches[1]
-    Write-Host "[$t] 📊 Timer Region: $timerData" -ForegroundColor DarkYellow
+    Write-Host "[$t] [DATA] Timer Region: $timerData" -ForegroundColor DarkYellow
     return
   }
 
   if ($msg -match '^PROMISE-PTR=(.+)$') {
     $promisePtr = $Matches[1]
-    Write-Host "[$t] 📊 Promise Pointer: $promisePtr" -ForegroundColor DarkYellow
+    Write-Host "[$t] [DATA] Promise Pointer: $promisePtr" -ForegroundColor DarkYellow
     return
   }
 
   if ($msg -match '^PROMISE-RAW=(.+)$') {
     $promiseData = $Matches[1]
-    Write-Host "[$t] 📊 Promise Data: $promiseData" -ForegroundColor DarkYellow
+    Write-Host "[$t] [DATA] Promise Data: $promiseData" -ForegroundColor DarkYellow
     return
   }
 
   if ($msg -match '^PROMISE-INVALID') {
-    Write-Host "[$t] ⚠️  Promise pointer is invalid!" -ForegroundColor Red
+    Write-Host "[$t] [WARN] Promise pointer is invalid!" -ForegroundColor Red
     return
   }
 
   # ==== COMPLETION markers ====
   if ($msg -match '^RESTORED') {
-    Write-Host "[$t] 🔄 Original table pointer restored" -ForegroundColor Gray
+    Write-Host "[$t] [INFO] Original table pointer restored" -ForegroundColor Gray
     return
   }
 
   if ($msg -match '^DONE') {
-    Write-Host "`n[$t] ═══════════════════════════════════════" -ForegroundColor Green
+    Write-Host "`n[$t] =======================================" -ForegroundColor Green
     Write-Host "[$t] V18B INSTRUMENTATION COMPLETE" -ForegroundColor Green
-    Write-Host "[$t] ═══════════════════════════════════════" -ForegroundColor Green
+    Write-Host "[$t] =======================================" -ForegroundColor Green
 
     # Print summary
-    Write-Host "`n📋 TEST SUMMARY:" -ForegroundColor Cyan
-    Write-Host "═══════════════" -ForegroundColor Cyan
+    Write-Host "`n[SUMMARY] TEST RESULTS:" -ForegroundColor Cyan
+    Write-Host "======================" -ForegroundColor Cyan
 
-    $summary = @{
+    $summary = [ordered]@{
       'REAL-FACE' = 'Test 1: Real face load()'
       'RECLAIMED-NOMOD' = 'Test 2: Reclaimed, no modifications'
       'STATUS-ONLY' = 'Test 3: Status=Pending only'
@@ -111,34 +111,34 @@ Get-Content $log -Wait -Tail 0 | ForEach-Object {
         default { 'Gray' }
       }
       $icon = switch ($result) {
-        'SUCCESS' { '✅' }
-        'CRASHED' { '❌' }
-        default { '⏸️' }
+        'SUCCESS' { '[PASS]' }
+        'CRASHED' { '[FAIL]' }
+        default { '[SKIP]' }
       }
       Write-Host "$icon $($summary[$key]) : $result" -ForegroundColor $color
     }
 
-    Write-Host "`n📊 ANALYSIS:" -ForegroundColor Cyan
-    Write-Host "═══════════" -ForegroundColor Cyan
+    Write-Host "`n[ANALYSIS]:" -ForegroundColor Cyan
+    Write-Host "==========" -ForegroundColor Cyan
 
     if ($testResults['REAL-FACE'] -eq 'CRASHED') {
-      Write-Host "⚠️  Real face load() crashed - load() machinery itself may be broken" -ForegroundColor Red
+      Write-Host "[WARN] Real face load() crashed - load() machinery itself may be broken" -ForegroundColor Red
     } elseif ($testResults['REAL-FACE'] -eq 'SUCCESS') {
-      Write-Host "✅ Real face load() works - machinery is functional" -ForegroundColor Green
+      Write-Host "[OK] Real face load() works - machinery is functional" -ForegroundColor Green
 
       if ($testResults['RECLAIMED-NOMOD'] -eq 'CRASHED') {
-        Write-Host "⚠️  Reclaimed face crashes - the reclaim itself is the problem" -ForegroundColor Yellow
+        Write-Host "[WARN] Reclaimed face crashes - the reclaim itself is the problem" -ForegroundColor Yellow
       } elseif ($testResults['RECLAIMED-NOMOD'] -eq 'SUCCESS') {
-        Write-Host "✅ Reclaimed face works - reclaim is not the problem" -ForegroundColor Green
+        Write-Host "[OK] Reclaimed face works - reclaim is not the problem" -ForegroundColor Green
 
         if ($testResults['STATUS-ONLY'] -eq 'CRASHED') {
-          Write-Host "⚠️  Status=Pending causes crash - status field is the problem" -ForegroundColor Yellow
+          Write-Host "[WARN] Status=Pending causes crash - status field is the problem" -ForegroundColor Yellow
         } elseif ($testResults['STATUS-OVERRIDE'] -eq 'CRASHED') {
-          Write-Host "⚠️  Override=Block causes crash - override field is the problem" -ForegroundColor Yellow
+          Write-Host "[WARN] Override=Block causes crash - override field is the problem" -ForegroundColor Yellow
         } elseif ($testResults['EMPTY-SOURCES'] -eq 'CRASHED') {
-          Write-Host "⚠️  Empty sources causes crash - sources vector is the problem" -ForegroundColor Yellow
+          Write-Host "[WARN] Empty sources causes crash - sources vector is the problem" -ForegroundColor Yellow
         } elseif ($testResults['NULL-TABLE'] -eq 'CRASHED') {
-          Write-Host "⚠️  m_table=nullptr causes crash - table pointer is the problem" -ForegroundColor Yellow
+          Write-Host "[WARN] m_table=nullptr causes crash - table pointer is the problem" -ForegroundColor Yellow
         }
       }
     }
@@ -150,13 +150,13 @@ Get-Content $log -Wait -Tail 0 | ForEach-Object {
   # ==== ERROR markers ====
   if ($msg -match '^ERR-(.+)$') {
     $error = $Matches[1]
-    Write-Host "[$t] ❌ V18B ERROR: $error" -ForegroundColor Red
+    Write-Host "[$t] [ERROR] V18B ERROR: $error" -ForegroundColor Red
     return
   }
 
   if ($msg -match '^SKIP-(.+)$') {
     $reason = $Matches[1]
-    Write-Host "[$t] ⏭️  V18B SKIP: $reason" -ForegroundColor Yellow
+    Write-Host "[$t] [SKIP] V18B SKIP: $reason" -ForegroundColor Yellow
     return
   }
 

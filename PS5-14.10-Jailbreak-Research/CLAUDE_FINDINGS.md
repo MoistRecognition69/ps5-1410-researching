@@ -993,19 +993,27 @@ control remains an open design question.
 
 ## Source Homework Results (pre-V55)
 
-### NativeExecutable Layout (1400 source, confirmed)
+### NativeExecutable Layout (1400 source, CORRECTED)
 
-NativeExecutable.h / ExecutableBase.h / CallData.h / NativeFunction.h:
+NativeExecutable.h / ExecutableBase.h:239-244 / CallData.h / NativeFunction.h:
 
 ```
 NativeExecutable : ExecutableBase : JSCell
-+0x00  JSCell header          (8B: structureID + type + flags + cellState)
-+0x08  m_function             (TaggedNativeFunction = raw function pointer, 8B)
-+0x10  m_constructor          (TaggedNativeFunction = raw function pointer, 8B)
-+0x18  m_implementationVisibility (unsigned bitfield + padding)
-+0x20  m_name                 (WTF::String, 8B)
-+0x28  m_asString             (WriteBarrier<JSString>, 8B)
++0x00  JSCell header                       (8B: structureID + type + flags + cellState)
++0x08  RefPtr<JITCode> m_jitCodeForCall    (ExecutableBase, 8B — in-cage ptr)
++0x10  RefPtr<JITCode> m_jitCodeForConstruct (ExecutableBase, 8B — in-cage ptr)
++0x18  CodePtr m_jitCodeForCallWithArityCheck    (ExecutableBase, 8B)
++0x20  CodePtr m_jitCodeForConstructWithArityCheck (ExecutableBase, 8B)
++0x28  TaggedNativeFunction m_function     (raw function pointer, 8B) ← THE TARGET
++0x30  TaggedNativeFunction m_constructor  (raw function pointer, 8B)
++0x38  m_implementationVisibility          (unsigned bitfield + padding)
++0x40  String m_name                       (StringImpl*, 8B) ← READABLE NAME
++0x48  WriteBarrier<JSString> m_asString   (8B)
 ```
+
+NOTE: Initial homework incorrectly placed m_function at +0x08 (missed 4 ExecutableBase
+fields). Corrected via peer review. The census pattern: two consecutive module-range
+pointers at +0x28 and +0x30, with a plausible StringImpl at +0x40.
 
 **Call path (Interpreter.cpp:1069-1121):**
 ```
@@ -1073,7 +1081,66 @@ data about which captured states are pointer-dense.
 | Q7 | The V48 drift mechanism (hygiene + possible 2nd finding)? | V55-D |
 | Q8 | Is JIT truly off (device table says LLInt-only)? | Census/source |
 
-### V55 — Module Read + Census + Drift (4 stages, 1 session)
+### V55 RESULT: IDENTITY CAGING CONFIRMED + EXECUTE-ONLY TEXT DISCOVERED
+
+Session RAQZJF (12:55):
+
+**Stage A — FULL PROCESS ARW CONFIRMED:**
+```
+V55-A-TARGET=0x818886200-RVA=0x715a200       ← m_vector at SharedTask vtable (module rodata)
+V55-A-READ-OK-8qwords                         ← clean return, no crash
+V55-A-SLOT0=0x81572d750-RVA=0x4001750-expect=0x4001750  ✓ EXACT
+V55-A-SLOT1=0x81577a0c0-RVA=0x404e0c0-expect=0x404e0c0  ✓ EXACT (corrected dtor RVA validated!)
+V55-A-SLOT2=0x81635d760-RVA=0x4c31760-expect=0x4c31760  ✓ EXACT
+V55-A-MATCH=true/true/true
+V55-A-FULL-PROCESS-ARW-CONFIRMED
+```
+
+Q1 ANSWERED: CagedPtr is identity at runtime. The DataView m_vector rewrite
+covers the ENTIRE process address space at native JS speed. Module rodata,
+writable data, heap — all readable through a single DataView.
+
+The corrected deleting-dtor RVA (0x404E0C0) is now hardware-validated.
+
+**Stage B — MODULE TEXT IS EXECUTE-ONLY:**
+```
+V55-B-START                                    ← last beacon before crash
+```
+Reading run()'s prologue at BASE+0x4C31760 killed the session instantly. Combined
+with earlier data, the module has three distinct page classes:
+
+| Address class | Behavior | Example |
+|--------------|----------|---------|
+| ELF header (BASE+0) | Unmapped, fatal | V52 (twice) |
+| Module rodata (vtables, const data) | Readable via view | V55-A (3 slots) |
+| Module text (code) | Execute-only, read-fatal | V55-B (instant death) |
+| Module writable data (.data, GOT) | Readable+writable (expected, untested) | V56 target |
+
+**Likely mechanism:** PS5 Zen 2 supports MPK/PKU memory protection keys. Sony maps
+code pages as execute-only. The v688-lineage probe header's "no executable-text reads"
+exclusion was prescient — the original researchers likely hit the same wall.
+
+**What this kills:** disassembly-by-DataView, endbr64/IBT detection, gadget hunting
+by reading code bytes. Q6 (endbr64) remains unanswered.
+
+**What survives:** rodata reads, writable data reads/writes, GOT hunting, the entire
+NativeExecutable census and swap plan. The GOT lives in readable-writable .data.
+
+**Stages C/D:** Not reached (session died at B). Census and drift deferred to V56.
+
+**PRIMITIVE INVENTORY AFTER V55:**
+
+| Primitive | Status | Scope |
+|-----------|--------|-------|
+| **Full process arbitrary READ** | ✅ V55 CONFIRMED | Any readable address (rodata, heap, .data) |
+| **Full process arbitrary WRITE** | ✅ expected | Via same m_vector rewrite + setBigUint64 |
+| Module text read | ❌ DEAD | Execute-only pages, read-fatal |
+| 64MB OOB DataView | ✅ proven | Cage heap R/W |
+| COOP write (multi-shot) | ✅ proven | Any writable absolute address |
+| readAt oracle (heap) | ✅ proven | Any heap address |
+| addrof | ✅ proven | JSCell address of any JS object |
+
+### V55 — Design (4 stages, reference)
 
 Runs the full proven pipeline first (cert → V39 setup → V45 → V48 → V49 →
 freshCell machinery), then:
@@ -1238,3 +1305,39 @@ NEXT (V56): census-first ordering - the cage-wide module-pointer sweep +
 a module .data/.rodata sweep via the view (fast JS) + the drift re-exam.
 The text test is retired (answer known). NativeExecutable candidates from
 the census feed the same-signature swap.
+
+### V56 POSTMORTEM (two deaths, two causes) + THE JSCPROBE FIX (V57)
+
+Attempt 1 (UKPBK6, 13:07): died after 7 beacons (post-FORGED-1) - environmental
+(the console needed the reboot; the early machinery is identical to v55 which
+ran clean 12 minutes earlier).
+
+Attempt 2 (UOBOX8, post-reboot): ran the ENTIRE early machinery cleanly
+(identity walk OK, FACE-IDENTITY-OK, CSCAN 4 candidates, BASE=0x81b53c000)
+and died at JSCPROBE:
+
+```
+V56-CBWRAP-q4=0x82268bdf0-q5=0x81f6b8218   <- this session's callback-wrapper
+                                             carried MODULE pointers (first time)
+V56-JSCPROBE-PRE-addr=0x81f6b81f0           <- jp = q5-derived = BASE+0x417C1F0
+                                             = module TEXT
+readAt(jp,128) -> death                     <- the V55-B execute-only wall
+```
+
+ROOT CAUSE: the vestigial JSCPROBE stage (v17-lineage, unchanged since the
+beginning) SKIPPED itself every prior session because cbq5 was never a module
+pointer. Its guard (">0x100000000 && <0x10000000000") INCLUDES the module
+range - so the first time a callback-wrapper variant with module pointers at
+q4/q5 appeared, the stage walked into module TEXT via readAt and died.
+NOT the census, NOT Claude's new code - a landmine in the shared early
+machinery, armed the whole campaign, finally triggered.
+
+Also interesting intel from the fatal CBWRAP dump: this session's
+callback-wrapper is a richer object (vtable + module fn ptr + captured
+pointers at q4/q5/q7) - a WTF::Function-like CallableWrapper with state,
+i.e. a route-B/C census candidate in its own right.
+
+V57 FIX: the JSCPROBE guard is now CAGE-ONLY
+(>=0x1000000000n && <0x1800000000n) - module addresses never reach readAt
+from that stage again. Census/swap stage unchanged and should now be
+reachable. Dispatcher -> v57.html?v=1.

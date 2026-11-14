@@ -2492,3 +2492,47 @@ member; the Heap does not carry JS stack bounds).
 WITNESS:
   V76-VM-DIFF-0-n-@+0xNNN:pert:t1=...-w=false|depth:u1=...-u2=...-w=true
   V76-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0xNNN
+
+### V76 RESULT: clean run #5 - the candidate is dense with cage pointers but topCallFrame is deeper than 8KB; the source now gives the exact signature
+
+Session KW6NTL. Clean run #5 (V76-DONE, zero deaths; rawscan anchor
+route again - the census has now missed twice, the three-route design
+is earning its keep). The 8KB window at the predicted candidate
+[G+0x38]=0x1000300000:
+
+```
+cageN=218 (the full VM density)  mmap=2
+  +0x20: 0x7efcb0000   <- the page-aligned STACK LIMIT (4th boot sample)
+  +0x168: 0xc0000000c  <- packed non-pointer
+Both fail both differentials (correctly). NO live stack pointer in the
+first 8KB -> topCallFrame is DEEPER.
+```
+
+THE SOURCE NOW GIVES THE EXACT SIGNATURE (VM.h:492-508, in order):
+  VMType vmType;  ClientData* clientData;
+  EntryFrame* topEntryFrame;   <- STACK pointer, constant during one JS entry
+  CallFrame* topCallFrame;    <- STACK pointer, MOVES - THE TARGET
+  Wasm::Context wasmContext;
+  WriteBarrier<Structure> structureStructure;   <- then a LONG RUN of
+  ... stringStructure, propertyNameEnumeratorStructure, ...    consecutive
+  cage pointers
+
+THE SIGNATURE: TWO ADJACENT STACK POINTERS (topEntryFrame +
+topCallFrame), followed by wasmContext and the Structure-barrier run.
+The embedded Heap/Interpreter members push this neighborhood deep
+past 8KB. AND THE DIFFERENTIALS SPLIT THE PAIR PERFECTLY:
+topEntryFrame is constant during our single JS entry (fails both
+tests); topCallFrame moves (fires).
+
+### V77 (deployed): 32KB window + adjacent-pair prioritization
+
+1. Window 0x2000 -> 0x8000 (32KB - covers the whole VM class).
+2. mmap slots PRIORITIZED: adjacent pairs first (the
+   topEntryFrame/topCallFrame pair), solos after; up to 8 tested.
+3. Both differentials unchanged (perturbation + depth) - either
+   firing = the slot IS VM::topCallFrame, the candidate IS the VM,
+   the offset is banked.
+
+WITNESS:
+  V77-VM-DIFF-0-n-@+0xNNN (a pair-adjacent offset): ...w=true
+  V77-VM-RESULT=CALIBRATED@...-G+0x38-topCallFrame@+0xNNN

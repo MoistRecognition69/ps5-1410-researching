@@ -2241,3 +2241,55 @@ WITNESSES TO WATCH:
   V71-VM-RESULT=CALIBRATED@...-G+0x38      <- THE CALIBRATION
 
 RISK: R0/R1. Expected: no mem rash (census fixed), zero deaths.
+
+### V71 RESULT: the up-walk FOUND the real JSFunction - and my type-byte check rejected it
+
+Session 92C8AW. Anchor/verify clean (4th consecutive boot). The up-walk
+found the functionSpace block in TWO CHUNKS (view+4.3MB - the V69
+address family, boot-stable ~0x100070f6xx):
+
+```
+V71-JFUP-DONE-chunks=2-hits=1
+V71-JF-HIT-0-slot@0x100070f638-q=0x10002d4130 (the exec slot)
+V71-JF-CAND-0-base=0x100070f620
+  execOK=true scopeOK=true bflyOK=true
+  cell=0x000E1A0000005B40        <- the EXACT V69 header (structureID 0x5b40)
+  scope@+0x10=0x10004fdb68       <- the globalObject
+  hdrOK=false type=0xe           <- MY BYTE ERROR
+V71-JF-REJECT-0-structural       <- rejected the genuine article
+```
+
+THE BUG (mine, one byte): the cell type byte is b5 (bits 40-47),
+not b6. The candidate qword 0x000E1A0000005B40: b6=0x0E (cell state
+flags), b5=0x1A = JSFunctionType. My check read >>48 (b6) and demanded
+0x1A there. Cross-validated against the V48 DataView header
+(0x000032000000B200: TYPE=0x32 is at b5). The corrected layout from V71
+(cell/butterfly/scope@+0x10/exec@+0x18/size 0x20) was RIGHT - the
+acceptance machinery was one byte off.
+
+THE "MEM WARNING CRASH" DECODED - IT IS THE CAGE FLOOR: V70 and V71
+died scanning the SAME 64KB chunk [cage+0xF8180, cage+0x108180) - a
+deterministic SIGSEGV at ~cage+0x100000. THE FIRST 1MB OF THE CAGE IS
+UNMAPPED (reserved). Both deaths were geometry, not memory. (The
+census u32-first fix likely eliminated the actual mem-rash - no
+warning-storm symptoms before the floor hit this boot.) V72 caps the
+down-walk above cage+0x110000. NEW MAPPED-RANGE FACT: the heap band is
+[cage+0x100000 .. at least 0x100089xxxx]; the floor is hard.
+
+### V72 (deployed): two one-line fixes
+
+1. tB = (q>>40)&0xFF (b5) - the JF will now be ACCEPTED: execOK +
+   scopeOK + bflyOK + type 0x1A all held on V71s candidate already.
+2. The down-walk floor cap (cage+0x110000) - and with the b5 fix the
+   down-walk will not even run (gated on v66JF===0n; the up-walk
+   accepts first).
+
+EXPECTED FLOW: anchor -> verify -> up-walk (2 chunks) -> JF ACCEPTED ->
+G = [JF+0x10] (the globalObject) -> G dump -> [G+0x38] VM test ->
+CALIBRATED (or not) -> DRIFT -> DONE. Short, all-reads, zero new risks.
+
+WITNESSES:
+  V72-JF-CAND-0-...hdrOK=true-type=0x1a     <- the acceptance, this time
+  V72-SCOPE-G=...-src=jsfunction
+  V72-VM-TRY-0-PRE-@+0x38 -> V72-VM-WIN-0-...stack@+0x...
+  V72-VM-RESULT=CALIBRATED@...-G+0x38      <- THE CALIBRATION

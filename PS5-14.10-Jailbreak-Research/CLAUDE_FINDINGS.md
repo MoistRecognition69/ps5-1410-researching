@@ -4380,3 +4380,40 @@ THE PROTOCOL: full power-off power cycle (NOT rest mode); if
 it persists, clear the browser cache/website data; then
 re-run V115 (unchanged, still deployed - no probe fix is
 warranted for an environmental failure class).
+
+### V115 RESULT: THE COLD BOOT BROKE THE STREAK - the full upstream stack green a FOURTH consecutive deep run (REALBODY 27th, auxv 9th, anchors 11/11, T2 3/3); the k=10 death COMPLETES THE LD.SO LAYOUT: the module body is [+0x4000, +0x28000) data, text non-contiguous ~3.2MB above (the V114 residue cluster reinterpreted); V116: THE DATA-BODY DESCENT
+
+Session NAQA15 (988 beacons, after the cold power cycle -
+the environmental streak broke, exactly as the protocol
+predicted). THE FULL UPSTREAM STACK GREEN: gate, REALBODY=-6
+(TWENTY-SEVENTH consecutive boot), the chase clean (fps=6),
+the auxv NINTH consecutive, the Thread anchors 11/11, the
+T2 3/3 mapped (the rich heap page recurred: 0x8385ac000
+with {self, 0x822c42084, 0x8804cb2e0, 0x8804d18e0,
+0x8385a8010, 0x20000, 0x8804b8000}).
+
+THE TAIL-DOWN FIRED ITS FIRST PROBE: LDSO-C0-k10-
+@0x831268000 -> DEATH. AND THE K=10 DEATH COMPLETES THE
+LD.SO LAYOUT DEDUCTION:
+- +0x0 (header): DEAD (V113) - SELF-stripped (V52-class)
+- +0x28000: DEAD (V115) - PAST THE MODULE BODY END
+- +0x30000+: DEAD (V105) - the gap
+- *** THE V114 RESIDUE CLUSTER (+0x304000..+0x348000 -
+  twelve return addresses spanning ~272KB) IS LD.SO TEXT:
+  mapped NON-CONTIGUOUSLY ~3.2MB above atbase,
+  execute-only - which is why chasing the return addresses
+  died, and why the +0x28000..+0x30000 gap is dead. THE
+  RESIDUE WAS THE TEXT MAP ALL ALONG - intel reinterpreted.
+THEREFORE THE MODULE BODY = [+0x4000, +0x28000) = k=1..9,
+presumably READABLE DATA (every module data page in this
+process has been readable), and k=9 (+0x24000) IS THE LAST
+DATA PAGE - the .got / resolved-imports zone where the
+libc/libkernel function pointers live.
+
+### V116 (deployed): THE DATA-BODY DESCENT
+
+Probe k=9 (+0x24000 - the data tail, the .got zone) FIRST,
+then k=8..k=1 (the whole data body, descending), then k=11
+(the past-end confirm) last. Each page scan beacons before
+the next read; a death banks the boundary; the upstream
+stack runs green first, every boot.

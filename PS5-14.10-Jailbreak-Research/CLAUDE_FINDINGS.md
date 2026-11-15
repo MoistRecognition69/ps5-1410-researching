@@ -5494,3 +5494,29 @@ fill completed in 23ms - committed page confirmed), the witness
 beacon FIRST (tid values in the beacon string) before restore+reply.
 The child spin (~1.5ms) covers the beacon race.
 NEXT SESSION: tw 21.
+
+### SESSION 67 (THE ASSIGNMENT CLOSES): 0x3F0 = thr_exit (the call killed the calling thread) -> thr_new = 0x410 (the #8 sweep survivor = thr_new-with-EINVAL, fully consistent)
+
+THE 0x3F0 DEATH DECODED: tw at lk+0x3F0 - TW-9 CALLING then instant
+session death. THE MEANING: 0x3F0 = THR_EXIT (long *statep) - the
+calling thread EXITS at the call -> the JS thread dies -> the
+session dies "at the call moment". CONSISTENT with the page-0
+order logic (thr_self 0x2C0 < thr_exit 0x3F0 < thr_new 0x410).
+
+THE FULL PICTURE (three independent evidence classes agreeing):
+  0x2C0 = thr_self: E2-CONFIRMED (TID=1 write, 2/2 sessions)
+  0x3F0 = thr_exit: the tw-0x3F0 death = the calling thread exits
+  0x410 = thr_new: the sweep #8 "instant, zero-scope, survived" =
+    thr_new WITH THE ZEROED PARAM -> kern_thr_new's stack_base=NULL
+    check -> EINVAL -> instant harmless return (the sweep survived!)
+    + 1213a-verified live + the page-0 libc-import set (pthread_*)
+THE SWEEP'S ZEROED-SCOPE FLAW BIT TWICE: #49/#51/#20 died as
+zeroed-param thr_new-class crashes... wait no - #8 SURVIVED the
+zeroed param (stack_base=NULL -> EINVAL). The valid param passes
+the check -> THE THREAD GETS CREATED.
+
+NEXT: tw 0x410 (the valid param: start_func=0x7A0 proven-harmless,
+the 12KB scope-page sled, child_tid/parent_tid = cage pointers).
+child_tid != 0 = THREAD CREATION ON 14.10 = sustained execution +
+full child register control (RIP/RSP/RDI from the param) =
+ARGUMENT POWER.

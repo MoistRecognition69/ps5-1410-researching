@@ -104,6 +104,12 @@ if (name === 'status') {
         cmd = { cmd: 'call', addr: clean[1] }; break;
       case 'callret':
         cmd = { cmd: 'callret', addr: clean[1] }; break;
+      case 'e2witness':
+        /* THE ONE-COMMAND E2 WITNESS: registry -> thread record -> pthread
+         * backlink -> lk_base -> canary gate -> gettimeofday at lk+0xB50
+         * (RDI = the pre-zeroed fake scope; tv copies before tz; every step
+         * on a blocking sync beacon). */
+        cmd = { cmd: 'e2witness' }; break;
       case 'rawcall':
         /* decode-immune call: redirects, calls, DISCARDS the return
          * untouched (raw returns crash the JSValue engine at first touch),

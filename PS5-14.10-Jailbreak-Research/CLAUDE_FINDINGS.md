@@ -4954,3 +4954,51 @@ entry read -> this session arena anchor -> scan str:sprx over
 hood mapped; conservative window) -> every hit = an rtld path
 string -> read the vicinity -> the Obj_Entry (which points at the
 path) carries the LITERAL base field -> lk_base -> e2shot -> E2.
+
+### THE E2SHOT CAMPAIGN (sessions 24-34, condensed): THE V5-V8I EVOLUTION - TWO CANARY-CONFIRMED BASES - THE BOUNDARY CALIBRATED - THE GUARD-SLOT HUNT
+
+THE E2SHOT INSTRUMENT (the one-command E2 attempt, all in-page,
+sync-beacons throughout): harvest the WK module import table ->
+sparse-anchor matching -> canary verification -> cluster RVA banking
+-> drift vote -> the gettimeofday raw-discard witness (RDI =
+fakeScope = the tv buffer; the return DISCARDED UNTOUCHED - raw
+kernel returns (positive errnos, zeros) are invalid JSValue
+encodings that crash the engine at first touch; the tv-write is
+decode-immune evidence).
+
+THE METHOD BATTLES (each retired by evidence):
+- v2/v3 wrapper-RVA matching: DEAD (the wrapper region spans 10+
+  16KB pages - low-14 residues blanket the space; 333/339 RVAs pass
+  uniqueness filters; four sessions died on coincidence candidates).
+- THE SPARSE ANCHORS (eight non-wrapper offsets, ~0.05% false rate):
+  THE CANARY CONFIRMED THE BASE TWICE (sessions 25: 0x826e18000,
+  26: 0x81a064000 - guard pointer exact, canaries 0x4b0fffa9... and
+  0xcd3d5b7f... - textbook random 64-bit values). THE DATA LAYOUT
+  MATCHES 13.60->14.10 (the canary offset +0x751D0 exact twice).
+- THE TEXT DRIFTED: the gettimeofday call at lk+0x1B840 (the 13.60
+  RVA) crashed both canary-confirmed sessions. The pthread pair-
+  deltas found no pairs (single family members only). v8 THE DRIFT
+  VOTE: every cluster member true RVA minus its own 13.60 RVA =
+  the same Delta - votes across the full 339-RVA table.
+- CLUSTER DENSITY: cannot discriminate module identity (a WebCore-
+  derived false candidate sits inside the WebCore cluster -
+  density 141, died on the derived-guard probe as designed).
+
+THE HARVEST BOUNDARY (calibrated by hp progress beacons): the
+import table sits at bandoff [0x34xxxx, boundary) - ~376 values in
+the first window - and the mapped region ends just past the table
+(boundary in (0x380000, 0x3A0000)). The 512-cap walked past it
+(two deaths); the 384-cap completes safely but misses the deeper
+slots (the guard anchor caught in sessions 25/26, missed since -
+THE SLOT POSITION VARIES PER SESSION). v8i: cap 448 + fine deep
+beacons.
+
+THE LADDER (v8h, final form): guard-anchor -> probe the HARVESTED
+pointer (safe, mapped by construction) -> canary -> CONFIRMED;
+2+ anchors -> accept; single anchor -> probe the DERIVED guard
+(B+0x751D0: true base = mapped canary, false = usually death - the
+probe IS the test, one candidate per session).
+
+NEXT: v8i run - if the 448-cap catches the guard anchor, the whole
+chain completes in one shot: canary -> RVA banking -> drift vote ->
+the drift-corrected gettimeofday witness -> E2.

@@ -1,6 +1,6 @@
 # Progress Audit
 
-Status of the PS5 14.10 WebKit exploitation research as of November 15, 2026 (the interactive shell era).
+Status of the PS5 14.10 WebKit exploitation research as of November 15, 2026 (the council breakthrough, session 50).
 
 ## Timeline
 
@@ -15,75 +15,45 @@ Status of the PS5 14.10 WebKit exploitation research as of November 15, 2026 (th
 | 17-19 | Oct 20-21 | Same-type reclaim V573 CONFIRMED, full R/W via alias V562/V630 |
 | 20-21 | Oct 21-22 | Crash oracle development, heap topology mapping V650-V655 |
 | 22-23 | Oct 22-23 | Info leak hunting, APNG overread (V674), ASLR defeat work |
-| 24+ (V-series) | Nov 12-15 | **The FontFace chain to WebProcess control + the interactive shell** — see below |
-
-## The V-Series (Nov 12–15, the current campaign)
-
-| Probes | Milestone |
-|--------|-----------|
-| V17–V39 | UAF + reclaim + COOP write station (the address-validation wall discovered at V36) |
-| V40–V54 | AB expansion → 64MB OOB DataView → **absolute in-cage R/W** |
-| V55–V65 | Module rodata reads; NE census; **PC redirection (V63) → arbitrary PC (V65, no icall CFI)** |
-| V66–V72 | Victim identification: the RVA anchor (0x4057848), the three-route hunt, the corrected JSFunction layout |
-| V73–V82 | JSFunction hunt; scope → globalObject; **VM calibrated (VM+0x9ce8 topCallFrame)**; **THE R2 GATE PASSED — RDI controlled** |
-| V83–V86 | **REALBODY witness** (−6, exact); **out-of-cage write** (the 0x7ef stack band) |
-| V87–V99 | The import hunt begins: GOT/dynstr dead (pure-vtable RELRO), band-priors dead (V94), the deref hunt (the V61 gate) |
-| V100–V105 | The deterministic stack walk (cfr-upward); **THE ANCHORED AUXV DECODE** — AT_BASE/AT_ENTRY deterministically, every boot |
-| V106–V112 | The reorder; the ld.so header gamble (DEAD); the low-32 rule; 0x101000000 answered (a constant) |
-| V113–V119 | The ld.so layout completed (dead zone + text cluster); the T2 chase; the Thread-band gate |
-| **The shell era** | Nov 15 | **The WS shell** (XHR poll mode); the ld.so body and executable routes CLOSED in one command each; **THE MODULE REGISTRY FOUND**; **THE CALL PRIMITIVE PROVEN** (−1, verified); the binding-class lesson (first genuine call crashed) |
+| 24+ (V-series) | Nov 12 | THE V-SERIES: the FontFace chain — V17-V39 UAF+reclaim+COOP, V40-V54 the 64MB OOB DataView (absolute in-cage R/W), V55-V65 module rodata + PC redirection (V63) → arbitrary PC (V65, no icall CFI) |
+| V66-V99 | Nov 12-13 | Victim ID (the RVA anchor), REALBODY witness, VM calibration, THE R2 GATE (RDI controlled), out-of-cage write, the import hunt (GOT/dynstr dead: pure-vtable RELRO), the V61 read gate |
+| V100-V119 | Nov 13-14 | Deterministic auxv (AT_BASE/AT_ENTRY every boot), the ld.so layout fully mapped (text-only island), the 16KB-page rules, the JSFunction/Thread-band gates |
+| The shell era | Nov 14-15 | THE INTERACTIVE SHELL (XHR poll mode) — sessions 1-23: the module registry found, the call primitive proven (−1 verified), the binding-class lesson (WebCore C++ implementations crash on the fake-scope RDI), the mem-warning crash-dialog reclassified (generic WebProcess-crash text), the e2shot instrument (v5-v12: sparse anchors, TWO canary-confirmed bases, the harvest boundary calibrated to 0x390000, the empty-chunk exit, the full-census mode) |
+| The console crash | Nov 15 | Session 47: the rawcall sweep's first target was the constant band (unmapped) + unknown garbage-arg calls; the CONSOLE died (unclean shutdown, repair screen); recovered via Rebuild Database, everything intact. POSTURE: no blind sweeps, identified targets only |
+| The council | Nov 15 | Sessions 48-50: the full-band census (940 values, 13 clusters), THE COUNCIL convened — delivered gettimeofday=lk+0xB50 (14.10 named-import-proven; my 0x1B840 was FSTATFS mislabeled), thr_self (single-arg TID write), the pthread-backlink route — LIVE-PROVEN in one session: registry → thread record → struct pthread → backlink (residue 0x218 exact) → lk_base 0x83BC88000 → THE THIRD CANARY (0x5453e725171b5aa7). The export table at lk+0x48000 decoded (magic 0x3b031b01; hi-words = self-relative text RVAs incl. the verified stub 0x410). The rawcall at the identified target died at the call moment (no beacons) → v13 e2witness: the whole chain, one command, blocking sync beacons |
 
 ## Exploit Chain Progress (FontFace — the leading chain)
 
 | Stage | Status | Notes |
 |-------|--------|-------|
 | Bug + reclaim + COOP + ARW + PC control | **DONE** | V17–V65 |
-| Controlled arguments (fake scope) + return decoding | **DONE** | V82, V84+ — 35+ consecutive boots |
+| Controlled arguments (fake scope) + return decode | **DONE** | V82, V84+ — 35+ consecutive boots |
 | Out-of-cage R/W | **DONE** | V86+ |
-| Deterministic auxv (AT_BASE/AT_ENTRY per boot) | **DONE** | 14+ consecutive clean decodes |
-| Direct module-read routes (ld.so / executable) | **CLOSED** | Measured XO — one interactive command each |
-| Module registry located | **DONE** | The loader's malloc'd registry in the heap (boot-stable page at 0x10001c8000) |
-| The interactive shell | **DONE** | XHR poll mode; the V61 gate at the CLI; the agent CLI (shell-cmd.js); session logging |
-| The call primitive (interactive PC + RDI + return decode) | **DONE** | callret sign's fn → −1, verified:true — the V63 witness at the CLI |
-| Import resolution (module bases by name) | **IN PROGRESS** | The native-heap graph walk: the registry entries' native targets (proven-readable class) → SceModule/link_map records → module bases |
-| strlen quartet (E1) / benign syscall (E2) | **BLOCKED on module bases** | The callret-compatible targets: strlen-class + no-arg wrappers (getpid) — they tolerate RDI = the fake scope; the binding-table pointers are the WRONG class (WebCore C++ — they deref RDI as ExecState* → SIGSEGV, proven by the session-5 crash) |
-| Kernel candidate selection (D2) | **PRE-ANALYZED** | External corpus banked; 677-entry syscall table; dead routes eliminated |
-| Kernel trigger | **NOT STARTED** | Begins after E2 |
+| Deterministic auxv (AT_BASE/AT_ENTRY per boot) | **DONE** | V105 — every boot since |
+| The interactive shell | **DONE** | XHR poll mode; the V61 gate at the CLI; sync beacons; session evidence logging |
+| The call primitive (interactive PC + RDI + verified restore) | **DONE** | the −1 A/B witness at the CLI; rawcall (decode-immune: return discarded untouched, memory side-effects read instead) |
+| **libkernel base derivation (per-session)** | **DONE (live-proven)** | THE PTHREAD BACKLINK: registry entry (boot-stable) → thread record → struct pthread (the 0x88-band, readable) → the `_thread_list` backlink at +0x40 (residue 0x218 gate) → base; confirmed by the canary at +0x751D0 (THREE canaries across three sessions: 0x4b0fffa9f9b6c7b7, 0xcd3d5b7f41eb2dc6, 0x5453e725171b5aa7). Three reads + two gates, non-stochastic |
+| The export table | **READ + DECODED** | lk+0x48000: magic 0x3b031b01, 0x82C entries; hi = self-relative text RVA (ladder 0xD0, 0x130… incl. the game-lane-verified stub 0x410); lo = NID/name offset (names not ASCII, not SHA1-of-name — encoding unresolved; the gettimeofday anchor validation pending the entries-512+ dump) |
+| **E2: the benign syscall witness** | **ONE COMMAND AWAY** | The identified target: **gettimeofday @ lk+0xB50** (14.10 named-import-proven; the 13.60 map's 0x1B840 was fstatfs — the "drift" deaths were wrong-function calls). v13 `e2witness`: the full chain in one command with blocking sync beacons — a death at the call moment still banks the derivation and the scope bytes. Safety: tv copies before tz (witness-first in every RSI outcome); the tz copyout is kernel-validated userland — no panic path |
+| Kernel leg (M2/D2) | **PRE-ANALYZED, BLOCKED ON E2** | External corpus banked (677-entry syscall table, per-boot kernel addresses, libkernel syscall-stub mechanics); begins after E2 |
+
+## The Key Instrument
+
+`e2shot` / `e2witness` — one-command campaign stages, in-page, every step on a **blocking sync beacon** (evidence survives any death). The retired-methods ledger (all evidence-backed): low-14 wrapper matching (dense residues), derived-guard probes (15% lottery), cluster density (no module identity), blind sweeps (console crash), the timing theory (stochastic tables).
 
 ## What We Know About the Target
 
-- Firmware 14.10 (UA-confirmed), WebKit-1400 (616-era internal fork), LLInt-only execution
-- **16KB pages** (AT_PAGESZ=0x4000, auxv-confirmed); FreeBSD r230171, AMD Zen 2
-- Gigacage disabled (identity caged()); IsoHeap OFF
-- **Module text is execute-only in this WebProcess — OUR module, ld.so, AND the NKWebProcess executable** (each closed by measurement)
-- The ld.so layout, fully mapped: header dead, body dead, gap dead, text `[+0x304000,+0x348000)` XO (non-contiguous, ~3.2MB above AT_BASE)
-- The auxv sits at the main-thread stack top (the execve setup zone), deterministic from cfr
-- The readable universe: the heap [lowB, jfuTop), the stack setup pages, our module's vtable band, the native heap (0x829–0x831-class) — and the JS heap moves under GC (scan hits can go stale in seconds)
-- **The module registry is malloc'd IN THE HEAP**: the page at 0x10001c8000 is boot-stable; path strings carry the per-boot mount prefix; registry entries carry native-heap pointers (offsets +0x160/1b8/1e8 boot-stable); binding entries carry WebCore C++ implementation pointers (position-pair metadata) — the wrong class for identification-by-call
-- The guide webview's secure WebSocket is transport-dead (1006); XHR to the same origin is proven
-- The filter-stack lessons: the low-32 rule, alignment, clustering — all necessary, none sufficient (denormal doubles impersonate heap pointers); recurring values are constants; scan patterns must be absent from the page's own source (the str:lib/ and str:Rnps fragments; ".sprx" self-matches the page comments)
+- Firmware 14.10 (UA-confirmed), WebKit-1400, LLInt-only; **16KB pages**; FreeBSD r230171, Zen 2
+- Gigacage disabled, IsoHeap OFF; **module text execute-only**; ld.so a text-only island; the classic GOT dead (pure-vtable RELRO); no /proc, no debugger
+- **The mem-warning dialog is the generic WebProcess-crash text** — deaths are our faults or the stochastic session end; the console survives everything except (once) the blind-sweep class — blind calls are banned
+- Every guide re-entry = fresh WebProcess = fresh ASLR; **the registry page, thread records, auxv anchors, and module file layouts are the boot-stable invariants**; the pthread backlink + canary derive the libkernel base in three reads
 
-## The Interactive Shell (the current instrument)
+## The Runbook
 
-`tools/ws-shell/` — the pipeline plus a live command loop over XHR polling. The V61 gate at the CLI (proven bands + the session's own read-map; `force` logged), full session evidence logging, restore verification. The agent CLI (`shell-cmd.js` + the server's `/api/cmd` and `/api/status`) drives the session programmatically. **The probe method remains the evidence-producer** (multi-boot witnessed); the shell is the exploration instrument.
-
-### Runbook
-
-- host.py runs untouched (443 + DNS + the dispatcher); the shell server: `cd tools\ws-shell; $env:PORT="8443"; node server.js`
-- The dispatcher (`index.html`) redirects the guide to `https://manuals.playstation.net:8443/` for shell sessions; switch back to `v119.html` for probe sessions
-- A session is the guide page's lifetime: re-enter the guide ≈ 30s → fresh session (fresh ASLR); a mid-session crash = re-enter, NOT reboot (reboot only for early-spray streaks — the A-DEAD class)
-- The session evidence: `shell-beacons.log` ([CMD]/[RES] lines); the console beacons: the shell server's log
-- The per-boot ground truth: `info` (BASE, cfr, jfuTop, fakeScope, neEntry) + the pipeline's fnSlot beacon in the log (round's fn; sign's fn = round's fn + 8)
-
-### Next Steps (the resume plan)
-
-1. Fresh session → `info` → read the fnSlot beacon from the log
-2. **The native-heap graph walk (READ, not call)**: the registry entry's native targets (page at the entry's pointer & ~0x3FFF, `force` — the class is proven readable) → follow the C++ object graph toward SceModule/link_map records with module bases
-3. Read the other module-path entries (scan `str:lib/` fresh; each hit page is an entry with native pointers) — in-band, zero risk
-4. **No blind calls on binding-entry pointers** (the proven-fatal class); identification calls wait for libc-class targets (strlen-class + no-arg syscall wrappers tolerate RDI = the fake scope)
-5. Module bases found → the corpus RVA arithmetic (the game-lane module dumps are the same firmware files) → strlen + syscall-wrapper addresses → E2's benign syscall via `callret` (e.g., getpid: a no-arg wrapper, any RDI ignored)
-6. If the native graph stalls: the fallback routes are the WebKit module's own .got (BASE+0x7000000-class data band) and the other module-string entries' native pointers
+- host.py (443 + DNS + dispatcher) untouched; the shell server: `PORT=8443 node server.js` (full-path invocation avoids the CWD trap); dispatcher cache-busted (`?v=e2shot1`); server restarts are session-survived; the busy-guard (one command in flight) + the 409 rejection are live
+- The per-session ground truth: `info` (BASE, cfr, fakeScope, neEntry); the pipeline beacons in shell-beacons.log
+- **The E2 witness: `node shell-cmd.js e2witness`** — the one command; the sync beacons carry the trail; green banner + ~1 min settle before firing
 
 ## Probe Count
 
-~800+ probes across 24+ sessions (including the pre-V series). The V-series: 119 probes. The shell: 6 sessions.
+~800+ probes across 24+ sessions (pre-V + V119 + 50 shell sessions). The council: 4 members, 3 rounds, the breakthrough intelligence.

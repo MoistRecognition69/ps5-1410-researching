@@ -11,6 +11,7 @@
  *   node shell-cmd.js write <addr> <value>
  *   node shell-cmd.js dump <addr> [len] [force]
  *   node shell-cmd.js scan <start> <len> [pattern] [force]
+ *   node shell-cmd.js ptrscan <start> <len> <lo> <hi> [max] [force]
  *   node shell-cmd.js deref <addr> [depth] [force]
  *   node shell-cmd.js str <addr>
  *   node shell-cmd.js auxv
@@ -84,6 +85,8 @@ if (name === 'status') {
           process.exit(1);
         }
         cmd = { cmd: 'scan', start: clean[1], len: clean[2], pattern: clean[3] || 'elf' }; break;
+      case 'ptrscan': case 'p':
+        cmd = { cmd: 'ptrscan', start: clean[1], len: clean[2], lo: clean[3], hi: clean[4], max: clean[5] || '64' }; break;
       case 'deref':
         cmd = { cmd: 'deref', addr: clean[1], depth: clean[2] || '2' }; break;
       case 'str':

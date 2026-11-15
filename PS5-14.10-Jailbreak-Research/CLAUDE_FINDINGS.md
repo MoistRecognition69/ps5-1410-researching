@@ -4723,3 +4723,75 @@ heap); read the other module-path entries (0x10002137f0,
 0x10003b7290, 0x10003c1b58 - in-band, zero risk); follow the
 C++ object graph toward SceModule/link_map records with
 module bases. NO blind calls on binding pointers.
+
+### THE SHELL SESSION 7: THE NATIVE-HEAP GRAPH WALK BEGINS - THE 0x8064fd230 LESSON - THE PUP QUESTION ANSWERED - THE E2 RECIPE BANKED (THE FLATZ MECHANISM + THE 13.60 OFFSETS VALID ON 14.10 + THE GETPID WRAPPER RVA)
+
+THE CONCURRENCY RACE (closed, fixed): two parallel shell-cmd
+invocations corrupted each other on the server single pendingResolve
+slot - the read CLI received the SCAN error result and exited; the
+scan CLI starved to timeout. FIXED: sendCmd rejects a second
+in-flight command (409 busy); the CLI rejects the scan str: misuse
+(f7fa68a9). RULE: ONE COMMAND AT A TIME.
+
+THE FRAGMENT DOCTRINE CORRECTED: "lib/" IS SOURCE-MATCHED - the
+shell.html comments contain "common_ex/lib/NKWebProcess.sprx", so
+str:lib/ hits are page-source copies in the heap (0x100075xxx
+cluster, 0x10003b7290, 0x10003c1b58, 0x10002137f0 - all decoded as
+page text; most GC-unstable). THE CLEAN FRAGMENT: "Rnps" (0 matches
+in the page source; str:Rnps => 3 hits: the known entry, a SECOND
+path copy at 0x10001c8170, one GC-stale hit). The registry page
+0x10001c8000 is BOOT-STABLE (4th boot); native targets this session
+0x839958160/1b8/1e8 (same +0x160/1b8/1e8).
+
+THE GRAPH WALK (read, not call): the arena object at 0x839958000-
+0x260 reads clean - malloc chunk lists, recurring class ptrs
+0x8367a1b90/0x8367a3940, chunk ptrs 0x836b/0x836c/0x836e/0x8370
+bands - ALL NATIVE HEAP, all readable. NEW TOOL: the ptrscan command
+(page + CLI): scans a PROVEN band for qwords in [lo,hi), DEDUPED by
+value, band-relative offsets recorded (survive re-entries).
+
+THE 0x8064fd230 LESSON: the arena held {0x8064fd230 x2} (a system-
+band identical pair, likely an init/fini function pair). THE READ
+KILLED THE SESSION - system-module band addresses are TEXT or
+guarded. NO BLIND READS INTO THE 0x800-0x806 BAND.
+
+THE PUP QUESTION (answered): the PUP CONTAINER is unpackable (the
+external repo did it: artifacts/pup14/pup_unpacker_linux +
+515_block141.bin), but the inner sprx/SELF modules are encrypted
+with keys in the security processor - NO public PS5 SELF decryption.
+Static RVA extraction from the PUP is a dead route; the RVA source is
+runtime knowledge.
+
+THE E2 RECIPE (banked from the external repo, pulled to 13de1acf):
+(1) THE FLATZ PS5 MECHANISM (syscall.lua): on PS5 the syscall
+wrappers are "48 c7 c0 <num> | 49 89 ca | 0f 05" (mov rax,num; mov
+r10,rcx; syscall); any wrapper +7 = the generic stub (RAX must be
+preset). getpid = syscall 20 (their sanity check). (2) THEIR GAME
+LANE REUSES THE 13.60 LIBKERNEL OFFSETS ON 14.10 (lk+0x1200
+sceKernelGetCurrentCpu, lk+0x27F00 sleep both quoted for 14.10) -
+libkernel 13.60->14.10 is layout-stable at the function level.
+(3) THE 13.60 syscall_map HOLDS THE WRAPPER RVAs: getpid (0x014) =
+lk+0x1B860 - SELF-CONTAINED (presets its own RAX, ignores RDI,
+returns pid). (4) THEIR MODULE-BASE ROUTE (for reference): libc
+gettimeofday_import -> libkernel ptr -> sceKernelGetModuleInfoFromAddr
+-> base; for us the equivalent is the registry binding tables.
+
+THE E2 LADDER (once lk_base lands in OUR WebProcess):
+- VERIFY: callret(lk_base+0x1200) -> sceKernelGetCurrentCpu -> 0..7
+  (no args, garbage RDI tolerated, decisive). Wrong candidate = death
+  = re-entry, next candidate.
+- E2 WITNESS: callret(lk_base+0x1B860) -> the getpid wrapper -> THE
+  WEBPROCESS PID. The benign syscall, executed, return decoded.
+- AVOID: lk+0x27F00 sleep with garbage RDI (thread hangs forever);
+  libc memset/setjmp (write past our 0x38 fakeScope bytes).
+- CANDIDATE-BASE DERIVATION: any libkernel pointer P found in binding
+  tables/data bands: low-14-bits of P vs the 13.60 map RVAs (ASLR is
+  16KB-granular - the low 14 bits are RVA-fixed) => few candidates
+  per pointer => verify each.
+
+THE LK_BASE HUNT (next sessions): (a) the registry graph walk - the
+arena chunks (0x836b/0x836c/0x836e/0x8370 bands) unread, module
+records with bases may live there; (b) ptrscan the BASE+0x7000000
+data band for foreign pointers, low-14-match against the map; (c)
+the registry binding tables of OTHER modules (every sprx binds
+libkernel functions).

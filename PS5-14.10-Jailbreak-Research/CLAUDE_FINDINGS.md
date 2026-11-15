@@ -4904,3 +4904,28 @@ pointers and literal BASE VALUES. ptrscan the stack for module-band
 values; filter 16KB-aligned offline = candidate bases; follow
 link_map-class pointers into the native heap (the sbrk bands are
 proven readable).
+
+### THE SHELL SESSION 20: THE STACK HARVEST (the rtld-frame theory pays) - ALIGNED MODULE-BASE CANDIDATES FOUND AS LITERAL STACK VALUES - THE 3-COMMAND LOOP DEFINED
+
+THE STACK PTRSCAN (cfr-relative, module-band values): the region
+[cfr_page, cfr+0x15000) is dense with our-module return addresses
+(0x80d3-0x80fd = BASE+0x40xxxx-0x70xxxx text) PLUS native-heap ptrs
+(0x810x) and TWO 16KB-ALIGNED MODULE-BAND VALUES: 0x80de20000
+(stack 0x7efe72048) and 0x827e20000 (stack 0x7efe723c0) - LITERAL
+stored base-class values, not coincidence math. The higher stack
+[cfr+0x15000, +0x40000) scan KILLED the session (unmapped/guard
+boundary) - the proven stack-scan extent is [cfr_page, +0x15000).
+
+THE ENTRY CAGE STRUCTURES: thread records (stack ranges
+0x7efe74000/0x7efc74000, per-thread indices 1-7, canary-class
+hashes, 0x880e-band per-thread objects) - the registry entry points
+at the process THREAD LIST, not module info. Not the base route.
+
+THE 3-COMMAND LOOP (per session, fits any fuse):
+1. info -> cfr, BASE
+2. ptrscan <cfr_page> 0x15000 0x7f0000000 0x900000000 64 force
+   -> offline filter: values == 0 mod 0x4000 (expect 1-3 candidates)
+3. e2shot 0x<aligned-candidate> -> the decode-immune gettimeofday
+   witness at candidate+0x1B840 (raw-discard + tv check)
+A wrong candidate may crash the session (re-enter, next candidate);
+the RIGHT candidate writes the wall clock into fakeScope -> E2.

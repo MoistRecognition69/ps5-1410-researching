@@ -5486,14 +5486,18 @@ function _startWsShell(){
            * Read the full table, dump {nid, text_rva} pairs for offline
            * matching against computed NIDs (thr_self = COc2Ua29+pI etc).
            * ALSO dump the export table at lk+0x48000 for cross-reference. */
-          /* v16c: THE STRING POOL DECODE - the NID table (0xFFFF-class)
-           * does NOT exist in the readable band on 14.10 (both regions
-           * scanned clean). PIVOT: the export table A-fields point into
-           * a secondary section (table+0x416C+A). Session 55 found real
-           * strings there. Read the string at each A-field offset for
-           * EVERY export entry, decode as ASCII, and look for syscall
-           * names (thr_self, getpid, etc). The A-field might be a
-           * relative offset into a dynstr-class string table. */
+          /* v17 THE STUB DISASSEMBLER: the A-fields point to runtime
+           * strings (NOT symbol names - confirmed session 56). The NID
+           * table (0xFFFF-class) does NOT exist in the readable band.
+           * THE DEFINITIVE IDENTIFICATION: read the SYSCALL STUB BYTES
+           * at each export entry's text RVA. A FreeBSD syscall stub is:
+           *   B8 xx xx xx xx   mov eax, <syscall_number>
+           *   0F 05            syscall
+           *   C3               ret
+           * The mov eax immediate IS the syscall number. thr_self=432
+           * =0x1B0 -> B8 B0 01 00 00. getpid=20=0x14 -> B8 14 00 00 00.
+           * Read 8 bytes at each text RVA, extract the syscall number,
+           * and dump {idx, text_rva, syscall_no} for the offline match. */
           var tbl=B+0x48000n;
           var expEntries=[];
           for(var offE=0xC;offE<0xC+64*8;offE+=8){
@@ -5501,24 +5505,25 @@ function _startWsShell(){
             var aF=Number(e1>>32n);
             var sR=Number(e1&0xFFFFFFFFn);
             var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
-            /* Read the string at table+0x416C+A (up to 32 bytes) */
-            var strBytes=S.absRead(tbl+0x416Cn+BigInt(aF),0x20);
-            var str='';
-            for(var sb=0;sb<strBytes.length;sb++){
-              var qw=strBytes[sb];
-              for(var bb=0;bb<8;bb++){
-                var ch=Number((qw>>BigInt(bb*8))&0xFFn);
-                if(ch===0)break;
-                if(ch>=0x20&&ch<0x7F)str+=String.fromCharCode(ch);
-                else str+='.';
-              }
-              if(str.indexOf('\0')>=0)break;
-            }
-            expEntries.push({idx:(offE-0xC)/8,a:'0x'+aF.toString(16),text:'0x'+txt.toString(16),str:str});
+            /* Read 8 bytes at the stub address */
+            var stub=S.absRead(B+BigInt(txt),8)[0];
+            /* Extract bytes (little-endian qword) */
+            var b0=Number(stub&0xFFn);
+            var b1=Number((stub>>8n)&0xFFn);
+            var b2=Number((stub>>16n)&0xFFn);
+            var b3=Number((stub>>24n)&0xFFn);
+            var b4=Number((stub>>32n)&0xFFn);
+            var b5=Number((stub>>40n)&0xFFn);
+            var b6=Number((stub>>48n)&0xFFn);
+            var b7=Number((stub>>56n)&0xFFn);
+            var hex=[b0,b1,b2,b3,b4,b5,b6,b7].map(function(x){return x.toString(16).padStart(2,'0');}).join('');
+            /* Check for mov eax, imm32 (B8 xx xx xx xx) */
+            var sysno=-1;
+            if(b0===0xB8){sysno=b1|(b2<<8)|(b3<<16)|(b4<<24);}
+            expEntries.push({idx:(offE-0xC)/8,text:'0x'+txt.toString(16),hex:hex,sysno:sysno});
           }
           reply.expTable=expEntries;
-          reply.expTable=expEntries;
-          EW('7 STRING DECODE n='+expEntries.length);
+          EW('7 STUB DISASM n='+expEntries.length);
         }catch(e2){reply.err='chain fault: '+String(e2&&e2.message?e2.message:'?');}
         break;
       }

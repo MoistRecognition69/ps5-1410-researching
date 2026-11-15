@@ -105,10 +105,17 @@ if (name === 'status') {
       case 'callret':
         cmd = { cmd: 'callret', addr: clean[1] }; break;
       case 'e2shot':
-        /* one-command E2 attempt: harvest -> match -> verifier ladder -> getpid.
-         * arg1 (optional): comma-separated failed bases to skip (hex)
+        /* one-command E2 attempt.
+         * arg1 starts with 0x: a REGISTRY-DERIVED base to verify directly
+         *   (v5 - the low-14 matching is dead, four sessions proved it)
+         * arg1 otherwise: comma-separated failed bases to skip (hex)
          * arg2 (optional): max candidates to try (default 4) */
-        cmd = { cmd: 'e2shot', skip: clean[1], maxcand: clean[2] || '4' }; break;
+        if (clean[1] && /^0x/i.test(clean[1])) {
+          cmd = { cmd: 'e2shot', base: clean[1], maxcand: clean[2] || '4' };
+        } else {
+          cmd = { cmd: 'e2shot', skip: clean[1], maxcand: clean[2] || '4' };
+        }
+        break;
       default:
         console.log(JSON.stringify({ err: 'unknown command: ' + name }));
         process.exit(1);

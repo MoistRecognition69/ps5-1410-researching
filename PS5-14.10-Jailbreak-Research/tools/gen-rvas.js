@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-/* gen-rvas.js — emit tools/ws-shell/rvas.js (the embedded libkernel RVA table
+/* gen-rvas.js — emit tools/ws-shell/rvas.js (the embedded the lk target RVA table
  * for the page-side e2shot command) from offsets/13.60.js */
 const fs = require('fs');
 const path = require('path');

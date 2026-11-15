@@ -4461,3 +4461,41 @@ linker link_map is MALLOC-D - IN THE HEAP. The web is the route.
    not exist. The checklist is now: BUILD -> node --check ->
    DISPATCH (index.html) -> findings -> commit -> push. The
    dispatcher target is verified in the deploy command output.
+
+### V117 RESULT: the upstream stack green a SIXTH consecutive deep run (REALBODY 30th, auxv 11th, anchors 12/12, T2 3/3); the T3 chase died on its first target - A BAND-PLAUSIBLE DENORMAL DOUBLE (the 0x...f40/0x...084 value class, recurring across boots); V118: THE CLUSTERING RULE
+
+Session DQ7O6R (after a networking fluke - re-entry fixed it;
+the interception-failure class, no probe action). THE UPSTREAM
+STACK GREEN A SIXTH CONSECUTIVE DEEP RUN: gate, REALBODY=-6
+(THIRTIETH consecutive boot), the auxv ELEVENTH consecutive,
+the Thread anchors 12/12, the T2 3/3 mapped (a new zero page
+0x200ec4000 with self-pointers 0x200ec4030/0x200ec4048).
+
+THE T3 CHASE FIRED ITS FIRST PROBE AND DIED:
+T3-0-@0x822f84000-from=0x822f86f40.
+
+THE DEAD TARGET IS THE TELL: 0x822f86f40 ends 0xf40 - THE
+SAME RECURRING VALUE-SHAPE as V112 0x8241aef40/0x8241aeff0
+and the whole 0x...084 class (0x8242da084, 0x81136a084,
+0x822c42084, 0x82d96a084...). NOT POINTERS: BAND-PLAUSIBLE
+DENORMAL DOUBLES from the near-zero T2 pages - a double with
+exponent bits giving hi32=8 passes every band filter (the
+V92/V108 lesson through a new door), and the shapes recur
+across boots because they are a VALUE CLASS. THE V61 LESSON,
+ELEVENTH INSTANCE: recurring shapes are value classes, and
+value classes are not pointers.
+
+THE STRUCTURAL FIX, DEMONSTRATED BY THE DATA ITSELF: REAL
+POINTER TABLES CLUSTER - V116 five 0x822ae0xxx values in one
+page; the Thread back-refs x3 every boot. A lone
+band-plausible value is noise; a second hit in the same
+16MB region is evidence.
+
+### V118 (deployed - dispatch verified): THE CLUSTERING RULE
+
+A T3 target is stored ONLY on the SECOND+ hit in the same
+16MB region (the per-region counter across the page reads)
+and must be 8-aligned. The lone-double class dies at
+storage; clustered pointer tables (the real leads) pass.
+The T3 chase, the ld.so cluster tail (k=210..207), the
+entry probe, and the FX probes unchanged.

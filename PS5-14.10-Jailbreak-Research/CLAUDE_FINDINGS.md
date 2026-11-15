@@ -5385,3 +5385,55 @@ remaining death-list entries. If none hit, dump export entries
 [64..128] for more death candidates (the drift-scaled thr_new
 estimate 0x2C0+0x1400*2.2 ~ 0x2F40 suggests the untested range
 may hold it).
+
+### SESSION 63 (the libc Rosetta stone found): the game lane libc_addrofs table gives libc INTERNAL OFFSETS - the deterministic libc-base route opens
+
+THE STACK-AUXV-CENSUS (fresh session, lk_base=0x82f804000, canary
+0x5a11061483bf5565 - the tenth):
+1. The stack dump at cfr captured THE AUXV: AT_PHDR=0x7ef973f10,
+   AT_PHENT=56, AT_PHNUM=14, AT_PAGESZ=0x4000, AT_ENTRY=0x765e4070
+   (the WebProcess.self main module!), AT_BASE=0x8765f4000 (the
+   interpreter), AT_RANDOM etc. The module path strings sit on the
+   stack too ("WebProcess.self").
+2. THE MODULE POINTER CLASSES (classified):
+   - WebKit text: 0x83c-0x83f (base 0x838a70000) [known]
+   - LIBKERNEL: the 0x82f8 class - 0x82f8791d0 = lk+0x751D0 =
+     &__stack_chk_guard (repeats ~10x on the stack = every canary
+     frame); 0x82f879101 = lk+0x75101; 0x82f870100 = lk+0x6C100
+     (near _thread_list); 0x82f823f5e = lk text (a live lk return!)
+   - MAIN MODULE (WebProcess.self): 0x765e8600/0x765e8630 (data/GOT
+     region pointers), AT_ENTRY 0x765e4070
+   - 0x800cc8ee0-0x800cc8f10 (sequential 0x10) - the page lead-in at
+     0x800cc8000 is UNMAPPED (the read died) - TLS/DTV-class pointers
+   - Interpreter: 0x8765f4000 (AT_BASE)
+   - 0x88-band pthread: 0x880964020 etc [known]
+
+THE ROSETTA STONE (from the game lane corpus, ALL_RESULTS ~line 24985):
+the loader libc_addrofs table (absolute, their boot libc=0x1EA93C000
+derived as gettimeofday_import 0x1EAA539A8 - 0x1179A8; CROSS-CHECKED
+against the 1213a boot: 0x1B4CEF9A8 - 0x1179A8 = 0x1B4BD8000 = the
+printed libc base - BOTH BOOTS AGREE):
+  error +0x168, sceKernelGetModuleInfoFromAddr +0x198, strerror
+  +0x366E0, Atomic_fetch_add_8 +0x37BF0, memcpy +0x42410, Thrd_join
+  +0x4C1C0, Thrd_exit +0x4C240, Thrd_create +0x4C3C0, Mtx_init
+  +0x4C650, Mtx_unlock +0x4C6E0, Mtx_lock +0x4C6F0, calloc +0x4CDB0,
+  setjmp +0xB0020, longjmp +0xB0070, gettimeofday_import slot
+  +0x1179A8 (IN THE IMPORT WINDOW +0x114000..0x118000).
+
+THE DETERMINISTIC LIBC-BASE ROUTE:
+1. Stack dump -> the main module data pointers (0x765e8600-class)
+2. Dump the main module GOT/data region (live, readable)
+3. Collect foreign pointers; for each P and each known offset F:
+   base = P - F; 16KB-aligned + MULTIPLE pointers agreeing = libc
+4. Read libc+0x114000..0x118000 = the import window (96 lk stub
+   pointers - the game lane 1213a harvest)
+5. NID-match: thr_new = t1BJfub8VdY#libkernel#libkernel (50 NID
+   strings banked in tools/nid-strings.json) - find the NID string
+   in libc readable data, match the slot, get thr_new's lk offset
+6. tw witness -> THREAD CREATION -> argument power
+
+THE 1213A HARVEST RECONCILED: the 96 offsets include 3B0 3F0 410
+B50 B70 D50 FF0 10F0 (8 verified live by +7-getpid) + THE BIG
+CLUSTER: 21 stubs at page 0x13000, 16 at 0x14000, 4 at 0x15000,
+11 at 0x16000 = 52 UNTESTED - almost certainly the thread-syscall
+region (libc imports all thr_*/umtx_* stubs for pthreads).

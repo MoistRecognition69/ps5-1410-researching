@@ -5268,3 +5268,37 @@ the session alive. The WebProcess leg is PROVEN.
 NEXT: the argument-power campaign (Stage 1) - stack pivot / ROP in
 the cage for multi-register calls, then KASLR leak (Stage 2), then
 the kernel bug trigger (Stage 3), then kernel R/W (Stage 4).
+
+### SESSION 60: the 13.60 WebKit gadget map is INVALID on 14.10 - the ret gadget at BASE+0xC7 killed the WebProcess
+
+THE NEGATIVE: the 13.60 wk_gadgetmap (ret=0xC7, pop rsp=0xA1138, etc.)
+does NOT work on 14.10. The WebKit module drifted between 13.60
+(WebKit-1200) and 14.10 (WebKit-1400). The ret gadget at BASE+0xC7
+killed the WebProcess instantly.
+
+THE CONSTRAINT SUMMARY (the argument-power problem):
+- RDI = fake scope (controlled), RSI = cfr (the live frame, NOT
+  controlled), RDX = executable pointer (NOT controlled), RAX =
+  LLInt leftover (NOT controlled).
+- The text is execute-only (BOTH WebKit and libkernel) - no
+  disassembly for gadgets.
+- The 13.60 gadget map is invalid (WebKit version drift).
+- thr_new takes TWO args (RDI=param, RSI=size) - RSI=cfr is the
+  blocker for all multi-arg syscalls.
+
+THE REMAINING ROUTES:
+1. THE WEBKIT SOURCE GADGET HUNT: use the WebKit-1400 source to
+   compute gadget addresses from the LLInt assembly. The source
+   has the nativeCallTrampoline, functionPrologue/Epilogue, etc.
+   The offlineasm compiler generates deterministic machine code.
+   But: the source does not directly give binary offsets.
+2. THE CALL-DIFFERENTIAL GADGET DISCOVERY: call candidate addresses
+   and observe behavior (survive/die/scope-change). A pop-rsp gadget
+   would pivot the stack (observable via the scope read). But this
+   is a blind sweep - the binding safety posture forbids it.
+3. THE EXPORT TABLE GADGET HUNT: the export table has 2092 entries
+   pointing to libkernel functions. Some might be useful gadgets.
+   But calling them blindly is the same safety problem.
+4. THE ONE-ARG SYSCALL CHAIN: use only zero/one-arg syscalls to
+   achieve the kernel leg. Limited but safe. The game lane's KASLR
+   methods all need multi-arg syscalls.

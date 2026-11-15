@@ -111,6 +111,11 @@ if (name === 'status') {
          * matching vs the game lane addrofs table -> libc base +
          * the 1213a import window (96 lk stub pointers). */
         cmd = { cmd: 'libc' }; break;
+      case 'xcl':
+        /* EXPORT CLUSTER DUMP: entries [from,to) of the lk export
+         * table - the 52-stub thread-syscall cluster (0x13000-
+         * 0x16000) = the tw lottery targets. Usage: xcl [from] [to] */
+        cmd = { cmd: 'xcl', from: clean[1] || '300', to: clean[2] || '500' }; break;
       case 'tw':
         /* THE THREAD WITNESS: thr_new candidate (export entry #arg)
          * called with a valid param (start=thr_self stub, stack=the

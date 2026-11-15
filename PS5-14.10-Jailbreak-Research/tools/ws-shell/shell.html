@@ -5338,7 +5338,7 @@ function _startWsShell(){
              * zero calls and zero probes). */
             ELs('single anchor reported (not probed): 0x'+B3.toString(16)+' ['+clist[ti].names.join(';')+'] dens='+clist[ti].density);
             continue;
-          }
+          }else{
             ELs('2+-anchor candidate accepted (witness deferred)');
             lkBase=B3;
             break;

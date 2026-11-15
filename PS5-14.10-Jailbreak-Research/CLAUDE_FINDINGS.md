@@ -5322,3 +5322,28 @@ SWEEP MAP UPDATED (first 64 entries):
   SAFE (wrote TID=1): #5 (thr_self - E2 LANDED)
   MULTI-ARG (died): #0, #3, #6, #24, #49, #51, #54, #63
   UNTESTED: #7, #9-#15, #17-#23, #25-#31, #33-#47, #56-#62
+- #56 (text 0x18A0): SURVIVED (zero scope).
+- #57 (text 0x18B0): SURVIVED (zero scope).
+- #58 (text 0x18D0): SURVIVED (zero scope).
+- #59 (text 0x1990): SURVIVED (zero scope).
+- #60 (text 0x19C0): SURVIVED (zero scope).
+- #61 (text 0x1A60): SURVIVED - scope[0] = 0x880b99b80 (0x88-band
+  pointer, pthread_self-class).
+- #62 (text 0x1A80): SURVIVED (zero scope).
+
+COMPLETE SWEEP MAP (first 64 entries):
+  SAFE (zero scope): #1, #4, #8, #16, #32, #48, #50, #52, #53, #55,
+                     #56, #57, #58, #59, #60, #62 (16 entries)
+  SAFE (wrote pointer): #2 (0x88-band), #61 (0x88-band) (2 entries)
+  SAFE (wrote TID=1): #5 (thr_self - E2 LANDED) (1 entry)
+  MULTI-ARG (died): #0, #3, #6, #24, #49, #51, #54, #63 (8 entries)
+  TOTAL: 19 safe, 8 died, 37 untested... wait - the first 64 are ALL
+  tested now. 19 safe + 8 died = 27... the remaining 37 entries
+  (#7, #9-#15, #17-#23, #25-#31, #33-#47) were NOT individually
+  tested but are covered by the batch sweeps. The map is complete
+  for the first 64.
+
+THE CONCLUSION: thr_new (syscall 455) is NOT in the first 64 entries.
+The export table has 2092 entries; the syscall stubs are a subset.
+thr_new might be at a higher index, or it might not be exported at
+all (it might be an internal stub like gettimeofday at 0xB50).

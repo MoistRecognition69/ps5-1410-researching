@@ -5124,7 +5124,12 @@ function _startWsShell(){
         var forcedBase=null;
         if(msg.base){try{forcedBase=BigInt(msg.base);}catch(e){reply.err='bad base';break;}}
         function EL(s){elog.push(s);try{bs('E2SHOT-'+s);}catch(e){}}
-        var hStart=S.BASE+0x7000000n,hLen=0x400000;
+        /* v8d: hLen capped at the PROVEN extent (0x354000). The full band
+         * [BASE+0x7000000, +0x7400000) was NEVER read to its end - every
+         * prior scan broke at the 64-value cap around bandoff 0x352000;
+         * the 512-harvest walked into the unproven tail and died twice
+         * (sessions 29-30, both mid-harvest, no further beacons). */
+        var hStart=S.BASE+0x7000000n,hLen=0x354000;
         var vals=[],seenE={};
         var cand={},clist=[];
         if(forcedBase){

@@ -5486,19 +5486,37 @@ function _startWsShell(){
            * Read the full table, dump {nid, text_rva} pairs for offline
            * matching against computed NIDs (thr_self = COc2Ua29+pI etc).
            * ALSO dump the export table at lk+0x48000 for cross-reference. */
-          var ntbl=B+0x6C000n;
+          /* v16b: WIDE SCAN - the game lane's data+0x3B58 was their
+           * firmware; 14.10's NID table may be elsewhere. Scan TWO regions:
+           * (1) the assumed data segment (lk+0x6C000..+0x6C000+0x8000)
+           * (2) the raw region past the export table (lk+0x4C000..+0x6C000)
+           * for ALL 0xFFFFxxxx entries with a plausible text RVA. */
           var nidEntries=[];
-          /* scan data+0x3800..data+0x4400 for ALL 0xFFFF-class entries */
-          for(var offN=0x3800;offN<0x4400;offN+=8){
+          /* Region 1: the assumed .data segment */
+          var ntbl=B+0x6C000n;
+          for(var offN=0x0;offN<0x8000;offN+=8){
             var eq=S.absRead(ntbl+BigInt(offN),8)[0];
             var nhi=Number(eq>>32n);
             var nlo=Number(eq&0xFFFFFFFFn);
-            if(nhi>=0xFFFF0000&&nhi<=0xFFFFFFFF&&nlo>0&&nlo<0x100000){
-              nidEntries.push({off:'0x'+offN.toString(16),nid:'0x'+nhi.toString(16).toUpperCase(),rva:'0x'+nlo.toString(16)});
+            if(nhi>=0xFFFF0000&&nhi<=0xFFFFFFFF&&nlo>=0x100&&nlo<0x100000){
+              nidEntries.push({region:'data',off:'0x'+offN.toString(16),nid:'0x'+nhi.toString(16).toUpperCase(),rva:'0x'+nlo.toString(16)});
+            }
+          }
+          EW('6a data-region NIDs n='+nidEntries.length);
+          /* Region 2: between the export table and the data segment */
+          var ntbl2=B+0x4C000n;
+          var n2=0;
+          for(var offN2=0x0;offN2<0x20000;offN2+=8){
+            var eq2=S.absRead(ntbl2+BigInt(offN2),8)[0];
+            var nhi2=Number(eq2>>32n);
+            var nlo2=Number(eq2&0xFFFFFFFFn);
+            if(nhi2>=0xFFFF0000&&nhi2<=0xFFFFFFFF&&nlo2>=0x100&&nlo2<0x100000){
+              nidEntries.push({region:'mid',off:'0x'+(0x4C000+offN2).toString(16),nid:'0x'+nhi2.toString(16).toUpperCase(),rva:'0x'+nlo2.toString(16)});
+              n2++;
             }
           }
           reply.nidTable=nidEntries;
-          EW('6 NID TABLE n='+nidEntries.length);
+          EW('6b mid-region NIDs n='+n2+' total='+nidEntries.length);
           /* ALSO: dump the export table entries [0..64) for cross-ref */
           var tbl=B+0x48000n;
           var expEntries=[];

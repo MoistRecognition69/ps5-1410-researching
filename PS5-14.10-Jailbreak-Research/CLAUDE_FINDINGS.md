@@ -4499,3 +4499,47 @@ and must be 8-aligned. The lone-double class dies at
 storage; clustered pointer tables (the real leads) pass.
 The T3 chase, the ld.so cluster tail (k=210..207), the
 entry probe, and the FX probes unchanged.
+
+### V118 RESULT: the clustering rule WORKED MECHANICALLY and WAS DEFEATED SEMANTICALLY - the doubles cluster BY CONSTRUCTION (two members of the same double array in one region; the 8-aligned 0x...ff0 member passed and its page killed the probe); THE FUNDAMENTAL AMBIGUITY: denormal doubles with exponent ~0x080 have hi32=8 - the same range as the heap pointer band; V119: THE THREAD-BAND GATE
+
+Session FVLXYR. THE UPSTREAM STACK GREEN A SEVENTH CONSECUTIVE
+DEEP RUN: gate, REALBODY=-6 (THIRTY-FIRST consecutive boot),
+the auxv TWELFTH consecutive, the T2 3/3 mapped.
+
+THE CLUSTERING RULE FIRED (two T3C targets stored) - AND WAS
+DEFEATED: the 0x81f region's two hits were 0x81f77a084 (the
+084-shape - killed by alignment) and 0x81f64eff0 - THE
+0x...ff0 SHAPE, 8-ALIGNED, THE SECOND MEMBER OF THE SAME
+DOUBLE ARRAY. THE DOUBLES CLUSTER BY CONSTRUCTION:
+consecutive array elements share a 16MB region. T3-0 read
+the double page (0x81f64c000) and died; the one SAFE stored
+target (0x8800d0020, the Thread back-ref) never got read.
+
+THE FUNDAMENTAL AMBIGUITY IS NOW EXPLICIT: any denormal
+double with exponent ~0x080 produces hi32=8 - THE SAME
+RANGE AS THE HEAP POINTER BAND. No syntactic filter
+separates the classes in general. THE FILTER STACK HAS
+REACHED ITS LIMIT: provenance, bands, low-32, alignment,
+clustering - all necessary, none sufficient. The remaining
+disambiguation is SEMANTIC (proven classes only) or
+INTERACTIVE (bulk dumps + host-side analysis).
+
+THE HONEST ASSESSMENT OF THE HEAP WEB: the corner the T2
+pages sample is CIRCULAR WITHIN KNOWN GROUND - Thread
+back-refs, heap self-refs, and doubles. No new-band pointer
+has appeared in any heap page read so far. The heap route
+needs either the link_map found by BULK exploration (the
+WebSocket shell: dump the heap, analyze host-side) or a
+proven-class target.
+
+### V119 (deployed - dispatch verified): THE THREAD-BAND GATE + the cluster tail gets the budget
+
+1. T3 targets must be in the PROVEN THREAD BAND
+   [0x880000000, 0x881000000) - 12/12 across boots, the one
+   region whose pages are evidence-backed. Everything else
+   is unverifiable by syntax and dies at storage.
+2. THE LD.SO CLUSTER TAIL IS NEXT IN LINE FOR THE DEATH
+   BUDGET: k=210 (+0x348000 - exactly where the
+   return-address evidence says text ends and data would
+   begin), then 209, 208, 207. Twice the T3 died before it;
+   now it fires right after the safe reads.

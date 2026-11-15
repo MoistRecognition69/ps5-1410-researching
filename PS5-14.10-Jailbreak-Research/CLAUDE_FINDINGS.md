@@ -5437,3 +5437,32 @@ B50 B70 D50 FF0 10F0 (8 verified live by +7-getpid) + THE BIG
 CLUSTER: 21 stubs at page 0x13000, 16 at 0x14000, 4 at 0x15000,
 11 at 0x16000 = 52 UNTESTED - almost certainly the thread-syscall
 region (libc imports all thr_*/umtx_* stubs for pthreads).
+
+### SESSION 65 (the module-map census): the registry decoded - WebKit's injected-bundle database (names, no bases); every module text is execute-only; the interpreter test is armed
+
+THE CENSUS RESULTS (this boot: lk=0x804960000 via the stack guard,
+20 companions - the lk-from-stack derivation works 3/3):
+1. THE REGISTRY (0x10001c8000, wide dump): WebKit's injected-bundle
+   database - records with inlined module NAME STRINGS and paths:
+   "/IR25iQHAAfj/common_ex/lib/libSceRenderNodeInjectionBundle.sprx",
+   "libSceRnpsNKInjectedBundle.sprx" (the iQHAAfj hash-dir explains
+   the stack strings from every boot). All pointers = WebKit vtables
+   (0x81e2-class) + cage objects. The {0x600000000, 0x800000007}
+   headers = WebKit array structures. NO kernel dynlib bases here.
+2. 0x10001cc000 (the record's pointer): the injected-bundle IMAGE
+   copy (ARM64-looking code blob) + WebKit wrapper tables + a big
+   cage-pointer table. One 0x802099180 outlier (an unclassifed
+   module pointer).
+3. THE ELIMINATIONS this session: the main module ENTRY page
+   (0x98ac000, contains AT_ENTRY - executed code) is EXECUTE-ONLY
+   (read death); the VM census values (0x80b-class) are transient
+   WTF state (this boot's VM head has none); deeper stack = zeros.
+
+THE ARMED TEST (libc v4): the interpreter (AT_BASE) might BE libc -
+the PS5 kernel reports an "interpreter" module (0x8098bc000,
+0x86f8e8000, 0x8374e8000 across boots - 16KB-aligned, module-class).
+THE ANCHOR: the game lane's gettimeofday import slot at libc+0x1179A8
+(2-boot-proven). libc v4: stack scan -> lk + atbase -> read
+atbase+0x1179A8 -> if the value lands in [lk, lk+0x100000) THE
+INTERPRETER IS LIBC -> dump the FULL import window [libc+0x114000,
++0x118000) -> all 96 stub offsets in one reply -> thr_new among them.

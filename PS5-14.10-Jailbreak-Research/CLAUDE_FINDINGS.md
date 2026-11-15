@@ -3313,3 +3313,32 @@ Under this predicate page 1 is noise-free (return addresses and
 JSValues fall out of every band); the stack fps cap raised to 24;
 the walk descends to the stack base where the pthread struct and
 its libc pointers live.
+
+### V92 RESULT: gate #11, REALBODY 9th consecutive boot - v2 silenced page 1 but filled on denormals; V93: the specific-band predicate
+
+Session V7GO8O. Gate #11, REALBODY=-6 (NINTH consecutive boot),
+the out-of-cage write (7th boot), zero deaths. THE PREDICATE v2
+WORKED HALFWAY: page 1 went silent (the module/JSValue noise
+eliminated) and the walk descended - but filled the 24-cap by page
+5 with NEW noise, decoded:
+- errno-like negative ints (0xfffffff9/0xffffffff/0xfffffff1 =
+  -7/-1/-15)
+- 0x4000000X flag-shaped values
+- IEEE DENORMALS: 0xefa4e2a0 = the LOW HALF OF OUR OWN STACK
+  ADDRESS (0x7efa4e2a0) stored as an unboxed JS double; the JS
+  numeric locals on the LLInt stack land in the generic hi=0/hi=1
+  bands. 0x1efa52420 = a denormal in the hi=1 band.
+Generic value ranges cannot distinguish real sub-4GB module
+pointers from denormal doubles - the bands must be the SPECIFIC
+measured module bands.
+
+### V93 (deployed): the specific-band predicate (v3) + the 96-page walk
+
+The bands become the measured module map (the parallel dynlib
+records): libc [0xF5000000,0xF7000000) (libc.prx 0xF5F74000),
+boot.bin [0x6B000000,0x70000000) (0x6BEE8000), the Fios2-class
+hi===1 && [0x80000000,0xE0000000) (0x1BCC40000), libkernel
+unchanged (below our base in our hi-band). The denormals, errnos,
+and flags all fall outside. The walk extends to 96 pages to reach
+the actual stack base - the pthread struct and its
+entry-function pointers are the prize.

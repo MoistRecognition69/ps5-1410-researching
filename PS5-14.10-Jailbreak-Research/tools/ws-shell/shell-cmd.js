@@ -104,6 +104,13 @@ if (name === 'status') {
         cmd = { cmd: 'call', addr: clean[1] }; break;
       case 'callret':
         cmd = { cmd: 'callret', addr: clean[1] }; break;
+      case 'rawcall':
+        /* decode-immune call: redirects, calls, DISCARDS the return
+         * untouched (raw returns crash the JSValue engine at first touch),
+         * restores, and reports the fake scope's first 0x20 bytes - the
+         * memory side-channel. Use on TRUE function entries only
+         * (imported wrappers - never mid-instruction guesses). */
+        cmd = { cmd: 'rawcall', addr: clean[1] }; break;
       case 'e2shot':
         /* one-command E2 attempt.
          * arg1 starts with 0x: a REGISTRY-DERIVED base to verify directly

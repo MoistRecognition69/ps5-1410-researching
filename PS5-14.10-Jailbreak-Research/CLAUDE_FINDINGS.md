@@ -5582,3 +5582,27 @@ were instant = the RSI/cfr write class).
 THE NEXT CANDIDATE: 0x3A0 (#7 - NEVER CALLED in any sweep, the
 pos-207 setcontext-consistent region between thr_self 0x2C0 and
 the 0x3B0 writer). twr 0x3A0 fires next.
+
+### SESSION 71 (the raw-stub grid): 0x3A0 eliminated (writer) - the export table MIXES raw stubs and SDK wrappers; thr_create hides in the 0x20-grid GAPS between the confirmed raw stubs
+
+THE ELIMINATION: 0x3A0 (export #7, never called before) died with
+the correct survivable ctx = a writer. ALL the export-wrapper
+candidates in the thr region are now eliminated (0x130, 0x230,
+0x3A0, 0x3B0).
+
+THE STRUCTURE RESOLVED: the export table mixes RAW STUBS (0x20
+bytes: mov eax,imm; syscall; ret - the +7 test verifies) and SDK
+WRAPPERS (bigger, argument-transforming). The confirmed raw stubs:
+0x2C0 (thr_self, export #5!), 0x3F0 (thr_exit, NOT an export),
+0x410 (thr_new, export #8) - and thr_exit/thr_new are ADJACENT
+(0x20 apart) despite 57 positions apart in 13.60: the 14.10 raw
+stub layout is COMPRESSED.
+
+THE 1213a TRUNCATION: the histogram says page-0 has SEVEN libc-
+imported stubs but the print line showed only THREE (3B0, 3F0,
+410) - FOUR MORE page-0 raw stubs were cut from the print. These
++ the gap grid = the thr_create candidates:
+  0x2E0, 0x300, 0x320 (the thr_self->wrapper#6 gap)
+  0x3D0 (the 0x3B0->0x3F0 gap)
+  0x430, 0x450 (the thr_new->wrapper#9 gap)
+Each twc shot: the tid witness (thr_create!) / EINVAL / death.

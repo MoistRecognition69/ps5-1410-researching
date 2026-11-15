@@ -52,7 +52,7 @@ function requestHandler(req, res) {
    * same origin works flawlessly (every beacon proves it). The command
    * loop rides the same rails: GET /nextcmd -> execute -> POST /shellresult. */
   if (req.method === 'GET' && req.url.startsWith('/nextcmd')) {
-    if (!pollModeSeen) { pollModeSeen = true; console.log('\n\x1b[32m*** PS5 WebProcess connected (XHR POLL MODE) ***\x1b[0m'); }
+    if (!pollModeSeen) { pollModeSeen = true; console.log('\n\x1b[32m*** PS5 WebProcess connected (XHR POLL MODE) ***\x1b[0m'); startCLI(); }   /* the ready handshake may have gone to a previous server process - the first poll also starts the CLI */
     let body = '{"wait":1}';
     if (cmdQueue.length > 0) body = JSON.stringify(cmdQueue.shift());
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
@@ -260,7 +260,7 @@ function startCLI() {
             break;
 
           case 'read': case 'r': {
-            const r = await sendCmd({ cmd: 'read', addr: parts[1], len: parts[2] || '0x80' });
+            const r = await sendCmd({ cmd: 'read', addr: parts[1], len: parts[2] || '0x80', force: parts.includes('force') || undefined });
             hexDump(r);
             break;
           }
@@ -270,7 +270,7 @@ function startCLI() {
             break;
           }
           case 'dump': case 'd': {
-            const r = await sendCmd({ cmd: 'dump', addr: parts[1], len: parts[2] || '0x100' });
+            const r = await sendCmd({ cmd: 'dump', addr: parts[1], len: parts[2] || '0x100', force: parts.includes('force') || undefined });
             hexDump(r);
             break;
           }
@@ -280,13 +280,15 @@ function startCLI() {
             break;
           }
           case 'scan': case 's': {
-            const r = await sendCmd({ cmd: 'scan', start: parts[1], len: parts[2], pattern: parts[3] || 'elf' }, 120000);
+            const pat = (parts[3] === 'force' ? 'elf' : (parts[3] || 'elf'));
+            const r = await sendCmd({ cmd: 'scan', start: parts[1], len: parts[2], pattern: (parts.includes('force') && parts[3] === 'force') ? 'elf' : (parts[3] === 'force' ? parts[4] || 'elf' : parts[3] || 'elf'), force: parts.includes('force') || undefined }, 120000);
             if (r && r.hits && r.hits.length) r.hits.forEach(h => console.log(`  \x1b[32m${h.addr}\x1b[0m: ${h.desc}`));
             else console.log(r && r.err ? r.err : 'No hits');
             break;
           }
           case 'deref': {
-            const r = await sendCmd({ cmd: 'deref', addr: parts[1], depth: parts[2] || '2' }, 60000);
+            const dp = (parts[2] === 'force') ? '2' : parts[2];
+            const r = await sendCmd({ cmd: 'deref', addr: parts[1], depth: dp || '2', force: parts.includes('force') || undefined }, 60000);
             printChain(r);
             break;
           }
@@ -297,7 +299,7 @@ function startCLI() {
             break;
           }
           case 'modules': {
-            const r = await sendCmd({ cmd: 'modules' }, 120000);
+            const r = await sendCmd({ cmd: 'modules', force: parts.includes('force') || undefined }, 120000);
             if (r && r.modules && r.modules.length) r.modules.forEach(m => console.log(`  \x1b[32m${m.base}\x1b[0m  ${m.name || ''}`));
             else console.log(r && r.err ? r.err : 'No modules found');
             break;

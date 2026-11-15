@@ -4606,3 +4606,44 @@ atbase+0x4000..+0x20000 one page-command at a time with
 instant feedback (the question that cost 6 probe-boots);
 (3) heap corner dumps - disambiguate the doubles HOST-SIDE;
 (4) the anchor/Thread pages on demand.
+
+### THE FIRST INTERACTIVE SHELL SESSION (the 35th core) - auxv=0x82028c000 from the auto-stage; THE LD.SO BODY QUESTION ANSWERED IN ONE COMMAND: atbase+0x4000 IS DEAD - the vicinity route CLOSED; next: THE EXECUTABLE ROUTE (AT_ENTRY, the .got)
+
+THE FIRST INTERACTIVE SESSION (poll mode after the WS 1006):
+the pipeline green (REALBODY=-6, the 35th consecutive core),
+PC control YES, the full state exported (BASE=0x8298f8000,
+cfr=0x7ef65e220, jfuTop=0x10008e0400, lowB=0x10001603a0),
+the Thread structure confirmed live (0x10001f4000: stack top
+0x7ef660000, cfr ~7.6KB below it). THE SHELL WORKS: commands
+flow, the V61 gate fires (the force flag needed a CLI-side
+fix - forwarded now on read/dump/scan/deref/modules), the
+session evidence log captures every command and result.
+
+THE LD.SO BODY QUESTION, ANSWERED INTERACTIVELY IN ONE
+COMMAND: read 0x820290000 (=atbase+0x4000) 0x4000 force ->
+DEATH. The presumably-readable-data-body hypothesis died on
+its FIRST page - interactively, in thirty seconds, at the
+cost of a guide re-entry (not a reboot). THE LD.SO VICINITY
+IS NOW A FULLY-MAPPED DEAD ZONE: header +0x0 dead (V113),
++0x4000 dead (THIS SESSION), +0x24000 dead (V116x2),
++0x28000 dead (V115), +0x30000 dead (V105), text cluster
+[+0x304000,+0x348000) XO (V114 residue + V119 k=210 past-end
+death). THE LD.SO-AT-VICINITY ROUTE IS CLOSED - seven
+probe-boots and one interactive command, and the shell
+answered in one what the probes spent four boots attempting.
+
+MINOR BUGS FIXED IN-SESSION: the auxv command backward-walk
+bug (decode-from-terminator = empty entries; the auto-stage
+decode remains correct - AT_BASE/AT_ENTRY extracted from the
+session log); the CLI force-flag forwarding; the poll-mode
+CLI restart after a server process change.
+
+### NEXT: THE EXECUTABLE ROUTE
+
+AT_ENTRY (0x2027c070 this boot, hi=2 - the NKWebProcess.self
+band): the executable .got holds the RESOLVED IMPORTS - the
+same prize ld.so data would have carried. The external
+corpus: the game-lane eboot text is READABLE - if the
+WebProcess executable is similar, the module is WALKABLE
+from the entry: probe the entry page (one gamble), then
+page-walk upward with instant feedback toward the data band.

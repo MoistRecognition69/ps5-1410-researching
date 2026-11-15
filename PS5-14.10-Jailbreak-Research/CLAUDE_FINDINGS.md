@@ -4874,3 +4874,33 @@ NEXT: re-derive the entry (2 reads) -> arena head -> read the GROUP
 OBJECTS (0x819c484d0/0x819e316f0-class, native heap, force) ->
 hunt module-band values (bases, init arrays, size+base segment
 pairs) -> e2shot 0x<base> for the gettimeofday witness.
+
+### THE SHELL SESSION 19: THE CHUNK WALK CLOSED (the group objects are MALLOC FREE-LIST ENTRIES - freed chunks, reading them is fatal 2/2) - THE MEM-WARNING DIALOG RECLASSIFIED (generic WebProcess-crash text) - THE NEXT TARGETS: THE ENTRY CAGE STRUCTURES + THE RTLD STACK FRAMES
+
+THE GROUP-OBJECT READS: 2/2 FATAL (session 8: 0x824abdf60; session
+19: 0x803291f60) vs 6/6 arena-read successes. THE DECODE: the arena
+groups {node, node, OBJ, class, size, 0} with sizes -0x10/-0x20 are
+MALLOC FREE-LIST ENTRIES - the OBJ pointers are FREED chunk
+addresses, partly unmapped. Reading freed memory = SIGSEGV. The
+arena object is ALLOCATOR METADATA (plus the boot-stable {init,fini}
+pair 0x80d87d230 x2 this boot - the module text band). THE CHUNK
+WALK IS CLOSED.
+
+THE MEM-WARNING DIALOG RECLASSIFIED: the PS5 dialog text is likely
+GENERIC for any WebProcess crash - the e2shot bad-candidate calls
+(SIGSEGV at wrong addresses), the GOT-region read (measured-dead),
+the freed-chunk reads - all real faults, one dialog. The "watchdog
+fuse" model is RETIRED; deaths are OUR faults (or true OOM, rare).
+
+THE REMAINING SAFE ROUTES TO THE BASE:
+(1) THE ENTRY CAGE STRUCTURES: the registry entry holds six UNREAD
+in-band ptrs (0x10001f4528-class) + the +0xa0 target 0x10001cc000
+- name objects, segment info, possibly the base. IN-BAND, ZERO
+RISK, NEVER READ.
+(2) THE RTLD STACK FRAMES: rtld ran before main; its activation
+records sit BELOW the auxv on the main-thread stack - still
+mapped, never scanned. Those frames hold link_map/Obj_Entry
+pointers and literal BASE VALUES. ptrscan the stack for module-band
+values; filter 16KB-aligned offline = candidate bases; follow
+link_map-class pointers into the native heap (the sbrk bands are
+proven readable).

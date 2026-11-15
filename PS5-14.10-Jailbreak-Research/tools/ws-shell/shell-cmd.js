@@ -120,6 +120,12 @@ if (name === 'status') {
          * arg2 (optional): max candidates to try (default 4) */
         if (clean[1] === 'scan') {
           cmd = { cmd: 'e2shot', scanonly: '1', maxcand: '1' };
+        } else if (clean[1] === 'sweep') {
+          /* harvest -> auto-pick tight clusters -> rawcall every member,
+           * scope-check banked on sync beacons (deaths lose only the
+           * remaining members). A time-class wrapper writes the wall
+           * clock into the pre-zeroed fake scope = THE WITNESS. */
+          cmd = { cmd: 'e2shot', sweep: '1', maxcand: '1' };
         } else if (clean[1] && /^0x/i.test(clean[1])) {
           cmd = { cmd: 'e2shot', base: clean[1], maxcand: clean[2] || '4' };
         } else {

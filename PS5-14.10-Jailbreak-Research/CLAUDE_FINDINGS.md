@@ -3237,3 +3237,43 @@ WITNESSES:
   V91-VMWIN-FP-@+0xNNN=0x...          <- foreign pointers in the VM
   V91-STK-FP-Pn-@0x...=0x...          <- foreign pointers on the stack
   V91-STK-DONE / or a cutoff = the stack base banked
+
+### EXTERNAL INTEL (ZigZagBoi1, 2026-11-14 22:28): THE PARALLEL EFFORT HAS RIP CONTROL
+
+Their p691-rip-control: a forged CSSFontFaceSet::Client vtable in
+the spray buffer (all slots = a computed ret gadget at s0-1),
+triggered via the JS face.family setter -> fontPropertyChanged
+(the s4 slot). CONFIRMED by a 0x42 crash test (crash address = the
+written PC) + a ret-gadget clean return.
+
+THE MECHANISM (different from ours, same bug):
+- Trigger path: face.family setter -> fontPropertyChanged -> the
+  forged client vtable - a SECOND JS-reachable C++ virtual dispatch
+  on the FontFace bug surface (ours: NativeExecutable m_function
+  through the LLInt trampoline). Banked as a redundancy route and
+  submission-completeness evidence.
+- Their RIP route: RDI = the forged object pointer (fixed buffer);
+  single-shot; the CSS-engine state is corrupted (no restoration).
+  OURS: restorable, repeatable, counterfactually verified without
+  crashing (the V65 impossible-return witness), 6+ boots.
+- Their fix discoveries worth recording: (1) the oracle prerequisite
+  (status=0/Loading + m_ranges.size=1 before the SELF scan - broken
+  for their 20+ runs); (2) PRE-FAULTING 8000 iso-heap buffers so the
+  SELF scan does not crash on unmapped memory (a technique relevant
+  to our scan eras); (3) K=1024 spray for coverage; (4) a
+  crash-free SELF scan alternative (dc6811d).
+- Their next step per STATE.md: find_stack_pivot_gadget_for_rop_chain
+  - the classic ROP route.
+
+CAPABILITY COMPARISON (our terms): they are at ~our V65 era (RIP
+control, no arbitrary R/W, no scope control, no return decoding, no
+calibration). WE retain the full sustained-execution bridge: fake
+scope (RDI controlled, any buffer), VM calibrated (topCallFrame
+@+0x9ce8), out-of-cage write (5 boots), REALBODY=-6 (7 consecutive
+boots), the whole chain restorable and re-banked each run.
+
+CROSS-VALIDATION: their s3-s0 delta (0x80af916b0-0x80af90fb0 =
+0x700) matches ours exactly - second independent confirmation of
+the vtable structure. Their VP low-12 = 0xB28 = ours (their VP is
+the Client SECONDARY vtable - a different table from our primary
+FontFace vtable; both at +0xB28 page offsets in the rodata band).

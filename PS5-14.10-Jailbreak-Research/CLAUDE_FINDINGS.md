@@ -5466,3 +5466,31 @@ THE ANCHOR: the game lane's gettimeofday import slot at libc+0x1179A8
 atbase+0x1179A8 -> if the value lands in [lk, lk+0x100000) THE
 INTERPRETER IS LIBC -> dump the FULL import window [libc+0x114000,
 +0x118000) -> all 96 stub offsets in one reply -> thr_new among them.
+
+### SESSION 66 (the triangulation closes): #20 = a multi-arg writer (the 13.60 neighbor sys 477) -> #21 (0xA30) = thr_new
+
+THE ELIMINATIONS + TRIANGULATION:
+- nap 17 (0x8B0): 21ms gap, instant return, scope untouched - NOT
+  nanosleep (harmless though - a proven-safe instant stub)
+- nap 18 (0x940): 20ms gap - NOT nanosleep. Nanosleep (13.60 pos
+  266 -> interpolated 0x8ED) is an INTERNAL stub (between #17/#18,
+  never exported - like gettimeofday at 0xB50)
+- umtx_op: the PS5 form is 5-ARG (obj,op,val,uaddr1,uaddr2 - op in
+  RSI = cfr -> EINVAL) - the one-arg park DOES NOT EXIST for it
+- tw 20 (0xA10): TW-9 CALLING then instant death - the parent died
+  AT the call = the multi-arg writer class. The 13.60 pos mapping:
+  #20 = pos 290 = sys 477 (a multi-arg writer - CONSISTENT with
+  the death!) -> **#21 (0xA30) = pos 291 = thr_new (455)**
+
+THE ANCHOR TABLE (all consistent):
+  pos 134 (thr_self) -> #5 (0x2C0) E2-CONFIRMED
+  pos 290 (sys 477, multi-arg writer) -> #20 (0xA10) DEATH-CONFIRMED
+  pos 291 (thr_new 455) -> #21 (0xA30) THE NEXT TARGET
+  pos 317 (gettimeofday) -> 0xB50 NAMED-IMPORT-CONFIRMED
+
+THE TW v2.5 (pushed): start_func = the #16 stub (0x7A0, proven
+harmless instant), the 12KB scope-page sled (1536 entries, the
+fill completed in 23ms - committed page confirmed), the witness
+beacon FIRST (tid values in the beacon string) before restore+reply.
+The child spin (~1.5ms) covers the beacon race.
+NEXT SESSION: tw 21.

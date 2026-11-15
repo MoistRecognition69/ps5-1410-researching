@@ -3440,3 +3440,40 @@ to cage-band qwords from a window dump).
 The parents are gated to the KNOWN-MAPPED heap band
 [lowB, view_end); progress beacons every 10 parents (a death
 localizes to the parent range); everything else unchanged.
+
+### V96 RESULT: gate #14, REALBODY 12th consecutive boot - the gated deref COMPLETED (the V61 gate held); 4 hits = all stack bounds (predicate bug); THE THREAD-STRUCTURE LEAD; V97: depth 2
+
+Session 346MY0. All green: gate #14, REALBODY=-6 (TWELFTH
+consecutive boot), the out-of-cage write (10th boot). THE GATED
+DEREF COMPLETED: 100 parents chased, ZERO deaths - the V61 gate
+held. 4 foreign-classified hits with full parent chains:
+
+```
+V96-FP-p22-@VM+0x248-via0x1000300000-q4=0x7ef968000
+V96-FP-p50-@VM+0x4a8-via0x10001f4000-q2=0x7efb48000
+V96-FP-p50-@VM+0x4a8-via0x10001f4000-q3=0x7ef948000
+V96-FP-p50-@VM+0x4a8-via0x10001f4000-q12=0x7efb48000
+```
+
+ALL FOUR ARE STACK-BAND POINTERS (hi=7, page-aligned) - not
+foreign module pointers. My predicate documented "not stack" but
+never coded the exclusion. ZERO COST this time (no death - the
+hits were just misclassified).
+
+THE REAL LEAD: the parent chain VM+0x4a8 -> 0x10001f4000 ->
+{0x7efb48000, 0x7ef948000} is a cage object holding a THREAD
+STACK BOUNDS PAIR (top/base, 2MB span = the pthread default) -
+the WTF::Thread structure. The pthread start_routine and cleanup
+handlers (libc/libkernel code pointers) live at DEPTH 2:
+Thread object -> pthread handle (another cage object) -> struct
+pthread. V96 established: DEPTH 1 contains self-pointers, stack
+bounds, and module pointers - no foreign module pointers.
+
+### V97 (deployed): the stack-band exclusion + the DEPTH-2 deref
+
+1. hi===7 excluded from the predicate (the stack band).
+2. The hunt extends to depth 2: deref each parent, collect the
+   V61-gated cage children (cap 16 per parent), deref those,
+   classify - the struct pthread targets light up at depth 2.
+   Progress beacons every 25 parents; the hit beacons carry the
+   FULL 2-level chain (parent -> child -> qword).

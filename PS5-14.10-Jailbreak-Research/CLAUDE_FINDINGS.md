@@ -3504,3 +3504,50 @@ safe mapper either way.
 The up-walk ceiling: 0x1000900000 -> 0x1000A00000 (the ~49-chunk
 walk stays within the 80-chunk cap; a death banks the heap-top
 boundary). The depth-2 deref hunt re-arms once the JF/G return.
+
+### V98 RESULT: gate #15, REALBODY 13th consecutive boot - THE DEPTH-2 DEREF FOUND THE FIRST FOREIGN-BAND POINTERS IN THE WEBPROCESS
+
+Session ADAQRU. All green: gate #15, REALBODY=-6 (THIRTEENTH
+consecutive boot), the out-of-cage write (11th boot). The JF at
+0x1000707620 (the low band returned this boot); the calibration
+flaked but the preflight validated in-fire as always. THE DEPTH-2
+DEREF COMPLETED: 512 depth-2 derefs across 100 parents, ZERO
+deaths, 4 foreign-band hits:
+
+```
+V98-FP-p5-@VM+0x158-via0x10003c0608-q6=0x100840017           (depth 1)
+V98-FP2-p52-k3-via0x1000200118->0x10003c0608-q6=0x100840017   (depth 2)
+V98-FP2-p65-k3-via0x1000200118->0x10003c0608-q6=0x100840017   (depth 2 - third chain)
+V98-FP2-p68-k9-via0x1000202868->0x100095eaa0-q11=0x101000000 (depth 2)
+```
+
+THE TWO VALUES:
+1. 0x100840017 (hi32=1, lo32=0x00840017) - MID-FUNCTION-SHAPED,
+   in the 4-8GB foreign band. Found at the SAME field (+0x30 =
+   q6) of the SAME object (0x10003c0608) through THREE
+   independent parent chains (VM+0x158, VM+0x118->child, and
+   again) - a consistent, structural field of a real object.
+2. 0x101000000 (hi32=1, lo32=0x01000000) - EXACTLY PAGE-ALIGNED -
+   a mapped-base-shaped address, reachable from VM+0x2868 via
+   0x100095eaa0 at +0x58.
+
+BOTH ARE IN THE hi32=1 BAND (4-8GB) - the band the parallel
+efforts game-process measurements assign to system modules
+(their libSceFios2 at 0x1BCC40000 = hi=1). THE WEBPROCESSS
+FOREIGN MODULES LIVE THERE TOO - at different offsets, as the
+V94 negative predicted.
+
+### V99 (deployed): THE READ-AROUND - validate the foreign pointers
+
+1. Read 0x80 bytes at 0x101000000 (the page-aligned base
+   candidate): ELF magic (\x7fELF) or code patterns confirm a
+   module mapping; an unmapped read dies and banks the boundary.
+   PRE-beaconed.
+2. Read 0x80 bytes at (0x100840017 & ~0xFFF) = 0x100840000 (the
+   page below the mid-function candidate): same check.
+3. If either shows mapped data: dump 0x100 bytes, classify every
+   qword (module band? cage? string data?), and walk the parent
+   chains BACKWARD to identify the containing objects.
+4. An ELF header at either address = the module base = the
+   dynamic-symbol walk (the V83 design, pointed at the RIGHT
+   address this time) = the import library.

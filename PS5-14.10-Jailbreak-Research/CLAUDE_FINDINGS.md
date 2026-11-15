@@ -5201,3 +5201,14 @@ THE SWEEP LOG:
   or similar. callret DIED (the JSValue encoding crash - raw kernel
   return is not a valid JSValue; String() on it kills the engine).
   CONFIRMED: entry #8 is a SAFE CALL TARGET at lk_base + 0x410.
+- #16 (text 0x7A0): SURVIVED rawcall (scope all zeros).
+- #32 (text 0xD80): SURVIVED rawcall (scope all zeros).
+- #48 (text 0x15A0): SURVIVED rawcall (scope all zeros).
+- #24 (text 0xB10): multi-arg writer, session died.
+
+SWEEP MAP SO FAR (first 64 entries):
+  SAFE (zero scope): #8, #16, #32, #48
+  MULTI-ARG (died): #0, #24, #63
+  All survivors wrote NOTHING to the scope - they are zero/one-arg
+  functions that do NOT write to RDI. thr_self writes the TID to RDI,
+  so the target entry must leave a NON-ZERO value in scope[0].

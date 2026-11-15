@@ -5224,3 +5224,16 @@ SWEEP MAP UPDATED (first 64 entries):
   SAFE (zero scope): #1, #8, #16, #32, #48
   SAFE (wrote pointer): #2 (scope0 = 0x88-band pointer)
   MULTI-ARG (died): #0, #3, #24, #63
+- #4 (text 0x230): SURVIVED rawcall (scope all zeros).
+- #5 (text 0x2C0): SURVIVED rawcall - scope[0] = 0x1 !!! A SMALL
+  INTEGER WRITE THROUGH RDI. This is the thr_self signature:
+  thr_self(int *tid) writes *tid = curthread->td_tid. For the main
+  thread of a WebProcess, the TID is typically 1. The function
+  SURVIVED (no second argument to corrupt the frame) and WROTE a
+  small integer to RDI = the fake scope. THIS IS VERY LIKELY thr_self.
+- #6 (text 0x340): multi-arg writer, session died at the call moment.
+
+THE CANDIDATE: entry #5 (text 0x2C0) at lk_base + 0x2C0.
+VERIFICATION NEEDED: call again on a fresh session - if scope[0]
+is consistently 0x1, it is thr_self (main thread TID = 1) or a
+constant-return function. If it varies, it is something else.

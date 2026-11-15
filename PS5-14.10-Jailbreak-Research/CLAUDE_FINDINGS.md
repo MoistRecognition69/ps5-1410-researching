@@ -5002,3 +5002,37 @@ probe IS the test, one candidate per session).
 NEXT: v8i run - if the 448-cap catches the guard anchor, the whole
 chain completes in one shot: canary -> RVA banking -> drift vote ->
 the drift-corrected gettimeofday witness -> E2.
+
+### THE CONSOLE-LEVEL CRASH (session 47, the sweep era): THE WHOLE-SYSTEM BLAST RADIUS EVENT - RECOVERED VIA REBUILD DATABASE
+
+THE EVENT: during the first rawcall sweep run, the CONSOLE ITSELF
+died (not the WebProcess - the system: unclean shutdown, dirty
+filesystem, repair screen at next boot, LOW-RESOLUTION SAFE MODE).
+Recovery: Rebuild Database (non-destructive) -> clean boot to home.
+Games/saves intact.
+
+THE TRAIL AT THE MOMENT OF DEATH: sweep armed -> "rc 0x800000000
+[1]" -> nothing. The sweep's cluster picker had classified the
+CONSTANT NOISE BAND (0x800000000-class tags) as a tight cluster and
+the first call jumped to unmapped 0x800000000 - an ordinary userland
+SIGSEGV (the ~51st), which SHOULD end in a clean WebProcess
+teardown. The console-level death means something beyond that fault
+cascaded - candidates: (a) a kernel panic from one of the session-46
+rawcalls (unknown foreign functions called with garbage args - one
+clean errno return, one session-fatal), (b) the accumulated system
+stress of ~50 mem-warning WebProcess deaths over hours, (c) an
+unrelated hardware/filesystem fault. NOT DISTINGUISHABLE from the
+evidence; recorded honestly.
+
+THE POSTURE CHANGE (binding):
+1. NO MORE BLIND SWEEPS - no calling unknown functions. Any call
+   goes only to INDIVIDUALLY IDENTIFIED targets with known
+   argument semantics.
+2. The safe arsenal: all READ-ONLY derivations (harvests, scans,
+   string regions, the reflection-table quads, the canary path).
+3. Cold power cycle every ~10 sessions (system pressure hygiene).
+4. The identification route WITHOUT calling: the readable rodata
+   (the name strings - proven readable) + the named quads
+   {name_ptr, tag, fn_ptr, 0} - a name->pointer pair found in
+   readable memory identifies a function explicitly; only then
+   does a single calculated rawcall happen.

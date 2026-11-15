@@ -5036,3 +5036,53 @@ THE POSTURE CHANGE (binding):
    {name_ptr, tag, fn_ptr, 0} - a name->pointer pair found in
    readable memory identifies a function explicitly; only then
    does a single calculated rawcall happen.
+
+### THE E2SHOT CAMPAIGN (sessions 24-48, the consolidated record): TWO CANARY-CONFIRMED BASES - THE TEXT DRIFT - THE CONSOLE-CRASH BOUNDARY - THE v12 FREE-LOTTERY BUILD
+
+THE INSTRUMENT EVOLUTION (all committed): e2shot = the one-command
+E2 attempt, in-page, sync-beaconed at every stage. v5 base-override;
+v6 sparse anchors + canary verification; v7/v8 the drift machinery
+(pair-deltas -> full-table drift vote, deferred witness); v8i-m/n
+the harvest calibration (empty-chunk exit, table-started arming);
+v8o the 0x390000 hard floor (the boundary is a stable three-session
+floor); v9 scanonly census; v10 the rawcall sweep (BANNED after
+the console crash); v11 the exit-proof census; v12 the free-lottery
+build (census rides every reply, single anchors reported not
+probed, witness only on canary+2-vote consensus).
+
+THE PROVEN FACTS:
+- THE CANARY VERIFICATION WORKS: sessions 25/26 - guard pointers
+  harvested, canaries read (0x4b0fffa9f9b6c7b7, 0xcd3d5b7f41eb2dc6 -
+  textbook random), bases CONFIRMED (0x826e18000, 0x81a064000).
+- THE 13.60 DATA OFFSET IS EXACT ON 14.10 (the guard at +0x751D0
+  both times). THE TEXT DRIFTED (the tv-syscall call at +0x1B840
+  crashed both confirmed sessions).
+- THE RAWCALL PRIMITIVE WORKS (session 46: verified restore, clean
+  scope, one call returned an errno safely); the second call died -
+  per-call risk real. THE SWEEP caused a WHOLE-CONSOLE CRASH
+  (session 47: unclean shutdown, repair screen, recovered via
+  Rebuild Database; the sweep's first target was the constant band
+  0x800000000 - unmapped - plus unknown garbage-arg calls; kernel
+  panic not distinguishable from accumulated stress). POSTURE: no
+  blind calls, identified targets only.
+- THE IMPORT TABLE: position/size/population varies per session
+  (14 to 1022 values); the guard anchor appeared in 2 of ~15
+  sessions; the table is hash-ordered or lazily populated.
+- THE CENSUS (session 48, 940 values, full band): ~13 foreign
+  clusters; the STABLE 14-value and 9-value tight clusters
+  (identical delta signatures across sessions - the same import
+  sets); best 13.60-map signature match 10/14 (non-uniform drift);
+  ZERO pthread delta chains; NO guard pointer; two sparse anchors
+  (both known false generators).
+
+THE RETIRED METHODS (all evidence-backed): low-14 wrapper matching
+(dense residues - 4 dead sessions); derived-guard probes (one
+false candidate per session, ~15% true odds); cluster density
+(cannot discriminate module identity); blind sweeps (console
+crash); the timing theory (table population stochastic, not
+age-dependent).
+
+THE OPEN FRONT: a canary-confirmed session with its census in the
+same reply (v12 achieves the pairing when the guard anchor lands).
+With base+census: the cluster RVAs = the 14.10 drift structure, the
+drift vote runs, and the ONE identified witness call fires.

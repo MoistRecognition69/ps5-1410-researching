@@ -5517,19 +5517,8 @@ function _startWsShell(){
             expEntries.push({idx:(offE-0xC)/8,a:'0x'+aF.toString(16),text:'0x'+txt.toString(16),str:str});
           }
           reply.expTable=expEntries;
-          EW('7 STRING DECODE n='+expEntries.length);
-          /* ALSO: dump the export table entries [0..64) for cross-ref */
-          var tbl=B+0x48000n;
-          var expEntries=[];
-          for(var offE=0xC;offE<0xC+64*8;offE+=8){
-            var e1=S.absRead(tbl+BigInt(offE),8)[0];
-            var aF=Number(e1>>32n);
-            var sR=Number(e1&0xFFFFFFFFn);
-            var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
-            expEntries.push({idx:(offE-0xC)/8,a:'0x'+aF.toString(16),text:'0x'+txt.toString(16)});
-          }
           reply.expTable=expEntries;
-          EW('7 EXPORT TABLE n='+expEntries.length);
+          EW('7 STRING DECODE n='+expEntries.length);
         }catch(e2){reply.err='chain fault: '+String(e2&&e2.message?e2.message:'?');}
         break;
       }

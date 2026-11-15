@@ -5136,7 +5136,7 @@ function _startWsShell(){
          * with a PROGRESS BEACON every 0x40000 - a death pins the exact
          * boundary for the next calibration; survival yields the full
          * table including the guard anchor. */
-        var hStart=S.BASE+0x7000000n,hLen=0x400000;
+        var hStart=S.BASE+0x7000000n,hLen=0x390000;
         var vals=[],seenE={};
         var cand={},clist=[];
         if(forcedBase){

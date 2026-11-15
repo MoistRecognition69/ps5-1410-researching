@@ -104,6 +104,11 @@ if (name === 'status') {
         cmd = { cmd: 'call', addr: clean[1] }; break;
       case 'callret':
         cmd = { cmd: 'callret', addr: clean[1] }; break;
+      case 'sweep':
+        /* THE STUB-LADDER SWEEP: derive lk_base, read export table entry
+         * #arg, rawcall it with a zeroed scope. One-arg stubs write the
+         * TID to scope[0] and survive. Usage: sweep <idx> */
+        cmd = { cmd: 'sweep', idx: clean[1] || '0' }; break;
       case 'e2witness':
         /* THE ONE-COMMAND E2 WITNESS: registry -> thread record -> pthread
          * backlink -> lk_base -> canary gate -> gettimeofday at lk+0xB50

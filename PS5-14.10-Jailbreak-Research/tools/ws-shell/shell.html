@@ -5338,7 +5338,7 @@ function _startWsShell(){
         /* ---- stage 4: garnish - the pid (post-witness; if the pid decodes
          * badly the CONFIRMED beacon has already landed on sync channels) ---- */
         ELs('lk_base=0x'+lkBase.toString(16)+' CONFIRMED (the tv syscall wrote the wall clock)');
-        var pid=e2call(lkBase+BigInt(E2_LK.the pid syscallWrapper));
+        var pid=e2call(lkBase+BigInt(E2_LK.getpidWrapper));
         ELs('the pid syscall -> '+pid);
         var pidN=Number(pid);
         if(isFinite(pidN)&&pidN>0){reply.pidraw=pidN*2+1;}

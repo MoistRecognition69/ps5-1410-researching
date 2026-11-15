@@ -5563,3 +5563,22 @@ UNTESTED with the survivable-return ctx!! THE QUEUE: twr 0x230,
 twr 0x3B0, twc 0x3A0 (#7 - the sweep gap, pos-207-consistent!).
 A setcontext hit = THE FULL-REGISTER CONTEXT SWAP (the retSlot
 return = the JS survives = multi-arg syscalls with a clean return).
+
+### SESSION 70 (the diff-scan era): the trampoline push now measured LIVE (nchanged=5-7, the deepest changed WebKit-text = the real return slot); 0x130/0x230/0x3B0 all CONFIRMED writers (died with the correctly-measured survivable ctx); 0x3A0 is the next setcontext candidate
+
+THE DIFF-SCAN PROOF: pass1 -> rehearsal (no beacons in the window)
+-> pass2 -> the CHANGED WebKit-text slots (5-7 per session) - the
+deepest = the nativeCallTrampoline's live call push (the return
+address into the trampoline's post-call path). The instrument is
+now correct: the ctx{rip=0x7A0, rsp=retSlot, rbp=cfr} - if the
+candidate were setcontext, the stub's ret would pop the live
+measured return -> the JS would survive -> the reply would post.
+
+THE ELIMINATIONS: 0x130 (writer), 0x230 (writer), 0x3B0 (writer)
+- all died AT the call with the correct survivable ctx (a wrong-
+slot setcontext death would have been AFTER the stub ran; these
+were instant = the RSI/cfr write class).
+
+THE NEXT CANDIDATE: 0x3A0 (#7 - NEVER CALLED in any sweep, the
+pos-207 setcontext-consistent region between thr_self 0x2C0 and
+the 0x3B0 writer). twr 0x3A0 fires next.

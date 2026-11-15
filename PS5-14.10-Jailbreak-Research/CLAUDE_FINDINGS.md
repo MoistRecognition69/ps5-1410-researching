@@ -4314,3 +4314,44 @@ Descend from +0x28000 (k=10, 9, 8 - the data-est pages), then
 descending (k=7..1 - XO risk each, taken only after the data
 is banked). Every probe PRE-beaconed; a death banks the
 boundary; the upstream stack runs green first, every boot.
+
+### V114 RESULT: TWO RUNS - the first an early-spray boot-lottery death (RUYA4G, the A-DEAD class, no structural action); the second the full upstream stack green again (REALBODY 26th, auxv 8th, anchors 10/10, T2 3/3) - and PHASE A FOUND TARGETS: the rtld residue is REAL, but it is RETURN ADDRESSES into ld.so TEXT, and Phase B died reading one; V115: PHASE A/B DELETED FROM THE EXECUTION PATH
+
+Session RUYA4G (22 beacons): died in the early spray phase
+(A-DEAD, PH3 in progress) - the known reclaim-lottery boot
+class; the re-run was the right call.
+
+Session X0PMK3 (709 beacons): THE FULL UPSTREAM STACK GREEN -
+gate, REALBODY=-6 (TWENTY-SIXTH consecutive boot), the chase
+clean (515 derefs, fps=7), the auxv EIGHTH consecutive, the
+Thread anchors 10/10, the T2 3/3 mapped zero deaths (the rich
+heap page recurred: 0x82eff0000 with {0x82d96a084,
+0x88021b2e0, 0x8802218e0, 0x82efec010, 0x20000,
+0x880208000}).
+
+*** AND PHASE A FOUND TARGETS - THE RTLD RESIDUE IS REAL:
+twelve LDTGT values from the setup page dead-frame region
+(0x835757b7d, 0x8351d7921, 0x83573a87a, 0x8351b90cb,
+0x8351d3d9d, 0x8354130f0, 0x8354237b8, 0x83521478e,
+0x835471865, 0x83573fe31, 0x83571148b). FIRST DIRECT
+EVIDENCE of the ld.so-era frames on the setup page - but they
+are RETURN ADDRESSES into ld.so TEXT (odd/mid-function-
+shaped), and they cluster OUTSIDE the module span (the first
+Phase B read, 0x835754000, was atbase+0x348000 - 3.3MB above
+the ~192KB module - a different mapping). The descending sort
+read the highest first: text/outside-module = death.
+THE V105 ZERO-FIND AND THIS BOOT TWELVE-FIND TOGETHER: the
+rtld residue EXISTS but is boot-lottery (sometimes
+overwritten, sometimes not) - and when present it is return
+addresses: useless for reading (XO) and lethal to chase.
+
+### V115 (deployed): PHASE A/B DELETED FROM THE EXECUTION PATH
+
+The collection STAYS (the LDTGT beacons are genuine intel -
+the ld.so-text residue map, banked per boot); the READS are
+GONE. The blind tail-down (Phase C) runs UNCONDITIONALLY:
+k=10, 9, 8 (the data-est pages, where the resolved
+libc/libkernel pointers live), then k=11 (possibly past-end),
+then the text pages descending (XO risk each - taken only
+after the data is banked). Known boundaries respected: +0x0
+header dead (V113), +0x30000+ dead (V105).

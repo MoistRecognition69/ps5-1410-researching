@@ -4228,3 +4228,53 @@ The stack is otherwise UNCHANGED - and has now been exercised
 deeper than ever: core, chase, auxv, triage, anchors all
 proven in one boot. Only the form fix stands between the
 campaign and the first complete end-to-end run.
+
+### V112 RESULT: THE T2 CHASE RAN AND WORKED (three targets, all mapped, zero deaths - the low-32 rule held); *** THE 0x101000000 MYSTERY IS ANSWERED: IT WAS NEVER A POINTER *** (the FX0 death); V113: THE FX REORDER
+
+Session 5SCBKP. THE FULL CORE: gate #27, REALBODY=-6
+(TWENTY-FOURTH consecutive boot), the out-of-cage write (23rd
+boot). THE LOW-32 RULE HELD: the chase fps dropped from 24 to
+6 - the garbage class died at the source. The auxv anchored a
+SIXTH consecutive time. The Thread anchors are now 8/8 across
+boots.
+
+*** THE T2 CHASE RAN - ITS FIRST FULL EXECUTION - AND WORKED:
+three targets, all mapped, ZERO deaths, real module-adjacent
+data:
+- T2-0 @0x81e9e0000: mostly zeros + third-degree leads
+  (0x8241aef40, 0x8241aeff0, 0x8369f1aa0) + back-references
+  to the anchor region (0x880070020-class)
+- T2-1 @0x8ff800000: ALL ZEROS - a mapped, untouched
+  reservation (the 0x8ff80X080 descriptor-shape class is an
+  allocated-but-unused region)
+- T2-2 @0x83004c000: RICH - {self, 0x8242da084, 0x8800932e0,
+  0x8800998e0, 0x830048010, 0x20000, 0x880080000} - pointers
+  into the Thread band AND the new 0x8242da084 lead - a
+  malloc-heap structure page above the module
+The anchor pages point into the MALLOC HEAP above our module;
+the heap pages point back at the Thread structures - the
+pointer web is mapping itself.
+
+*** THE CRASH - AND THE ANSWER: THE FX0 PROBE. PAGE
+0x101000000 IS UNMAPPED. THE SIX-BOOT MYSTERY IS CLOSED:
+0x101000000 WAS NEVER A POINTER. Its shape told the truth all
+along: 0x1_01000000 = 4GB + 16MB, EXACTLY - a CONSTANT (a
+heap limit / cage bound / reservation size), stored in the
+same VM-structure slot every boot because it is DATA, not an
+address. THE V61 LESSON, TENTH INSTANCE, and the final word
+on the class: VALUES THAT RECUR ACROSS BOOTS ARE CONSTANTS,
+AND CONSTANTS ARE NOT POINTERS. (The recurring-value =
+fixed-mapping hypothesis is hereby falsified on-device.)
+And the FX probes ran BEFORE the ld.so section - the death
+spent the ld.so header gamble yet again.
+
+### V113 (deployed): THE FX REORDER
+
+The fixed-address probes move to the VERY END - after the
+entry probe. The 0x101000000 question is answered (and the
+probe for it should likely be deleted entirely next pass);
+0x100cc0000 (same shape class) keeps its residual curiosity
+but can no longer cost anything upstream. THE STACK ORDER IS
+NOW: core -> chase (gate v2) -> auxv -> triaged Thread
+anchors -> T2 -> LDSO (header-first) -> ENTRY -> FX.
+The ld.so header gamble finally gets its turn.

@@ -4017,3 +4017,42 @@ V61 LESSON, SEVENTH INSTANCE (reading beside a mapped region
    same class that is 5/5 so far.
 3. The ld.so header-first probes and the entry probe unchanged,
    after.
+
+### V107 RESULT: gate #24, REALBODY 22nd consecutive boot - the Thread-structure anchor class is 6/6; a fresh unproven anchor (0x994001000) was a DANGLING POINTER and killed the walk (V61, 8th instance); V108: the anchor triage + the fixed-address probes
+
+Session 6T8FKC. All core green: gate #24, REALBODY=-6
+(TWENTY-SECOND consecutive boot), the out-of-cage write (20th
+boot). The auxv anchored a FOURTH consecutive time. THE ANCHOR
+WALK RAN: g0/g1 - BOTH Thread-structure slots (0x880a64020,
+0x880ab90a0), BOTH pages mapped and read - THE PROVEN CLASS IS
+NOW 6/6 ACROSS BOOTS. New second-degree leads collected: the
+0x830cxxxx cluster (0x830c56290/203e0/56110) and the
+structurally-suspicious 0x8ff80X080 triple (0x8ff800080/
+0x8ff808080/0x8ff80c080 - a descriptor-array shape, three
+pages in a row at 0x8080 stride).
+
+THEN g2 DIED: the anchor 0x994001000 - a FRESH HUNT HIT with
+UNPROVEN PROVENANCE (hi=9, never seen before) - was a DANGLING
+POINTER; its page is dead. THE V61 LESSON, EIGHTH INSTANCE:
+the perfect anchor-page record belongs to the THREAD-STRUCTURE
+SLOTS specifically, NOT to arbitrary plausible-looking hunt
+hits. A plausible band and a plausible lo32 are not a
+dereference permission when the pointer has no provenance.
+The T2 chase (0x830c/0x8ff8 targets banked!) and the ld.so
+probes lost their turn to the dangling pointer.
+
+### V108 (deployed): THE ANCHOR TRIAGE + THE FIXED-ADDRESS PROBES
+
+1. THE ANCHOR TRIAGE: walk ONLY the Thread-band anchors
+   [0x880000000, 0x881000000) - the 6/6 class.
+   Unknown-provenance anchors are DROPPED (beaconed as
+   dropped) - their bands get probed ONLY via the T2 chase
+   (pointer-proven second-degree targets found INSIDE the
+   hub pages).
+2. THE FIXED-ADDRESS PROBES: the ASLR-independent constants
+   (0x101000000 - FIVE recurrences from the VM+0x2868-child
+   slot; 0x100cc0000 - two) are read DIRECTLY, after the T2
+   chase banks - no hunt dependency, their pages never yet
+   read, a death there costs nothing already-won.
+3. The ld.so header-first probes and the entry probe follow,
+   unchanged.

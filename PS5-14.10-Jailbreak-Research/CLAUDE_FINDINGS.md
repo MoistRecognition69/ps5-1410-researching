@@ -3919,3 +3919,60 @@ AUX beacons are a accidental map of the startup frames).
    from them. Immune to dead-frame noise. Everything
    downstream unchanged (the ld.so walk, the region walk,
    the entry probe).
+
+### V105 RESULT: gate #22, REALBODY 20th consecutive boot - *** THE ANCHORED AUXV DECODED PERFECTLY *** (the full auxv, both directions, through the AT_NULL terminator); the ld.so walk failed twice (Phase A premise dead empirically; the +0x30000 blind probe died BEFORE the region walk); V106: THE REORDER + header-first
+
+Session 9ISIMS. All core green: gate #22, REALBODY=-6 (TWENTIETH
+consecutive boot), the out-of-cage write (18th boot). THE
+STRING-CATCH AND THE ANCHORED AUXV BOTH WORKED:
+
+```
+V105-AUX-ANCHORS-p0-pagesz@q1976-base@q1982      <- the anchors found
+V105-AUX-p0-q1976-type=6-val=0x4000              AT_PAGESZ (16KB)
+V105-AUX-p0-q1978-type=8-val=0x0                  AT_FLAGS
+V105-AUX-p0-q1980-type=9-val=0x4908c070          *** AT_ENTRY (hi=4 band this boot)
+V105-AUX-p0-q1982-type=7-val=0x84909c000         *** AT_BASE - THE LD.SO BASE
+V105-AUX-p0-q1984-type=15-val=0x7ef0b3fb4         AT_PLATFORM = the path string
+V105-AUX-p0-q1986..q1998: types 18,16,17,19,20,21,23
+V105-AUX-p0-q2000-type=0-val=0x0                  THE AT_NULL TERMINATOR
+V105-AUXB-p0-q1974-type=5-val=0xe                 AT_PHNUM
+V105-AUXB-p0-q1972-type=4-val=0x38                AT_PHENT
+V105-AUXB-p0-q1970-type=3-val=0x0                 AT_PHDR=0
+```
+
+THE COMPLETE AUXV - decoded forward and backward through the
+terminator, noise-immune, deterministic (cfr-upward, first
+page). AT_BASE=0x84909c000 (16KB-aligned), AT_ENTRY=0x4908c070
+(the executable band moves per boot: hi=5 V102, hi=4 V105).
+New mount: /p3XPaE9mvp/common_ex/lib/NKWebProcess.self.
+THE RECOGNIZER PROBLEM IS SOLVED - permanently.
+
+THE LD.SO WALK FAILED TWICE (both honest):
+1. Phase A found ZERO stale pointers on the setup page. THE
+   PREMISE DIED EMPIRICALLY: the rtld-era frames were fully
+   overwritten by the WebKit startup 7KB of frames - NO ld.so
+   pointers survive in the dead-frame zone. The V103 design
+   assumption was wrong; recorded.
+2. Phase C first blind probe (+0x30000 = 0x8490cc000) DIED -
+   and because the ld.so section ran BEFORE the region walk,
+   the death cost the region walk AND the entry probe. THE
+   ORDER IS THE BUG: risky probes must never precede the
+   safe treasure.
+
+### V106 (deployed): THE REORDER + header-first ld.so probes
+
+1. THE REORDER: the region walk (page-clamped, boot-proven)
+   runs BEFORE the ld.so probes - the 0x880xxxxx structure
+   pages + the NEWBAND pointer map (V103: the 0x8233cxxxx
+   cluster, the {0x800d56398, 0x800c7fcf0} x5 pair array)
+   bank FIRST; only then is the death budget spent on ld.so.
+2. The ld.so probes, HEADER-FIRST: k=0 (the ELF header page)
+   first - if mapped, the program headers give EVERY segment
+   R/W/X flags = the whole ld.so map in one read, and the
+   highest R-not-X LOAD segment last page is read in the
+   SAME boot (known-readable per the phdr flags). Then the
+   tail below the +0x30000 death boundary (k=11, 10, 9, 8),
+   descending. The header is the maximum-information probe:
+   one read either delivers the full map or banks the
+   header-unmapped fact (matching our own module, V52).
+3. The entry probe stays last.

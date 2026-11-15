@@ -4417,3 +4417,47 @@ then k=8..k=1 (the whole data body, descending), then k=11
 (the past-end confirm) last. Each page scan beacons before
 the next read; a death banks the boundary; the upstream
 stack runs green first, every boot.
+
+### V116 RESULT: THE +0x24000 WALL (CONFIRMED TWICE - NUIPUA + the WWE0JB re-run; the deploy omission): the data-body premise failed its first test - FOUR WALLS surround atbase; V117: THE T3 CHASE (the pivot to the pointer web)
+
+Session NUIPUA: the upstream stack green a FIFTH consecutive deep
+run - gate, REALBODY=-6 (TWENTY-EIGHTH consecutive boot), the auxv
+TENTH consecutive, the T2 3/3 mapped - A NEW T2 PAGE: 0x822d70000
+holding SIX 0x822ae0xxx pointers (the densest cluster lead yet) -
+and the k=9 probe (+0x24000, atbase=0x81e854000) DIED.
+
+Session WWE0JB (a deploy omission made the console re-run V116 -
+index.html was never switched; recorded as a process lesson):
+REALBODY=-6 TWENTY-NINTH consecutive boot, the same k=9 wall at
+atbase=0x87a3c4000+0x24000 - THE WALL IS CONFIRMED TWICE.
+
+THE DATA-BODY PREMISE FAILED ITS FIRST TEST. FOUR WALLS now
+surround atbase: +0x0 (V113), +0x24000 (V116 x2), +0x28000
+(V115), +0x30000 (V105). The honest strategic read: the
+ld.so-at-vicinity route has cost six boots and delivered walls
+plus one genuine intel (the V114 residue = the TEXT cluster at
++0x304000..+0x348000, non-contiguous, XO).
+
+MEANWHILE THE WEB DELIVERS EVERY BOOT, FREE: the T2 pages are
+proven-readable pointer hubs with fresh leads each boot (the
+0x822ae0xxx six-cluster, the rich heap page, the NEWBAND2 leads:
+0x8241aef40, 0x8242da084, 0x81136a084, 0x822c42084...). And the
+linker link_map is MALLOC-D - IN THE HEAP. The web is the route.
+
+### V117 (deployed - verified in index.html this time): THE T3 CHASE + the cluster-tail-only ld.so order
+
+1. THE T3 CHASE: store the NEWBAND2 leads (one per 16MB region,
+   max 3), read their pages (the same provenance class as the
+   anchors: values inside proven-readable pages, 11/11), ELF
+   checks, NEWBAND3 fourth-degree classification with the full
+   filter stack (low-32 rule, bands, alignment).
+2. THE LD.SO ORDER: THE CLUSTER TAIL ONLY - k=210, 209, 208,
+   207 (+0x348000..+0x344000): the residue return-address
+   evidence ends at +0x348000; the data, if any, sits at the
+   cluster end. Four probes; then ld.so is closed as a direct
+   route and the heap web carries the endgame.
+3. PROCESS LESSON (mine): the deploy step is part of the build -
+   a probe that is built but not dispatched is a probe that does
+   not exist. The checklist is now: BUILD -> node --check ->
+   DISPATCH (index.html) -> findings -> commit -> push. The
+   dispatcher target is verified in the deploy command output.

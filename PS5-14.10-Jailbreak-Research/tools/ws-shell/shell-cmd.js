@@ -104,6 +104,13 @@ if (name === 'status') {
         cmd = { cmd: 'call', addr: clean[1] }; break;
       case 'callret':
         cmd = { cmd: 'callret', addr: clean[1] }; break;
+      case 'libc':
+        /* THE LIBC IDENTIFIER: one command - stack scan (lk via the
+         * guard), auxv (AT_PHDR), the phdrs on the stack, the main
+         * module data segment, the GOT dump, foreign-pointer offset
+         * matching vs the game lane addrofs table -> libc base +
+         * the 1213a import window (96 lk stub pointers). */
+        cmd = { cmd: 'libc' }; break;
       case 'tw':
         /* THE THREAD WITNESS: thr_new candidate (export entry #arg)
          * called with a valid param (start=thr_self stub, stack=the

@@ -5137,9 +5137,9 @@ function _startWsShell(){
           try{words=S.absRead(hStart+BigInt(off),0x4000);}catch(e){break;}
           for(var wi=0;wi<words.length;wi++){
             var v=words[wi];
-            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);if(vals.length>=256)break;}
+            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);if(vals.length>=512)break;}
           }
-          if(vals.length>=256)break;
+          if(vals.length>=512)break;
         }
         EL('harvest n='+vals.length);
         /* ---- stage 2 (v6): SPARSE-ANCHOR MATCHING ONLY ----

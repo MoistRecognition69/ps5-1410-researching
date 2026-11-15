@@ -134,15 +134,23 @@ function requestHandler(req, res) {
   }
 
   const serveDir = __dirname;
+  /* SHELLFIX: strip the QUERY before the root check - the cache-busting
+   * redirect (/?v=NNN) fell through to the else branch, resolved to the
+   * DIRECTORY, and createReadStream threw EISDIR - an unhandled stream
+   * error KILLED THE SERVER (session 8). Plus: a directory guard and a
+   * stream error handler so no single request can take the process down. */
+  const urlPath = req.url.split('?')[0];
   let filePath;
-  if (req.url === '/' || req.url === '/index.html') {
+  if (urlPath === '/' || urlPath === '/index.html') {
     filePath = path.join(serveDir, 'shell.html');
   } else {
-    const safePath = req.url.split('?')[0].replace(/\.\./g, '');
+    const safePath = urlPath.replace(/\.\./g, '');
     filePath = path.join(serveDir, safePath);
   }
 
-  if (!fs.existsSync(filePath)) {
+  let isFile = false;
+  try { isFile = fs.statSync(filePath).isFile(); } catch (e) { isFile = false; }
+  if (!isFile) {
     res.writeHead(404);
     res.end('not found');
     return;
@@ -155,7 +163,9 @@ function requestHandler(req, res) {
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'no-cache, no-store'
   });
-  fs.createReadStream(filePath).pipe(res);
+  const stream = fs.createReadStream(filePath);
+  stream.on('error', () => { try { res.destroy(); } catch (e) {} });
+  stream.pipe(res);
 }
 
 let activeWs = null;

@@ -5138,3 +5138,22 @@ our buffer regardless of the tz args fate); the tz copyout is
 kernel-validated userland (NO PANIC PATH - the console is safe);
 every RSI outcome (zero / invalid->EFAULT / valid->delayed session
 crash) banks the witness first.
+
+### SESSION 55 (the v15 name-record harvest): THE SIXTH CANARY (base 0x80b178000) - 120 records banked - the A-fields point into LIBKERNELS STRING POOL (real strings found: "read/write lock", kenv-style tunable names) - the SHA1 records are NOT at the +0x416C base; the symbol-name pool is NOT in the readable band (the session-49 str:eofd scan over the same band found no gettimeofday)
+
+THE HARVEST: the chain (entry scan -> thread record -> backlink walk ->
+canary gate) works every session now. The name records: the A-fields
+are offsets into a constant/string pool - the records at
+table+0x416C+A contain a repeating binary pattern (0xd430286100e4100-
+class) plus, for A in [0x11000..0x14000], REAL STRINGS: "read/write
+lock", "_mallco...", "direct...", kenv/sysctl-style names
+("...app.fmem_size_pid"??). THE PRIZES: (1) libkernel runtime strings
+are readable; (2) the sysctl/kenv name strings are a stage-2 lead
+(sysctl-string-based MIB); (3) the recurring record pattern needs the
+GNM capture as a Rosetta stone (offline).
+
+THE NEGATIVE: the symbol-name pool (dynstr-class) is NOT in the
+readable band (gettimeofday's tail "eofd" scanned clean in session
+49 over [lk+0x48000, +0x76000)). The 0x410-stub record (A=0xf49c)
+at +0x416C base: binary, not a name. The name-linkage decode
+continues offline over the banked records.

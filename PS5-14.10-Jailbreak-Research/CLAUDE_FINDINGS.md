@@ -4056,3 +4056,59 @@ probes lost their turn to the dangling pointer.
    read, a death there costs nothing already-won.
 3. The ld.so header-first probes and the entry probe follow,
    unchanged.
+
+### V108 RESULT: gate #25, REALBODY 23rd consecutive boot - THE CHASE ITSELF DIED (first time since V95): the V61 gate ceiling is a WINDOW, not a MAPPING; the high-heap double array flooded the FP storage (V92 through a new door); V109: THE V61 GATE V2
+
+Session 8TDM3J. All core green: gate #25, REALBODY=-6 (TWENTY-
+THIRD consecutive boot), the out-of-cage write (21st boot).
+VM-VALIDATED-IN-FIRE; the stack-down map clean (8 pages).
+
+THE CHASE DIED between DEREF-P75 and P100 - the first chase
+death since V95s gate was introduced. TWO CAUSES, both in the
+beacons:
+
+1. THE WINDOW IS NOT A MAPPING: the V61 gate ceiling was
+   ri_mData+64MB - the DataView WINDOW EXTENT - not the mapped
+   heap top. This boot the heap GREW HIGH: parent 0x10007eb800
+   with children at 0x10026dc978-0x10026dcd98 (~600MB into the
+   cage band - readable), and a later child (P75-P100) sat in
+   an in-window HOLE. The gate held 13 boots because live
+   allocations stayed low; the high heap broke it.
+2. THE DOUBLE FLOOD: the 0x10026dxxxx region is an unboxed-
+   DOUBLE array - 14 plausible-filter hits (0x8a0e1be1d,
+   0x8a870ac0d, 0x85165580d, 0x8ca9b1a1d, 0x8e757020d,
+   0x8bcc68b1d...) ALL ODD-ALIGNED - which flooded the 12-slot
+   FP storage BEFORE the real hits (p35 0x8802f69c0, p71
+   0x101000000 - a SIXTH recurrence) could be stored. THE V92
+   LESSON THROUGH A NEW DOOR: unboxed doubles pass band
+   filters; alignment is part of plausibility.
+
+Banked despite the death: the Thread structures visited
+(0x88026c020 q5, 0x8802c10a0 q10 - the slots recur); the
+0x101000000 SIXTH recurrence; the high-heap double-array
+region cartographed. The read-around never ran (killed
+upstream) - the triage/fixed-probes/T2/ld.so stack still
+awaits its first complete run.
+
+### V109 (deployed): THE V61 GATE V2 + THE ALIGNMENT FILTER
+
+1. THE PROVEN-MAPPED CEILING: the chase gates (parents AND
+   children) now use [lowB, jfuTop) where jfuTop is PROVEN
+   MAPPED BY CONSTRUCTION: JFSCAN-A proves [view, view+4MB)
+   every boot; the JFUP chunk walk extends it per boot (its
+   own survival is the proof; jfuTop = the last chunk read
+   top, banked in a beacon). Every real chase target in 14
+   boots lived inside this band; the high wilds are excluded
+   by construction. The kid-gate floor typo normalized
+   (lowB>0x100000000n); the parent gate effective floor
+   remains the view base (pre-existing, correct for depth-1
+   VM-window pointers).
+2. THE ALIGNMENT FILTER: odd values are not pointers - the
+   predicate rejects them; the double class dies at the
+   source and can no longer flood the FP storage.
+3. AUDITED REMAINING WINDOW-EXTENT USES (5, all harmless):
+   the V49-OOB-END beacon (cosmetic), vEnd56 (buffer-bounds
+   guards on OUR OWN sprayed allocations), readStr56 gate
+   (live NE-cell name pointers - the strongest provenance
+   class, 0 deaths in 60+ boots; theoretical exposure
+   recorded), and two MBuf/realAB guards.

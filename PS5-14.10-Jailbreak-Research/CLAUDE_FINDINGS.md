@@ -3622,3 +3622,79 @@ object itself is still unseen. V100 reads AT the hit.
    region is very likely a thread-related mapping; if the
    struct pthread lives in or near it, the libc/libkernel
    start_routine/cleanup pointers are the NEWBAND beacons.
+
+### V100 RESULT: gate #17, REALBODY 15th consecutive boot - THE STACK TOP IS THE EXECVE SETUP ZONE (the self-path string found); two honest bugs (the range typo, the NEWBAND flood); V101: the auxv hunt
+
+Session MUH0Z0. All green: gate #17, REALBODY=-6 (FIFTEENTH
+consecutive boot), the out-of-cage write (13th boot), zero
+deaths. DEREF-DONE: parents=100, d2deref=305, fps=25.
+
+THE HEADLINE (found BY a bug): anchor g0 was the Thread
+structure stack-top bound 0x7efa8c000, and the hit-read at
+[top-0x40, top) decoded to ASCII:
+
+```
+"common_e" + "x/lib/NK" + "WebProce" + "ss.self\0"
+= "common_ex/lib/NKWebProcess.self"
+```
+
+THE PROCESS SELF-PATH STRING, ending EXACTLY at the 16KB-aligned
+stack top. Below it: argv/envp-style pointer arrays
+(0x7efa8bd68, 0x7efa8bd88 - same-page back-references), a small
+count (0x3). THIS IS THE EXECVE SETUP ZONE at the top of the
+main thread stack. cfr this boot = 0x7efa8a590 - only ~6.7KB
+below the top: the JS thread IS the main thread, and its stack
+top holds the setup zone. V73-75's "auxv not on this stack" is
+CORRECTED BY DEVICE EVIDENCE - the old ceiling probes (~14KB
+above cfr) never reached the actual top. THE AUXV ARRAY sits
+within one 16KB page below the top: AT_BASE=7 gives a module
+base DIRECTLY.
+
+The Thread-structure slots are boot-stable across ASLR:
+V99 0x10001f4000-class q5/q10 held 0x8807xxxxx foreign pointers;
+V100 the SAME slots held 0x880198020 (q5) and 0x8801ed0a0 (q10)
+- the region moved (0x8807->0x8801), the structure did not.
+Also new: 0x100cc0000 (hi=1, lo=0xCC0000) via 0x1002e75000+0x28.
+
+TWO HONEST BUGS (both mine):
+1. THE RANGE TYPO: the stack band was written
+   [0x7e00000000, 0x7f00000000) - ONE ZERO TOO MANY. The stack
+   lives at hi32=7 (0x7_efaxxxxx, ~34GB), not 0x7e_hi32
+   (~537GB). The "fixed" range covered NOTHING - V97's hi===7
+   check had correctly excluded stack pointers; the V100 fix
+   admitted them all (hence the stack-bound FP flood). The
+   mistake paid off (the self-path discovery), but the lesson
+   stands: CHECK THE DIGIT COUNT of every band constant
+   against a known address (0x7efa8c000 has NINE hex digits).
+2. THE NEWBAND FLOOD: the NEWBAND filter lacked the hi-band
+   plausibility pre-check, so one stack page's garbage
+   (sign-extended negatives 0xfffffffff698xxxx - which ARE
+   0xFFFFFFFFxxxxxxxx kernel-band-shaped; 0x14ca1X00000001;
+   doubles) ate all 24 NEWBAND slots on the first page. THE
+   GENUINE FOREIGN ANCHORS (0x880198020, 0x8801ed0a0,
+   0x100cc0000) WERE NEVER WALKED - starved, not disproven.
+
+Also banked: the stack-top page contains an 11-qword-strided
+record array ABOVE the top bound (values 0x14ca1X_00000001,
+0x15864cd7162, 0xffffffff_f698xxxx with regular stride) -
+unknown structure, adjacent mapping above the recorded limit.
+The 0xfffffffff698xxxx values are KERNEL-BAND-SHAPED
+(0xFFFFFFFFxxxxxxxx - the external corpus kernel band); likely
+sign-extended 32-bit fields, but worth remembering if kernel
+pointers ever appear on the stack.
+
+### V101 (deployed): THE STACK-TOP WALK (the auxv hunt) + the starved-walk fixes
+
+1. The stack band FIXED: [0x7e0000000, 0x7f0000000).
+2. NEWBAND plausibility pre-filter: hi in [1,0x10] - the flood
+   values all had hi=0 or hi>0x10.
+3. THE STACK-TOP WALK: the hunt collects 16KB-aligned
+   stack-range bounds (the Thread structures stack-limit pairs,
+   both depth-1 and depth-2, TOPCAND beacons), and the walk
+   reads [top-0x4000, top) of the two HIGHEST tops: raw dump of
+   [top-0x100, top), full string extraction (>=8-char printable
+   runs - the argv/env strings), and THE AUXV PAIR SCAN
+   (consecutive (type<64, val) pairs): AT_BASE=7, AT_PHDR=3,
+   AT_EXECFN=31, AT_RANDOM=25 - each gets a *** beacon.
+4. The region walk runs after, unstarved, on the genuine
+   foreign anchors (0x880xxxxx-class + 0x100cc0000-class).

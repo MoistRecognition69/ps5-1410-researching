@@ -3976,3 +3976,44 @@ THE LD.SO WALK FAILED TWICE (both honest):
    one read either delivers the full map or banks the
    header-unmapped fact (matching our own module, V52).
 3. The entry probe stays last.
+
+### V106 RESULT: gate #23, REALBODY 21st consecutive boot - THE REORDER WORKED (the treasure banked before the death); the auxv decoded perfectly a THIRD time; the grid died stepping below the anchor (isolated-16KB-pages cartography complete); V107: anchor pages only + the second-degree chase
+
+Session 8W13AB. All core green: gate #23, REALBODY=-6
+(TWENTY-FIRST consecutive boot), the out-of-cage write (19th
+boot). THE ANCHORED AUXV: THIRD CONSECUTIVE PERFECT DECODE -
+AT_BASE=0x828adc000, AT_ENTRY=0x28acc070 (the executable band
+jitters per boot: hi=5 V102, hi=4 V105, hi=2 V106), the full
+type run through the terminator. THE REORDER WORKED EXACTLY AS
+DESIGNED: the auxv banked, the page-clamped hit-read worked,
+THE ANCHOR PAGE READ and yielded A NEW UNSEEN-BAND CLUSTER
+(0x80bfc8028/4520/4590 - pointers into another module data
+band, analogous to V103 0x8233cxxxx + the 0x800c/0x800d
+pair-array), and only THEN the death: the grid o1 stepped 2
+pages below the anchor (0x8800a4000) into unmapped space.
+
+THE CARTOGRAPHY IS NOW COMPLETE ACROSS SIX BOOTS:
+- ANCHOR PAGES: 5/5 MAPPED (0x8807a8000, 0x8807fd000, 0x8801fc000,
+  0x8809d8xxx-page, 0x8800b0000 - every pointer-proven target read)
+- NEIGHBOR PAGES: 0/2 (V102: the page below the anchor; V106: 2
+  pages below)
+THE 0x880xxxxx THREAD-STRUCTURE REGION IS ISOLATED 16KB PAGES.
+The grid walk is the wrong instrument for this terrain. THE
+V61 LESSON, SEVENTH INSTANCE (reading beside a mapped region
+- the neighbors do not exist).
+
+### V107 (deployed): ANCHOR PAGES ONLY + THE SECOND-DEGREE CHASE
+
+1. ANCHOR PAGES ONLY: read just each anchor own page (4
+   anchors: the Thread-structure slots q5/q10, the fixed
+   0x101000000 - FIFTH recurrence, finally walked - and the
+   0x100cc0000-class). Every read a structure-pointer-proven
+   target (the 5/5 class). No grid steps, no intervals.
+2. THE SECOND-DEGREE CHASE: the anchor pages are POINTER-HUBS
+   into unseen module bands. After ALL anchor pages bank, chase
+   one target per unseen 16MB region (max 3): read those pages,
+   check ELF magic (a module base!), dump first8, classify
+   NEWBAND2 (third-degree leads). Structure-pointed data - the
+   same class that is 5/5 so far.
+3. The ld.so header-first probes and the entry probe unchanged,
+   after.

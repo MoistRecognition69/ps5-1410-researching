@@ -41,8 +41,9 @@ while ((m = lkRe.exec(offSrc))) {
 }
 console.error('parsed ' + rvas.length + ' libkernel RVAs from 13.60.js');
 
-/* ---- the session-10 harvest (ptrscan of BASE+0x7000000 band) ---- */
-const harvest = [
+/* ---- the harvest: a JSON file of hex strings, or the embedded session-10 list ---- */
+const harvestFile = process.argv[2];
+const embedded = [
   /* scan 1: band [0x0, 0x400000) */
   0x8081b5230, 0x8081c2780, 0x80819c6b0, 0x808196830, 0x80832cd30, 0x80830c5f0,
   0x8083342b8, 0x808334480, 0x813d1c430, 0x813d1c990, 0x808344ee0, 0x808344800,
@@ -78,8 +79,18 @@ const harvest = [
   0x813f5f7a0, 0x813dfa930, 0x813f5f860, 0x813dfa940, 0x813dfaf30, 0x813e65190,
   0x813f5e660, 0x813f5e5c0, 0x813f5e6b0, 0x813f5ec90,
 ];
+const harvest = harvestFile
+  ? JSON.parse(fs.readFileSync(path.resolve(harvestFile), 'utf8')).map(s => typeof s === 'string' ? parseInt(s, 16) : s)
+  : embedded;
 
 /* ---- match: every (P, R) with aligned base ---- */
+/* CONSTRAINT (session 11 lesson): the module BASE must sit at or below the
+ * LOWEST harvested cluster pointer - a base candidate above any harvested
+ * pointer of the SAME module is impossible (pointers can't precede the image).
+ * The 5-pair "leader" 0x80670c000 was invalidated by six cluster pointers
+ * below it; the true base was 0x806700000 (the __stack_chk_guard EXACT pair:
+ * 0x8067751d0 - 0x751d0 = 0x806700000, no granularity assumption at all). */
+const clusterMin = Math.min(...harvest.filter(p => p > 0x800000000));
 const bases = {};
 for (const P of harvest) {
   for (const R of rvas) {
@@ -87,6 +98,7 @@ for (const P of harvest) {
       const B = P - R;
       if (B < 0x800000000 || B > 0x900000000) continue;
       if (B % 0x4000 !== 0) continue; /* belt and braces */
+      if (B > clusterMin) continue; /* base must be <= lowest cluster pointer */
       const key = '0x' + B.toString(16);
       (bases[key] = bases[key] || []).push({ P: '0x' + P.toString(16), R: '0x' + R.toString(16), fn: names[R] });
     }

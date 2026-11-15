@@ -19,6 +19,7 @@
  *   node shell-cmd.js threads
  *   node shell-cmd.js call <addr>
  *   node shell-cmd.js callret <addr>
+ *   node shell-cmd.js e2shot [skipBase1,skipBase2,...] [maxcand]
  *   node shell-cmd.js raw '<json>'
  *
  * All output is JSON on stdout (parse with jq or JSON.parse).
@@ -103,6 +104,11 @@ if (name === 'status') {
         cmd = { cmd: 'call', addr: clean[1] }; break;
       case 'callret':
         cmd = { cmd: 'callret', addr: clean[1] }; break;
+      case 'e2shot':
+        /* one-command E2 attempt: harvest -> match -> verifier ladder -> getpid.
+         * arg1 (optional): comma-separated failed bases to skip (hex)
+         * arg2 (optional): max candidates to try (default 4) */
+        cmd = { cmd: 'e2shot', skip: clean[1], maxcand: clean[2] || '4' }; break;
       default:
         console.log(JSON.stringify({ err: 'unknown command: ' + name }));
         process.exit(1);

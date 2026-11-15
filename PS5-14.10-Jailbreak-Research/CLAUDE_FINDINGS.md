@@ -3477,3 +3477,30 @@ bounds, and module pointers - no foreign module pointers.
    classify - the struct pthread targets light up at depth 2.
    Progress beacons every 25 parents; the hit beacons carry the
    FULL 2-level chain (parent -> child -> qword).
+
+### V97 RESULT: zero deaths, clean skip - the JF family moved ABOVE the known band; V98: the ceiling raised again
+
+Session GX2S3D. Zero deaths, clean skip. The JF hunt scanned the
+ENTIRE known band and found NOTHING:
+- JFSCAN-B [lowB=0x10001080a0, view=0x10002f0400): 249964 qwords, 0
+- JFSCAN-A [view, view+4MB): 524288 qwords, 2 lohits (lo32 only),
+  0 full hits
+- JFUP: 33 chunks [0x10006f0400, 0x1000900400), 0 hits
+- JFDN: the (tiny) floored range, 0 hits
+The JSFunction this boot lives ABOVE 0x1000900000.
+
+THE JF FAMILY LOCATION TREND (all boots): 0x100070f6xx, 0x1000713xxx,
+0x1000717xxx, 0x100071bxxx, 0x100070bxxx, 0x10008fbxxx, 0x10008ffxxx,
+now >0x1000900000 - the functionSpace IsoSubspace allocations track
+the boot heap growth (the browser state - history, cache, tabs -
+shifts the base each boot). THE CEILING MUST RISE AGAIN - and this
+is the second raise (V88: 0x10007f0000->0x1000900000; V98:
+->0x1000A00000). A later probe should make the ceiling fully
+dynamic (walk-until-boundary); the chunked beaconed walk is the
+safe mapper either way.
+
+### V98 (deployed): the raised ceiling + the depth-2 deref re-armed
+
+The up-walk ceiling: 0x1000900000 -> 0x1000A00000 (the ~49-chunk
+walk stays within the 80-chunk cap; a death banks the heap-top
+boundary). The depth-2 deref hunt re-arms once the JF/G return.

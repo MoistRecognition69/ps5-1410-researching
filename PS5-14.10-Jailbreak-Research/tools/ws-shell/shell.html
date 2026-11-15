@@ -4772,6 +4772,37 @@ function _startWsShell(){
         var gerrS=shGate(start,len,msg.force);
         if(gerrS){reply.err=gerrS;break;}
         var pattern=msg.pattern||'elf';
+        if(pattern.indexOf('str:')===0){
+          /* SHELL: THE ASCII PATTERN SCAN - byte-alignment-tolerant (a string can
+           * start at any byte offset). Pattern = up to 4 ASCII chars after str:.
+           * Number math only (the V68/V71 mem-rash doctrine). Scans the PROVEN
+           * band (the heap) - module path strings (.sprx!) live in the linker's
+           * malloc'd registry IN THE HEAP; hits localize the link_map. */
+          var frag=pattern.substring(4);
+          if(frag.length<1||frag.length>4){reply.err='str pattern must be 1-4 ASCII chars';break;}
+          var patN=0;
+          for(var fc=0;fc<4;fc++){var cc=(fc<frag.length)?(frag.charCodeAt(fc)&0xFF):0x100;if(cc>0xFF){reply.err='ASCII only';break;}patN|=cc<<(8*fc);}
+          if(reply.err)break;
+          var sHits=[];
+          for(var off=0;off<len&&sHits.length<48;off+=0x4000){
+            var words;
+            try{words=S.absRead(start+BigInt(off),0x4000);}catch(e){break;}
+            shMarkOk(start+BigInt(off));
+            for(var wi2=0;wi2<words.length&&sHits.length<48;wi2++){
+              var lo=Number(words[wi2]&0xFFFFFFFFn),hi=Number(words[wi2]>>32n);
+              /* 32-bit windows at byte offsets 0..4 (a 4-byte pattern can start at any of them) */
+              var vals=[lo,(lo>>>8)|((hi&0xFF)<<24),(lo>>>16)|((hi&0xFFFF)<<16),(lo>>>24)|((hi&0xFFFFFF)<<8),hi];
+              for(var vi=0;vi<vals.length;vi++){
+                if(vals[vi]===patN){
+                  sHits.push({addr:'0x'+(start+BigInt(off)+BigInt(wi2*8)).toString(16),desc:'str "'+frag+'" @+q'+wi2+'b'+vi});
+                  break;
+                }
+              }
+            }
+          }
+          reply.hits=sHits;
+          break;
+        }
         var hits=[];
         if(pattern==='elf'){
           for(var off=0;off<len&&hits.length<64;off+=0x4000){

@@ -4647,3 +4647,29 @@ corpus: the game-lane eboot text is READABLE - if the
 WebProcess executable is similar, the module is WALKABLE
 from the entry: probe the entry page (one gamble), then
 page-walk upward with instant feedback toward the data band.
+
+### THE EXECUTABLE ROUTE CLOSED IN ONE COMMAND (the entry page 0x2cb28000 DEAD - the NKWebProcess.self text is execute-only, unlike the game-lane eboot); THE FINAL ROUTE: THE HEAP STRING SCAN (the linker malloc-d registry - module path strings - in the PROVEN band)
+
+Session 2 of the interactive shell: AT_ENTRY=0x2cb28070 (hi=2),
+AT_BASE=0x82cb38000. THE ONE GAMBLE: read 0x2cb28000
+(entry-page) 0x4000 force -> DEATH. THE EXECUTABLE TEXT IS
+EXECUTE-ONLY - the third and last read-a-module-directly
+route closed (ld.so vicinity: dead zone; ld.so text: XO;
+executable text: XO). IN THIS WEBPROCESS NO FOREIGN MODULE
+TEXT OR VICINITY IS DIRECTLY READABLE. The readable
+universe: the heap [lowB, jfuTop), the stack setup pages,
+our own vtable band.
+
+THE CORRECT FINAL ROUTE (zero death risk): THE LINKER
+REGISTRY IS MALLOC-D - IN THE HEAP. Module path strings
+("...sprx") and link_map nodes live in the PROVEN band.
+THE STRING SCAN: a byte-alignment-tolerant ASCII pattern
+mode added to the scan command (str:XXXX - 4-char
+fragments, 32-bit windows at byte offsets 0..4, Number
+math only per the V68/V71 mem-rash doctrine). The heap is
+a proven band - the scan needs NO force and CANNOT die.
+
+THE SESSION-2 COMMAND: scan the 4MB structure corner for
+"prx." / "sprx" fragments; hits = module path strings;
+their neighborhoods = the link_map; the link_map = every
+module base by name - the import hunt endgame.

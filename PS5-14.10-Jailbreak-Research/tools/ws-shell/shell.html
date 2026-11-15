@@ -5144,13 +5144,16 @@ function _startWsShell(){
           ELs('forced base 0x'+forcedBase.toString(16));
         }else{
         /* ---- stage 1: harvest the data band [BASE+0x7000000, BASE+0x7400000) ---- */
+        var chunkNew=1;
         for(var off=0;off<hLen;off+=0x4000){
           if((off&0x3FFFF)===0||(off>=0x380000&&(off&0x7FFF)===0))ELs('hp 0x'+off.toString(16)+' n='+vals.length);
+          if(off>0x300000&&chunkNew===0){ELs('empty chunk at 0x'+off.toString(16)+' - table end - stop');break;}
+          chunkNew=0;
           var words;
           try{words=S.absRead(hStart+BigInt(off),0x4000);}catch(e){break;}
           for(var wi=0;wi<words.length;wi++){
             var v=words[wi];
-            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);if(vals.length>=1024)break;}
+            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);chunkNew++;if(vals.length>=1024)break;}
           }
           if(vals.length>=1024)break;
         }

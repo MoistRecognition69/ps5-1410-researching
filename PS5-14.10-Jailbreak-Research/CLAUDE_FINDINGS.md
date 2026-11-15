@@ -4355,3 +4355,28 @@ libc/libkernel pointers live), then k=11 (possibly past-end),
 then the text pages descending (XO risk each - taken only
 after the data is banked). Known boundaries respected: +0x0
 header dead (V113), +0x30000+ dead (V105).
+
+### V115 RESULT: A THREE-SESSION EARLY-PHASE DEATH STREAK (DE0SNQ / X6Y1B6 / KS7QLF) - the reclaim-lottery class, environmental, scattered failure points; no structural action; V115 remains deployed
+
+Three page-loads, three early deaths, at SCATTERED points:
+- DE0SNQ (22 beacons): A-DEAD -> PH2-SKIP-DEAD -> PH3-2048/
+  4096 -> death mid-spray
+- X6Y1B6 (6 beacons): VER -> BOOT -> RES-n2 -> L2 -> FORGED-1
+  -> FAMILY-OK -> death right after the reclaim verification
+- KS7QLF (2 beacons): VER -> BOOT -> death almost immediately
+
+THE SIGNATURE: scattered failure points = ENVIRONMENTAL HEAP
+INSTABILITY, not a probe defect (a specific bug kills at the
+same beacon every time; a bad heap state fails wherever the
+spray lands). The early spray/reclaim machinery is the
+V17-V49-era code, untouched by every V100+ change - and it
+has been reliable for ~30 boots. Four early deaths in five
+page-loads (with V114 RUYA4G) points to CONSOLE STATE: the
+browser process persistent state (cache, history, the ~30
+boots of guide traffic) degrading the spray reliability, or
+a rest-mode-boot-preserved state.
+
+THE PROTOCOL: full power-off power cycle (NOT rest mode); if
+it persists, clear the browser cache/website data; then
+re-run V115 (unchanged, still deployed - no probe fix is
+warranted for an environmental failure class).

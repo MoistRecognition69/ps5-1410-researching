@@ -116,12 +116,15 @@ if (name === 'status') {
          * table - the 52-stub thread-syscall cluster (0x13000-
          * 0x16000) = the tw lottery targets. Usage: xcl [from] [to] */
         cmd = { cmd: 'xcl', from: clean[1] || '300', to: clean[2] || '500' }; break;
+      case 'nap':
+        /* NANOSLEEP TEST: entry #arg called with scope={tv_sec:arg2}
+         * - a blocking call = the entry IS nanosleep. Usage: nap <idx> <sec> */
+        cmd = { cmd: 'nap', idx: clean[1] || '17', sec: clean[2] || '4' }; break;
       case 'tw':
-        /* THE THREAD WITNESS: thr_new candidate (export entry #arg)
-         * called with a valid param (start=thr_self stub, stack=the
-         * view-window ret-sled). child_tid in the reply = thread
-         * creation on 14.10 = sustained execution. Usage: tw <idx> */
-        cmd = { cmd: 'tw', idx: clean[1] || '49' }; break;
+        /* THE THREAD WITNESS v2 (nanosleep park): thr_new candidate
+         * (export entry #arg1) with start_func = the nap-confirmed
+         * nanosleep stub (arg2 = its RVA). Usage: tw <idx> [napRva] */
+        cmd = { cmd: 'tw', idx: clean[1] || '20', nap: clean[2] }; break;
       case 'sweep':
         /* THE STUB-LADDER SWEEP: derive lk_base, read export table entry
          * #arg, rawcall it with a zeroed scope. One-arg stubs write the

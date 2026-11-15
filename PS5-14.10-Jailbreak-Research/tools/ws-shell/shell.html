@@ -5331,7 +5331,7 @@ function _startWsShell(){
             ELs('CANARY CONFIRMED - base 0x'+B3.toString(16)+' (witness deferred to the drift stage)');
             lkBase=B3;
             break;
-          }else{
+          }else if(clist[ti].anchors<2){
             /* v12: single non-guard anchors are REPORTED ONLY - never probed
              * (the derived-probe deaths were one-per-session lottery tickets
              * at ~15% true odds; non-confirming sessions now complete with

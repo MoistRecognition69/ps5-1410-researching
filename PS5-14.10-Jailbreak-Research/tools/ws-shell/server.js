@@ -64,6 +64,9 @@ function requestHandler(req, res) {
       sendCmd(cmd, timeout).then((result) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result || { err: 'no response' }));
+      }).catch((e) => {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ err: e.message }));
       });
     });
     return;
@@ -211,7 +214,17 @@ function setupWss(server) {
 
 function sendCmd(obj, timeoutMs) {
   timeoutMs = timeoutMs || 30000;
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    /* SHELLFIX: ONE COMMAND IN FLIGHT AT A TIME - pendingResolve is a single
+     * slot; a second concurrent /api/cmd used to overwrite the first's
+     * resolver (the first CLI starved to timeout while the second received
+     * the FIRST command's result - observed session 6: scan+read raced,
+     * the read CLI printed the scan's error). Reject with 'busy'. */
+    if (pendingResolve) {
+      logBeacon('[CMD-REJECTED-BUSY] ' + JSON.stringify(obj).substring(0, 200));
+      reject(new Error('busy: another command is pending - one at a time'));
+      return;
+    }
     obj.id = ++cmdId;
     logBeacon('[CMD] ' + JSON.stringify(obj));
     pendingResolve = resolve;

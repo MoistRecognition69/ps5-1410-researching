@@ -76,6 +76,13 @@ if (name === 'status') {
       case 'dump': case 'd':
         cmd = { cmd: 'dump', addr: clean[1], len: clean[2] || '0x100' }; break;
       case 'scan': case 's':
+        /* str: fragments are PATTERNS (slot 3), not the start address -
+         * 'scan str:lib/' silently shipped the fragment as start and the
+         * page died parsing it (session 6). Catch the misuse at the CLI. */
+        if (clean[1] && /^str:/i.test(clean[1])) {
+          console.log(JSON.stringify({ err: 'str: patterns are the third arg: scan <start> <len> str:XXXX (use the proven cage band, e.g. scan 0x10001603a0 0x780060 str:lib/)' }));
+          process.exit(1);
+        }
         cmd = { cmd: 'scan', start: clean[1], len: clean[2], pattern: clean[3] || 'elf' }; break;
       case 'deref':
         cmd = { cmd: 'deref', addr: clean[1], depth: clean[2] || '2' }; break;

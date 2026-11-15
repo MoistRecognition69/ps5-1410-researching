@@ -4830,3 +4830,47 @@ ASLR):
 2. callret 0x813f5f860 (lk+0x1B860 getpid wrapper) -> THE PID = E2
 Fallbacks if the leader fails (re-verify each): 0x813e74000,
 0x8063d0000, 0x8081c4000, 0x813d00000.
+
+### THE SHELL SESSION 18 (the v5 registry walk): THE MODULE UNIVERSE MAPPED (64 entries) - THE BINDING TABLES = JS-API (WebCore) - THE ARENA TAIL = CHUNK LISTS - THE GOT REGION STILL DEAD (V87-99 CONFIRMED)
+
+THE LOW-14 METHOD FORMALLY RETIRED: the unique-anchor test showed
+333/339 RVAs pass any uniqueness filter and anchor matches scatter
+across a dozen bases per harvest (the wrapper region spans 10+ 16KB
+pages - its low-14 residues blanket the space). Four sessions died
+on coincidence-math candidates. e2shot v5 now accepts a registry-
+derived base directly (CLI: e2shot 0x<base>).
+
+THE DIALOG QUESTION: UNRESOLVED - the test session died of a read
+into the MEASURED-DEAD classic GOT region (BASE+0x334E198, the V87-
+99 "pure-vtable RELRO" verdict re-confirmed on 14.10) before the
+dialog could be tested. The mem warning remains the practical
+session-death signal; OK press or not, plan for death at the
+warning.
+
+THE REGISTRY CENSUS (scan for the constant entry header 0x600000000
+- exact-value scan, no fragments): 64 entry-class structures across
+the cage: clusters at 0x100018cxxx (13), 0x10001c8-0x10001cb9xxx
+(the RnpsNK region, ~15), 0x10001d1xxx, 0x10001e8000, plus scattered
+0x1000314/0x100036/0x10003a/0x10003e8/0x100048/0x10004c/0x10004fc/
+0x10005a4/0x10005b6/0x1000670 - THE MODULE UNIVERSE. The str:kern
+route is DEAD (all 5 hits = WebKit SVG/CSS atoms: kernelMatrix,
+kernelLength, keyPoints...; core modules have no registry paths).
+
+THE BINDING TABLES (RnpsNK, read live): {header(native 0x81c6af7a8-
+class), name-ptr pairs, position-pair, cage-ptr, RESOLVED, 1} - the
+resolved ptrs land in the WebCore band (0x801c64558, 0x8089b6ea0
+this session) - these are the JS API SURFACE (the module is the
+WebKit injected bundle), NOT native imports. libkernel is not
+reachable through JS bindings.
+
+THE ARENA OBJECT FULLY READ (0x390 bytes): head (chunk/class/list
+ptrs + the {init,fini} identical pair 0x805531230-class) + tail
+(0x260-0x400: MORE chunk-list groups {node, node, OBJECT, class,
+size, 0} in the 0x819a/0x819c/0x819e native bands). NO base field
+in the arena itself. THE OBJECTS IN THE GROUPS ARE UNREAD - the
+module record (with base/segment fields) is expected among them.
+
+NEXT: re-derive the entry (2 reads) -> arena head -> read the GROUP
+OBJECTS (0x819c484d0/0x819e316f0-class, native heap, force) ->
+hunt module-band values (bases, init arrays, size+base segment
+pairs) -> e2shot 0x<base> for the gettimeofday witness.

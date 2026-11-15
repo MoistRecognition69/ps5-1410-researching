@@ -3821,3 +3821,52 @@ AT_BASE is always fresh. ROUTE (risk-ordered):
 - The region walk after, with the page-clamped hit-read.
 - Phase D: the AT_ENTRY page probe, the LAST read - a death
   there costs nothing already-won.
+
+### V103 RESULT: gate #20, REALBODY 18th consecutive boot, ZERO deaths - the page-clamped hit-read WORKED; the region walk found a LIVE STRUCTURE PAGE with unseen-band pointers; the auxv walk starved on the chase lottery; V104: the deterministic cfr-upward walk
+
+Session ZULC8S. All core green: gate #20, REALBODY=-6 (EIGHTTEENTH
+consecutive boot), the out-of-cage write (16th boot), ZERO deaths.
+BASE=0x8337b4000 this boot.
+
+THE REGION WALK FINALLY WALKED (the V103 page-clamped hit-read
+worked - no crash): the first grid page 0x8801fc000 of the
+0x8801fxxxx Thread-structure region is a LIVE STRUCTURE PAGE,
+dense with foreign pointers:
+- A 0x8233cxxxx CLUSTER: 0x8233c8900/950/ae8/baf0/bae8/c30/9dc6
+  (7 pointers into one unseen band)
+- THE REPEATING PAIR {0x800d56398, 0x800c7fcf0} x5, regular
+  stride - a 5-entry array of pointer pairs (vtable-shaped)
+- 0x825328528; singles 0x800d5d7e0, 0x800c1db70, 0x800d52700
+TWO+ UNSEEN MODULE BANDS: [0x800c, 0x800e) and [0x8233, 0x8254)
+- BELOW this boot BASE (0x8337b4000) - separate modules. The
+0x800c/0x800d pair-array is the strongest libc-class candidate
+of the campaign. 0x101000000 recurred a FOURTH time (V98/V101/
+V102/V103 - fixed-address, still never walked).
+
+THE STARVATION (no death, but the prize missed): the chase
+parent set shifted this boot - the main Thread-structure bounds
+pair (0x10001f4000-class q2/q3, the 2MB main stack) was never
+visited; the only TOPCANDs were the VM limit (lone) and a pair
+64KB apart (0x7ef880000-0x7ef870000=0x10000 - NOT a pthread
+span; the pair check was RIGHT; my session-posting arithmetic
+was wrong). truetops=0 -> no TOPWALK -> no auxv -> no ld.so.
+THE LOTTERY IS THE BUG: the auxv walk depended on WHICH
+children the chase happens to visit - boot-varied.
+
+### V104 (deployed): THE DETERMINISTIC STACK WALK (cfr-upward)
+
+NO LOTTERY: cfr is known EVERY boot (the VM topCallFrame
+calibration, v85cfr) and the setup zone sits 6.7-11KB ABOVE
+cfr (V100: 6.7KB, V102: ~7KB) - inside cfr own 16KB page or
+the next up. The walk reads pages UPWARD from cfr page
+(PRE-beaconed); the page whose scan sets v103atbase IS the
+setup page (banked as v103setup, STOP - never read above the
+mapping top). Max 4 pages. Then the ld.so walk (Phase A stale
+pointers +/-4MB of atbase - tightened from +/-64MB, which
+would swallow our own module when BASE and atbase land within
+64MB - V103: 34MB apart; ld.so own image + bss arena is where
+the rtld startup malloc and link_map nodes live; Phase B reads
+the data pages, descending).
+Also: the NEWBAND dedupe (max 3 examples per 16MB region -
+V103 one rich page ate the whole 24-hit cap on repeats; the
+pair array alone took 10 slots).

@@ -5188,8 +5188,17 @@ function _startWsShell(){
           }
         }
         var clist=Object.keys(cand).map(function(k){return cand[k];});
-        clist.sort(function(a,b){return b.anchors-a.anchors;});
-        ELs('sparse n='+clist.length+(clist.length?' top=0x'+clist[0].B.toString(16)+' a='+clist[0].anchors+' ['+clist[0].names.join(';')+']':''));
+        /* v8g: CLUSTER DENSITY - the zero-risk discriminator. The true base
+         * has the ENTIRE import cluster (dozens of pointers) within
+         * [B, B+0xC00000); a false base has coincidence-few. A single-anchor
+         * candidate backed by density>=20 is real - pure arithmetic. */
+        for(var di=0;di<clist.length;di++){
+          var dn=0;
+          for(var dj=0;dj<vals.length;dj++){if(vals[dj]>=clist[di].B&&vals[dj]<clist[di].B+0xC00000n)dn++;}
+          clist[di].density=dn;
+        }
+        clist.sort(function(a,b){return (b.anchors*1000+b.density)-(a.anchors*1000+a.density);});
+        ELs('sparse n='+clist.length+(clist.length?' top=0x'+clist[0].B.toString(16)+' a='+clist[0].anchors+' dens='+clist[0].density+' ['+clist[0].names.join(';')+']':''));
         if(!clist.length){reply.log=elog;reply.err='no sparse candidates';break;}
         }
         /* ---- stage 3: verifier ladder ---- */
@@ -5254,8 +5263,8 @@ function _startWsShell(){
             ELs('CANARY CONFIRMED - base 0x'+B3.toString(16)+' (witness deferred to the drift stage)');
             lkBase=B3;
             break;
-          }else if(clist[ti].anchors<2){
-            ELs('single anchor, no guard - skip');
+          }else if(clist[ti].anchors<2&&clist[ti].density<20){
+            ELs('single anchor, density '+clist[ti].density+' - skip');
             continue;
           }else{
             ELs('2+-anchor candidate accepted (witness deferred)');

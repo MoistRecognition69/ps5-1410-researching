@@ -5486,37 +5486,38 @@ function _startWsShell(){
            * Read the full table, dump {nid, text_rva} pairs for offline
            * matching against computed NIDs (thr_self = COc2Ua29+pI etc).
            * ALSO dump the export table at lk+0x48000 for cross-reference. */
-          /* v16b: WIDE SCAN - the game lane's data+0x3B58 was their
-           * firmware; 14.10's NID table may be elsewhere. Scan TWO regions:
-           * (1) the assumed data segment (lk+0x6C000..+0x6C000+0x8000)
-           * (2) the raw region past the export table (lk+0x4C000..+0x6C000)
-           * for ALL 0xFFFFxxxx entries with a plausible text RVA. */
-          var nidEntries=[];
-          /* Region 1: the assumed .data segment */
-          var ntbl=B+0x6C000n;
-          for(var offN=0x0;offN<0x8000;offN+=8){
-            var eq=S.absRead(ntbl+BigInt(offN),8)[0];
-            var nhi=Number(eq>>32n);
-            var nlo=Number(eq&0xFFFFFFFFn);
-            if(nhi>=0xFFFF0000&&nhi<=0xFFFFFFFF&&nlo>=0x100&&nlo<0x100000){
-              nidEntries.push({region:'data',off:'0x'+offN.toString(16),nid:'0x'+nhi.toString(16).toUpperCase(),rva:'0x'+nlo.toString(16)});
+          /* v16c: THE STRING POOL DECODE - the NID table (0xFFFF-class)
+           * does NOT exist in the readable band on 14.10 (both regions
+           * scanned clean). PIVOT: the export table A-fields point into
+           * a secondary section (table+0x416C+A). Session 55 found real
+           * strings there. Read the string at each A-field offset for
+           * EVERY export entry, decode as ASCII, and look for syscall
+           * names (thr_self, getpid, etc). The A-field might be a
+           * relative offset into a dynstr-class string table. */
+          var tbl=B+0x48000n;
+          var expEntries=[];
+          for(var offE=0xC;offE<0xC+64*8;offE+=8){
+            var e1=S.absRead(tbl+BigInt(offE),8)[0];
+            var aF=Number(e1>>32n);
+            var sR=Number(e1&0xFFFFFFFFn);
+            var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
+            /* Read the string at table+0x416C+A (up to 32 bytes) */
+            var strBytes=S.absRead(tbl+0x416Cn+BigInt(aF),0x20);
+            var str='';
+            for(var sb=0;sb<strBytes.length;sb++){
+              var qw=strBytes[sb];
+              for(var bb=0;bb<8;bb++){
+                var ch=Number((qw>>BigInt(bb*8))&0xFFn);
+                if(ch===0)break;
+                if(ch>=0x20&&ch<0x7F)str+=String.fromCharCode(ch);
+                else str+='.';
+              }
+              if(str.indexOf('\0')>=0)break;
             }
+            expEntries.push({idx:(offE-0xC)/8,a:'0x'+aF.toString(16),text:'0x'+txt.toString(16),str:str});
           }
-          EW('6a data-region NIDs n='+nidEntries.length);
-          /* Region 2: between the export table and the data segment */
-          var ntbl2=B+0x4C000n;
-          var n2=0;
-          for(var offN2=0x0;offN2<0x20000;offN2+=8){
-            var eq2=S.absRead(ntbl2+BigInt(offN2),8)[0];
-            var nhi2=Number(eq2>>32n);
-            var nlo2=Number(eq2&0xFFFFFFFFn);
-            if(nhi2>=0xFFFF0000&&nhi2<=0xFFFFFFFF&&nlo2>=0x100&&nlo2<0x100000){
-              nidEntries.push({region:'mid',off:'0x'+(0x4C000+offN2).toString(16),nid:'0x'+nhi2.toString(16).toUpperCase(),rva:'0x'+nlo2.toString(16)});
-              n2++;
-            }
-          }
-          reply.nidTable=nidEntries;
-          EW('6b mid-region NIDs n='+n2+' total='+nidEntries.length);
+          reply.expTable=expEntries;
+          EW('7 STRING DECODE n='+expEntries.length);
           /* ALSO: dump the export table entries [0..64) for cross-ref */
           var tbl=B+0x48000n;
           var expEntries=[];

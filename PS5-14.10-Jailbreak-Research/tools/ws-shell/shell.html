@@ -5136,7 +5136,7 @@ function _startWsShell(){
          * with a PROGRESS BEACON every 0x40000 - a death pins the exact
          * boundary for the next calibration; survival yields the full
          * table including the guard anchor. */
-        var hStart=S.BASE+0x7000000n,hLen=0x3A0000;
+        var hStart=S.BASE+0x7000000n,hLen=0x380000;
         var vals=[],seenE={};
         var cand={},clist=[];
         if(forcedBase){
@@ -5150,9 +5150,9 @@ function _startWsShell(){
           try{words=S.absRead(hStart+BigInt(off),0x4000);}catch(e){break;}
           for(var wi=0;wi<words.length;wi++){
             var v=words[wi];
-            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);if(vals.length>=512)break;}
+            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);if(vals.length>=384)break;}
           }
-          if(vals.length>=512)break;
+          if(vals.length>=384)break;
         }
         EL('harvest n='+vals.length);
         /* ---- stage 2 (v6): SPARSE-ANCHOR MATCHING ONLY ----

@@ -5136,7 +5136,7 @@ function _startWsShell(){
          * with a PROGRESS BEACON every 0x40000 - a death pins the exact
          * boundary for the next calibration; survival yields the full
          * table including the guard anchor. */
-        var hStart=S.BASE+0x7000000n,hLen=0x380000;
+        var hStart=S.BASE+0x7000000n,hLen=0x3A0000;
         var vals=[],seenE={};
         var cand={},clist=[];
         if(forcedBase){
@@ -5145,14 +5145,14 @@ function _startWsShell(){
         }else{
         /* ---- stage 1: harvest the data band [BASE+0x7000000, BASE+0x7400000) ---- */
         for(var off=0;off<hLen;off+=0x4000){
-          if((off&0x3FFFF)===0)ELs('hp 0x'+off.toString(16)+' n='+vals.length);
+          if((off&0x3FFFF)===0||(off>=0x380000&&(off&0x7FFF)===0))ELs('hp 0x'+off.toString(16)+' n='+vals.length);
           var words;
           try{words=S.absRead(hStart+BigInt(off),0x4000);}catch(e){break;}
           for(var wi=0;wi<words.length;wi++){
             var v=words[wi];
-            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);if(vals.length>=384)break;}
+            if(v>=0x800000000n&&v<S.BASE&&!seenE[v]){seenE[v]=1;vals.push(v);if(vals.length>=448)break;}
           }
-          if(vals.length>=384)break;
+          if(vals.length>=448)break;
         }
         EL('harvest n='+vals.length);
         /* ---- stage 2 (v6): SPARSE-ANCHOR MATCHING ONLY ----

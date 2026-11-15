@@ -120,6 +120,11 @@ if (name === 'status') {
         /* NANOSLEEP TEST: entry #arg called with scope={tv_sec:arg2}
          * - a blocking call = the entry IS nanosleep. Usage: nap <idx> <sec> */
         cmd = { cmd: 'nap', idx: clean[1] || '17', sec: clean[2] || '4' }; break;
+      case 'twc':
+        /* THR_CREATE WITNESS: msg1 = the thr_create stub RVA
+         * (default 0x130), msg2 = the spin stub (default 0x7A0).
+         * The tid lands at [cfr]. Usage: twc [0xRVA] [0xSPIN] */
+        cmd = { cmd: 'twc', rva: (clean[1]||'130').replace(/^0x/i,''), spin: (clean[2]||'7A0').replace(/^0x/i,'') }; break;
       case 'tw':
         /* THE THREAD WITNESS: thr_new candidate - export entry #arg1
          * OR (if arg1 starts with 0x) a RAW text RVA (the internal

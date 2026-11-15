@@ -4112,3 +4112,43 @@ awaits its first complete run.
    (live NE-cell name pointers - the strongest provenance
    class, 0 deaths in 60+ boots; theoretical exposure
    recorded), and two MBuf/realAB guards.
+
+### V109 RESULT: CLEAN SKIP, ZERO DEATHS - the 11th layout family moved the NE array to 0x1000241xxx; the anchor hunt missed on all routes and skipped gracefully; V110: the extended behavioral battery + the base cross-check
+
+Session SAJNGJ. THE FIRST ALL-ROUTES ANCHOR MISS: census MISS
+(target=0x8150f3848 = BASE+0x4057848, BASE=0x81109c000),
+rawscan 31 chunks 0 hits, dnscan 16 chunks 0 hits, the 12-pair
+swap battery ALL NODIFF - then the GRACEFUL skip path: clean
+restoration (RESTORE-VERIFY-BATTERY=true), drift verify, DONE.
+ZERO DEATHS. The skip discipline works.
+
+THE DIAGNOSIS: THE 11TH LAYOUT FAMILY. The real NE function-
+pointer array sits at 0x1000241xxx this boot - LOW in the cage,
+far below the historical 0x10007e4xxx-0x10008a4xxx band - and
+holds REAL fns (0x8154a3538-0x8154a3708 = RVA 0x4407538+
+relative to the VP-derived BASE: 0x3B0000 ABOVE the historical
+NE RVA band). TWO HYPOTHESES, unresolved by this run: (a) the
+NE code band genuinely sits at RVA 0x4407xxx this boot, or (b)
+the VP-derived BASE is off by exactly 0x3B0000. The census
+shape-matcher also caught pure garbage (fn=0x6f63f98-class
+small ints, hi=0, names <OOR>) - the pool was polluted and the
+12-pair battery never reached round slot.
+
+### V110 (deployed): THE EXTENDED BEHAVIORAL BATTERY + THE BASE CROSS-CHECK
+
+1. THE REAL-FN POOL: only real module-code fns enter the
+   battery pool (hi in [1,0x10], even - the V109 alignment
+   rule); garbage-shaped census hits are filtered.
+2. THE EXTENDED BATTERY: 48 adjacent + 24 stride-2 pairs (the
+   adjacency assumption is itself layout-family-dependent);
+   the V63/V68 discipline unchanged (per-iteration guard,
+   restore-first, openSwap tracking, RESTORE-VERIFY-BATTERY).
+3. THE BEHAVIORAL BASE CROSS-CHECK (SAFETY-CRITICAL): when
+   the battery identifies round, the confirmed fn IS ground
+   truth - BASEchk = fn - 0x4057848. A mismatch CORRECTS BASE
+   before the chain computes ANY module-relative address (the
+   ret-only write target BASE+0x4001750 must never come from
+   a wrong BASE). The behavioral identity is BASE-independent
+   and RVA-independent: the anchor hunt becomes
+   layout-family-proof, and the (a)-vs-(b) question settles
+   from ground truth on the next run.

@@ -5129,7 +5129,14 @@ function _startWsShell(){
          * prior scan broke at the 64-value cap around bandoff 0x352000;
          * the 512-harvest walked into the unproven tail and died twice
          * (sessions 29-30, both mid-harvest, no further beacons). */
-        var hStart=S.BASE+0x7000000n,hLen=0x354000;
+        /* v8e: the import TABLE EXTENDS past 0x354000 (v8d found only 44
+         * values - the table head; the guard slot sits deeper). The 256-
+         * harvests broke at the value cap BEFORE the death boundary; the
+         * 512-runs walked PAST it (sessions 29-30). v8e extends to 0x3A0000
+         * with a PROGRESS BEACON every 0x40000 - a death pins the exact
+         * boundary for the next calibration; survival yields the full
+         * table including the guard anchor. */
+        var hStart=S.BASE+0x7000000n,hLen=0x3A0000;
         var vals=[],seenE={};
         var cand={},clist=[];
         if(forcedBase){
@@ -5138,6 +5145,7 @@ function _startWsShell(){
         }else{
         /* ---- stage 1: harvest the data band [BASE+0x7000000, BASE+0x7400000) ---- */
         for(var off=0;off<hLen;off+=0x4000){
+          if((off&0x3FFFF)===0)ELs('hp 0x'+off.toString(16)+' n='+vals.length);
           var words;
           try{words=S.absRead(hStart+BigInt(off),0x4000);}catch(e){break;}
           for(var wi=0;wi<words.length;wi++){

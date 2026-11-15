@@ -5545,3 +5545,21 @@ gaps [0xD0-0x130], [0x130-0x1E0], [0x1E0-0x200], [0x200-0x230],
 [0x230-0x2C0] (~0x100/0x160/0x190/0x210/0x250/0x280-class), plus
 the untested 1213a-verified 0x3B0 (order-violating but the order
 logic has been unreliable). NEXT: twc 0x3B0, then the gap lottery.
+
+### SESSION 69 (the survivable-return era): the twr instrument proven (the slot scan found 13 WebKit-text returns; retSlot=the deepest); 0x130 not setcontext (died with the survivable ctx) - but 0x230/0x3B0 untested as setcontext candidates
+
+THE TWR RUN (0x130): TWR-1..6 fired (the slot scan: 13 WebKit-text
+returns below cfr; the deepest = 0x7ef399ef8 val=0x80fb0d581 = the
+nativeCallTrampoline's call push); the ctx: rip=0x7A0 rsp=retSlot
+rbp=cfr; THE CALL DIED. Conclusion: 0x130 = a writer (the RDI!=0
+deeper path), NOT setcontext (a setcontext would jump to my ctx -
+even a wrong-slot return would post TWR-7 or die AFTER the stub).
+
+THE SETCONTEXT REFINEMENT: FreeBSD setcontext = syscall 422 =
+13.60 sorted pos 207 (rva 0x1C7D0, between thr_self 134 and
+thr_exit 234) -> the 14.10 region ~0x360-0x3B0. THE DEATH-CLASS
+CANDIDATES (twc-died with a valid ctx): 0x230, 0x3B0 - BOTH
+UNTESTED with the survivable-return ctx!! THE QUEUE: twr 0x230,
+twr 0x3B0, twc 0x3A0 (#7 - the sweep gap, pos-207-consistent!).
+A setcontext hit = THE FULL-REGISTER CONTEXT SWAP (the retSlot
+return = the JS survives = multi-arg syscalls with a clean return).

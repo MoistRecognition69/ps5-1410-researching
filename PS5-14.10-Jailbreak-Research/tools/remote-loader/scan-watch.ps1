@@ -34,10 +34,10 @@ function fmt-delta([long]$d){ if($d -ge 0){ '-0x{0:x}' -f $d } else { '+0x{0:x}'
 
 Get-Content $log -Wait -Tail 0 | ForEach-Object {
   $line = $_
-  if ($line -notmatch '/beacon/V(6(78V2|83|84|86|87|88)|17|3[89]|4[0-9])') { return }
+  if ($line -notmatch '/beacon/V(6(78V2|83|84|86|87|88)|17|3[89]|[45][0-9])') { return }
   if ($line -notmatch '"t": "([^"]+)".*"path": "([^"?]+).*u=(\w+)') { return }
   $t = $Matches[1]; $p = [uri]::UnescapeDataString($Matches[2]); $u = $Matches[3]
-  $msg = $p -replace '^/beacon/V(6(78V2Z?|83|84|86|87|88)|17|3[89]|4[0-9])-',''
+  $msg = $p -replace '^/beacon/V(6(78V2Z?|83|84|86|87|88)|17|3[89]|[45][0-9])-',''
 
   if ($msg -match '^SIFT-START.*-hypo=0x([0-9a-f]+)') {
     $script:psByUid[$u] = [Convert]::ToInt64($Matches[1],16) + 0x5424000
@@ -114,6 +114,35 @@ Get-Content $log -Wait -Tail 0 | ForEach-Object {
     if ($msg -match '^V46-FOUND-256|^V46-FOUND-REAL-AB') { $c = 'Yellow' }
     if ($msg -match '^V46-IMPL-PROBE.*match=true|^V46-IMPL-SIZE') { $c = 'Green' }
     if ($msg -match '^V46-ERR') { $c = 'Red' }
+    # V55 colors
+    if ($msg -match '^V55-START|^V55-CELL|^V55-BASE') { $c = 'White' }
+    if ($msg -match '^V55-A-START|^V55-A-TARGET|^V55-A-SLOT') { $c = 'Cyan' }
+    if ($msg -match '^V55-A-FULL-PROCESS-ARW|^V55-A-MATCH=true') { $c = 'Green' }
+    if ($msg -match '^V55-A-READ-OK') { $c = 'Yellow' }
+    if ($msg -match '^V55-A-ERR|^V55-A-GARBAGE') { $c = 'Red' }
+    if ($msg -match '^V55-B-START|^V55-B-RUN-CODE|^V55-B-FSC-CODE|^V55-B-NOOP-CODE') { $c = 'DarkYellow' }
+    if ($msg -match '^V55-B-ENDBR64=YES|^V55-B-FSC-ENDBR64=YES') { $c = 'Green' }
+    if ($msg -match '^V55-B-ENDBR64=NO') { $c = 'Yellow' }
+    if ($msg -match '^V55-C-START|^V55-C-TOTAL|^V55-C-CONSECUTIVE|^V55-C-NE-CAND') { $c = 'White' }
+    if ($msg -match '^V55-C-NE-\d') { $c = 'Cyan' }
+    if ($msg -match '^V55-C-SAMPLE') { $c = 'DarkGray' }
+    if ($msg -match '^V55-D-START') { $c = 'White' }
+    if ($msg -match '^V55-D-STALE|^V55-D-LIVE|^V55-D-JSAB|^V55-D-IMPL|^V55-D-DTOR') { $c = 'DarkYellow' }
+    if ($msg -match '^V55-DONE') { $c = 'Green' }
+    if ($msg -match '^V55-ERR|^V55-[ABCD]-ERR') { $c = 'Red' }
+    # V56 colors
+    if ($msg -match '^V56-START|^V56-CELL|^V56-BASE') { $c = 'White' }
+    if ($msg -match '^V56-CENSUS-START|^V56-CENSUS-TOTAL|^V56-CENSUS-NE') { $c = 'Cyan' }
+    if ($msg -match '^V56-NE-') { $c = 'DarkYellow' }
+    if ($msg -match '^V56-SWAP-A|^V56-SWAP-B') { $c = 'White' }
+    if ($msg -match '^V56-PRE-|^V56-POST-A|^V56-POST-RESTORE') { $c = 'Yellow' }
+    if ($msg -match '^V56-WRITING|^V56-READBACK') { $c = 'DarkYellow' }
+    if ($msg -match '^V56-BEHAVIORAL-CHANGE=true|^V56-PC-REDIRECTION-CONFIRMED') { $c = 'Green' }
+    if ($msg -match '^V56-BEHAVIORAL-CHANGE=false') { $c = 'Red' }
+    if ($msg -match '^V56-SWAP-SKIP') { $c = 'Red' }
+    if ($msg -match '^V56-DRIFT') { $c = 'DarkGray' }
+    if ($msg -match '^V56-DONE') { $c = 'Green' }
+    if ($msg -match '^V56-ERR') { $c = 'Red' }
     Write-Host ("{0} [{1}] {2}" -f $t,$u,$msg) -ForegroundColor $c
   }
 }

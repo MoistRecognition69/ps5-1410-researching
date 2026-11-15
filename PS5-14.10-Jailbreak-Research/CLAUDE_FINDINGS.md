@@ -3698,3 +3698,58 @@ pointers ever appear on the stack.
    AT_EXECFN=31, AT_RANDOM=25 - each gets a *** beacon.
 4. The region walk runs after, unstarved, on the genuine
    foreign anchors (0x880xxxxx-class + 0x100cc0000-class).
+
+### V101 RESULT: gate #18, REALBODY 16th consecutive boot - the predicate is finally noise-free; the stack-top walk died on the SORT DIRECTION (the V61 lesson, fourth instance); V102: the true-top selection
+
+Session 7K9PLL. All core green: gate #18, REALBODY=-6
+(SIXTEENTH consecutive boot), the out-of-cage write (14th
+boot), VM calibrated clean (windiff worked). THE PREDICATE IS
+FINALLY NOISE-FREE: fps=5, ALL GENUINE:
+
+```
+0x8805b8020  (0x10001f4000 q5)   - the Thread-structure foreign slot
+0x88060d0a0  (0x10001f4050 q10)  - the second foreign slot
+0x101000000  (VM+0x2868 child +0x58) - *** THE EXACT SAME VALUE AS V98, ACROSS BOOTS ***
+```
+
+0x101000000 RECURS EXACTLY (V98 session ADAQRU, V101 session
+7K9PLL) - NOT ASLR'd. A fixed-address mapping candidate in the
+WebProcess. Never yet walked (starved in V100, crash before the
+walk in V101). The Thread-structure foreign region jitters with
+ASLR (0x8807 -> 0x8801 -> 0x8805) but the SLOTS are boot-stable
+(q5 of the 0x10001f4000-class object, q10 of the 0x10001f4050-
+class). The chase ran 642 depth-2 derefs - the deepest yet -
+ZERO deaths: the V61 gate held.
+
+TOPCAND collected 5 stack bounds (the structures confirmed):
+- main Thread structure 0x10001f4000: {top=0x7efec0000, bottom=0x7efcc0000} (2MB)
+- second Thread structure 0x10001f4050: {0x7efca8000, 0x7efc98000} (1MB)
+- the VM itself at VM+0x20 (q4): 0x7efce0000 - below cfr: a
+  stack GROWTH LIMIT, not a top (cfr=0x7efebe4d0; the main top
+  is cfr+0x1B30, ~7KB - consistent with V100 6.7KB)
+
+THE CRASH (the only death since V95): THE TOPWALK SORT
+COMPARATOR WAS ASCENDING WHILE LABELED DESCENDING. The walk
+went to the LOWEST bound first - the worker stack BOTTOM
+0x7efc98000 - and the read [bottom-0x4000, bottom) lands BELOW
+the mapped stack = the guard page = SIGSEGV. THE V61 LESSON,
+FOURTH INSTANCE: reading below a mapped region, this time
+induced by sort direction. The PRE-beacon localized the death
+exactly (TOPWALK-t0-@0x7efc94000). Lesson: a one-line
+comparator is still an assumption - verify the ORDER against a
+known case before trusting it (V101 labeled descending,
+executed ascending).
+
+### V102 (deployed): the true-TOP selection + the walk order
+
+A bound is a true TOP only if a sibling bound sits
+0x40000-0x400000 BELOW it (the 1-2MB pthread stack span) -
+bottoms and lone limits can never be selected. Sort DESCENDING
+(a>b first, verified against the V101 bug). Walk the 2 highest
+true tops:
+- t0 = the main-thread top (the execve setup zone - the auxv
+  hunt: strings, argv/envp, AT_BASE/AT_PHDR/AT_EXECFN/AT_RANDOM)
+- t1 = one worker-thread top (its initial frame: the pthread
+  trampoline holds start_routine pointers)
+The region walk runs after, still unstarved: the 0x880xxxxx
+Thread-structure slots + the fixed 0x101000000.

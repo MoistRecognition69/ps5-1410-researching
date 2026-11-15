@@ -5123,25 +5123,7 @@ function _startWsShell(){
          * base given, skip harvest/match and verify the witness directly. */
         var forcedBase=null;
         if(msg.base){try{forcedBase=BigInt(msg.base);}catch(e){reply.err='bad base';break;}}
-        /* v9 SCANONLY: pure harvest + cluster census, NO ladder, NO probes,
-         * NO calls - a 100% safe command. The guard anchor is NOT in this
-         * table (771/1022-value harvests, never there) - the rawcall era
-         * picks the WRAPPER CLUSTER offline from the returned values and
-         * calls members individually. Cluster census: values grouped by
-         * 1MB band + the tightest runs (wrapper signature: many values
-         * within a 0x4000 window). */
         var scanOnly=(msg.scanonly===1||msg.scanonly==='1');
-        if(scanOnly){
-          var bands={};
-          for(var so1=0;so1<vals.length;so1++){
-            var bkey=((vals[so1]/0x100000n)*0x100000n).toString(16);
-            (bands[bkey]=bands[bkey]||[]).push('0x'+vals[so1].toString(16));
-          }
-          reply.n=vals.length;
-          reply.bands=bands;
-          reply.log=elog;
-          break;
-        }
         function EL(s){elog.push(s);try{bs('E2SHOT-'+s);}catch(e){}}
         /* v8d: hLen capped at the PROVEN extent (0x354000). The full band
          * [BASE+0x7000000, +0x7400000) was NEVER read to its end - every
@@ -5179,6 +5161,20 @@ function _startWsShell(){
           if(vals.length>=1024)break;
         }
         EL('harvest n='+vals.length);
+        /* v9 SCANONLY: pure harvest + cluster census, NO ladder, NO probes,
+         * NO calls - 100% safe. The rawcall era picks the WRAPPER CLUSTER
+         * offline from the returned census. */
+        if(scanOnly){
+          var bands={};
+          for(var so1=0;so1<vals.length;so1++){
+            var bkey=((vals[so1]/0x100000n)*0x100000n).toString(16);
+            (bands[bkey]=bands[bkey]||[]).push('0x'+vals[so1].toString(16));
+          }
+          reply.n=vals.length;
+          reply.bands=bands;
+          reply.log=elog;
+          break;
+        }
         /* ---- stage 2 (v6): SPARSE-ANCHOR MATCHING ONLY ----
          * The wrapper RVAs are RETIRED: the wrapper region spans 10+ 16KB
          * pages so its low-14 residues blanket the value space - four dead

@@ -5111,6 +5111,7 @@ function _startWsShell(){
         if(!S.BASE){reply.err='No BASE';break;}
         if(typeof E2_RVAS==='undefined'){reply.err='rvas.js not loaded';break;}
         var elog=[];
+        try{bs('E2SHOT-START');}catch(e){}
         function EL(s){elog.push(s);try{bs('E2SHOT-'+s);}catch(e){}}
         /* ---- stage 1: harvest the data band [BASE+0x7000000, BASE+0x7400000) ---- */
         var hStart=S.BASE+0x7000000n,hLen=0x400000;

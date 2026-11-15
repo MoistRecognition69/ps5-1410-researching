@@ -3551,3 +3551,74 @@ V94 negative predicted.
 4. An ELF header at either address = the module base = the
    dynamic-symbol walk (the V83 design, pointed at the RIGHT
    address this time) = the import library.
+
+### V99 RESULT: gate #16, REALBODY 14th consecutive boot - THE READ-AROUND FOUND THE FIRST CONFIRMED READABLE FOREIGN REGION IN THE WEBPROCESS
+
+Session BX1U1N. All green: gate #16, REALBODY=-6 (FOURTEENTH
+consecutive boot), the out-of-cage write (12th boot), zero
+deaths. THE READ-AROUND FIRED AND SURVIVED: 6 foreign pages
+read live, classified, no crash. DEREF-DONE: parents=100,
+d2deref=26, fps=24.
+
+THE HEADLINE: two hits are GENUINELY foreign - 0x8807a8020 and
+0x8807fd0a0 (hi32=8, ~2.1GB above BASE=0x7fe528000, OUTSIDE the
+module span [BASE, BASE+0x7392000)) - and BOTH PAGES ARE MAPPED
+AND READABLE. This is the first confirmed readable ground
+outside our own module in the WebProcess - after four dead
+routes (import tables, auxv, band-priors, depth-1). The parent
+chain: VM-window p0 -> 0x10001940c0 -> 0x10001f4050 at +0x50 -
+THE THREAD-STRUCTURE OBJECT FAMILY (the same object class that
+held the stack-bounds pair in V96). Contents:
+- @0x8807a8000: {0,0,0, 0x80000000000427, 0x18c71, 0,0,0}
+- @0x8807fd000: {0xafafafafafafafaf x2, 0, 0x80000000000027,
+  0x8808050a0 (self-region ptr, +0x31000), 0xf8afafafafafafaf,
+  0, 0x80000000000063}
+0xaf-poison fill + small tagged structs + a self-region pointer.
+Hypothesis (unproven): a large mmap'd region - possibly the
+non-JS thread stacks (the Thread structure points into it) or a
+malloc/mmap arena. Whatever it is, it is READABLE, and readable
+foreign ground is walkable.
+
+TWO HONEST BUGS THIS BOOT (both mine, both diagnosed):
+1. THE STRADDLE BUG: BASE=0x7fe528000 has hi32=7, but the
+   module's vtable band [BASE+0x715A200, BASE+0x7392000) lands
+   at 0x80568xxxx - hi32=8. The predicate's hi-band module
+   check (hi===v95hiMod) missed it, so 22 of 24 FP hits were
+   our OWN module's vtable pointers: VM-structure arrays (the
+   0x1028-strided family with vtable 0x80568a528, the 0xE8-
+   strided family with vtable 0x80568a568 - both REAL
+   discoveries about VM internals, but not foreign). Same
+   class as V93: a hi-band assumption breaks when ASLR
+   straddles a 4GB boundary. The classifier's MOD-TEXT check
+   (BASE..BASE+0x7000000) also stops below the vtable band.
+2. THE BUILD BUG: the v99reads declaration was lost in the
+   build script (written into a template literal that was never
+   spliced). Each read's classification beacon fired BEFORE
+   the v99reads++ throw, so ALL the data survived - only the
+   final DONE beacon was eaten; the probe-level catch
+   recovered; PATHB-DONE fired. Build scripts must splice
+   every declaration and assert every anchor (fixed in the
+   V100 build: per-splice line-content assertions).
+Also: the read-around read at the PAGE BASE (0x80 bytes) - the
+hit at +0xa0 into the page was never read; the pointed-to
+object itself is still unseen. V100 reads AT the hit.
+
+### V100 (deployed): the read-around v2 + THE REGION WALK
+
+1. The predicate now uses RANGE checks (straddle-proof):
+   stack [0x7e00000000, 0x7f00000000), module span
+   [BASE-16MB, BASE+256MB). Depth-1 hits stored too.
+2. Read AT the hit: [anchor-0x40, anchor+0x40).
+3. THE REGION WALK at 16KB-page granularity: each absRead56 is
+   a FULL 16KB page (2048 qwords, exactly one PS5 page - fully
+   mapped or fully unmapped, no crossing risk) around up to 3
+   anchors (max 2 per 16MB region) plus the interval between
+   same-region anchors. All PRE-beaconed; a death banks the
+   boundary (crash budget honored).
+4. NEWBAND classification inside every page: any qword outside
+   cage / stack range / module span / the anchor's own 16MB
+   region is an OTHER-MODULE candidate - beaconed with grid
+   position. ELF magic checked per page. The 0x8_807xxxxx
+   region is very likely a thread-related mapping; if the
+   struct pthread lives in or near it, the libc/libkernel
+   start_routine/cleanup pointers are the NEWBAND beacons.

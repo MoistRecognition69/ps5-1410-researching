@@ -5086,3 +5086,55 @@ THE OPEN FRONT: a canary-confirmed session with its census in the
 same reply (v12 achieves the pairing when the guard anchor lands).
 With base+census: the cluster RVAs = the 14.10 drift structure, the
 drift vote runs, and the ONE identified witness call fires.
+
+### THE COUNCIL SESSION (50): THE BREAKTHROUGH - THE PTHREAD-BACKLINK BASE DERIVATION (LIVE, THREE READS) - THE THIRD CANARY - THE EXPORT TABLE DECODED - GETTIMEOFDAY = lk+0xB50 (14.10-IDENTIFIED)
+
+THE COUNCIL (convened at the users request; 4 members, 3 rounds, no
+full convergence but decisive new intelligence - all corpus-verified
+before adoption):
+(1) GETTIMEOFAY = libkernel+0xB50 ON 14.10 - named-import evidence
+    (captures 1183b/1213a/1215b: linker-resolved gettimeofday imports
+    at addresses ending B50 against independently derived bases).
+    CORRECTION BANKED: the 13.60 0x1B840 I called gettimeofday was
+    FSTATFS - the sessions-25/26 "drift" deaths were WRONG-FUNCTION
+    calls, not drift (the real gettimeofday moved 0x1D730 -> 0xB50).
+(2) THR_SELF (syscall 432) writes the TID through its single pointer
+    argument (capture 1227b) - the ideal RDI-only witness if its RVA
+    is ever resolved (the export NIDs are not SHA1-of-name; probe
+    508a concluded name resolution never worked for them either).
+(3) THE PTHREAD BACKLINK: _thread_list at lk+0x6C218; a struct
+    pthreads tqe_prev points back at the list head - a NON-STOCHASTIC
+    base derivation.
+
+THE LIVE CHAIN (session 49, all reads, one session):
+registry entry (0x10001c8000, boot-stable) -> thread record
+(0x10001f45a0) -> struct pthread (0x8800efb80, the 0x88-band READABLE)
+-> the backlink at +0x40 = 0x83bcf4218 (residue 0x218 EXACT) ->
+lk_base = 0x83BC88000 (16KB-aligned) -> CANARY at +0x751D0 =
+0x5453e725171b5aa7 (THE THIRD CANARY CONFIRMATION; the data offset
+exact across three sessions). THE CENSUS of 940 foreign values also
+banked this session (13 clusters; the 14/9 stable wrapper-signature
+clusters confirmed same-import-sets across sessions).
+
+THE EXPORT TABLE (lk+0x48000): magic 0x3b031b01, size 0x416c =
+12 + 0x82C*8, entries {hi, lo} where HI = THE SELF-RELATIVE TEXT
+RVA (text = 0x48000 + signed(hi): 0xD0, 0x130, 0x1E0, 0x200, 0x230,
+0x2C0, 0x340, 0x3A0, 0x410... - INCLUDING THE GAME-LANE-VERIFIED
+LIVE STUB 0x410) and LO = the NID/name offset (no ASCII names; the
+SHA1-of-name NIDs do not match - the encoding unresolved; the anchor
+validation via gettimeofday/0xB50 pending the entries 512+ dump).
+
+THE RAWCALL AT lk+0xB50 (session 50): the session died AT THE CALL
+MOMENT - no reply, no beacons (the plain rawcall banks nothing).
+The witness outcome unknown (the tv write lands in the kernel before
+any userland continuation; the evidence died with the session).
+
+V13 THE E2WITNESS COMMAND: the entire chain as ONE command with
+BLOCKING SYNC BEACONS at every step (entry, thread record, backlink,
+base, canary, the call, THE SCOPE READ) - a death at the call moment
+still banks the derivation and the scope bytes. THE SAFETY CASE:
+FreeBSD gettimeofday copies tv BEFORE tz (the wall clock lands in
+our buffer regardless of the tz args fate); the tz copyout is
+kernel-validated userland (NO PANIC PATH - the console is safe);
+every RSI outcome (zero / invalid->EFAULT / valid->delayed session
+crash) banks the witness first.

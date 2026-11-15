@@ -4795,3 +4795,38 @@ records with bases may live there; (b) ptrscan the BASE+0x7000000
 data band for foreign pointers, low-14-match against the map; (c)
 the registry binding tables of OTHER modules (every sprx binds
 libkernel functions).
+
+### THE SHELL SESSION 10: THE PTRSCAN HARVEST LANDS - LIBKERNEL LOCATED IN OUR WEBPROCESS (lk_base = 0x813f44000, 5-pair wrapper-region coherence; the getpid wrapper ALREADY IN THE IMPORT TABLE at 0x813f5f860)
+
+THE HARVEST (3 ptrscans of the BASE+0x7000000 data band, 178 unique
+foreign pointers): the import/dispatch table at bandoff 0x351838+,
+clusters: 0x8081-0x8083 x54 (WebCore-class), 0x813d-0x813f x49
+(LIBKERNEL - see below), 0x82bb x18, 0x8063-0x8064 x25, 0x8031 x6,
+0x8025/0x8026 x3, 0x8266 x1, 0x8297 x2. BASE this boot 0x82cfd4000.
+
+THE MATCH (tools/lk-match.js - offline, all 178 pointers x all 339
+13.60-map RVAs, 16KB-aligned bases only): THE LEADER: lk_base =
+0x813f44000 with FIVE supporting pairs, ALL from the tight pointer
+group 0x813f5f310-0x813f5f860, ALL resolving to adjacent wrapper
+RVAs (0x1B310-0x1B860) inside the 13.60 wrapper region - wrapper-
+region packing confirmed (0x30-0xC0 spacing). The strongest pair:
+P=0x813f5f860 = base+0x1B860 = THE GETPID WRAPPER, harvested
+DIRECTLY from our module import table. Other candidates (0x813e74000
+x4, 0x8063d0000 x3, 0x8081c4000 x3...) are noise-level for a
+339-RVA map. The cluster span 0x813d1c430-0x813f90ce0 = 2.5MB of
+referenced text - consistent with libkernel size (their notes place
+syscall groups at TEXT+0x340000, TEXT+0xab0000).
+
+THE WATCHDOG (confirmed 4th time): the first verification call
+(callret 0x813CD5200 - a WRONG pre-script candidate) timed out WITH
+a mem warning - the session died at ~6min of age, the call result
+UNKNOWN (the watchdog, not the call, likely killed it). DOCTRINE:
+the decisive calls run IMMEDIATELY after info, first commands of
+the session.
+
+THE LADDER (E2-ready, this boot, same-console re-entry keeps the
+ASLR):
+1. callret 0x813f45200 (lk+0x1200 sceKernelGetCurrentCpu) -> 0..7
+2. callret 0x813f5f860 (lk+0x1B860 getpid wrapper) -> THE PID = E2
+Fallbacks if the leader fails (re-verify each): 0x813e74000,
+0x8063d0000, 0x8081c4000, 0x813d00000.

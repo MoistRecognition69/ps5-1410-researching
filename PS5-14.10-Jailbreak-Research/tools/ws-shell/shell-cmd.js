@@ -121,10 +121,14 @@ if (name === 'status') {
          * - a blocking call = the entry IS nanosleep. Usage: nap <idx> <sec> */
         cmd = { cmd: 'nap', idx: clean[1] || '17', sec: clean[2] || '4' }; break;
       case 'tw':
-        /* THE THREAD WITNESS v2 (nanosleep park): thr_new candidate
-         * (export entry #arg1) with start_func = the nap-confirmed
-         * nanosleep stub (arg2 = its RVA). Usage: tw <idx> [napRva] */
-        cmd = { cmd: 'tw', idx: clean[1] || '20', nap: clean[2] }; break;
+        /* THE THREAD WITNESS: thr_new candidate - export entry #arg1
+         * OR (if arg1 starts with 0x) a RAW text RVA (the internal
+         * stubs 0x3B0/0x3F0!). arg2 = the spin-stub RVA. */
+        if (clean[1] && /^0x/i.test(clean[1])) {
+          cmd = { cmd: 'tw', rva: clean[1].replace(/^0x/i,''), nap: clean[2] };
+        } else {
+          cmd = { cmd: 'tw', idx: clean[1] || '20', nap: clean[2] };
+        } break;
       case 'sweep':
         /* THE STUB-LADDER SWEEP: derive lk_base, read export table entry
          * #arg, rawcall it with a zeroed scope. One-arg stubs write the

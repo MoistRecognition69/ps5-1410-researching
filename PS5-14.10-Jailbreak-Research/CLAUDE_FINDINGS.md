@@ -3418,3 +3418,25 @@ instead of guessing bands.
 3. Beacon every hit WITH the parent chain (which VM-window slot
    led to it) - the struct pthread targets light up with
    libkernel/libc pointers whatever their bands.
+
+### V95 RESULT: gate #13, REALBODY 11th consecutive boot - the V94 floor fix proved itself; the deref hunt died on a V61 violation (mine, a third time)
+
+Session N6JCNR. All core green: gate #13, REALBODY=-6 (ELEVENTH
+consecutive boot), the out-of-cage write (9th boot). THE V94 FLOOR
+FIX PROVED ITSELF: the JSFunction this boot was at 0x10008ff620 -
+the HIGH band, above every old ceiling - and the fixed up-walk
+found it. The core is resilient to the ninth layout family.
+
+THE DEREF HUNT DIED after DEREF-START-parents=100: it dereferenced
+every hi=0x10 qword from the VM window WITHOUT the V61 range gate.
+"Looks like a cage pointer" != "lives in a committed page" -
+garbage values, dangling pointers, and uncommitted cage pages all
+fall in the band. THE V61 LESSON, A THIRD TIME (V83/V84: observed
+pointer values are not dereference proof; V95: the same, applied
+to cage-band qwords from a window dump).
+
+### V96 (deployed): the deref hunt with the V61 gate
+
+The parents are gated to the KNOWN-MAPPED heap band
+[lowB, view_end); progress beacons every 10 parents (a death
+localizes to the parent range); everything else unchanged.

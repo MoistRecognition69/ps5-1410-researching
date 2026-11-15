@@ -120,6 +120,11 @@ if (name === 'status') {
         /* NANOSLEEP TEST: entry #arg called with scope={tv_sec:arg2}
          * - a blocking call = the entry IS nanosleep. Usage: nap <idx> <sec> */
         cmd = { cmd: 'nap', idx: clean[1] || '17', sec: clean[2] || '4' }; break;
+      case 'twr':
+        /* THE SURVIVABLE SETCONTEXT TEST: arg1 = the candidate RVA
+         * (default 0x130), arg2 = the jump stub (default 0x7A0).
+         * The reply posts = setcontext-class CONFIRMED. */
+        cmd = { cmd: 'twr', rva: (clean[1]||'130').replace(/^0x/i,''), spin: (clean[2]||'7A0').replace(/^0x/i,'') }; break;
       case 'twc':
         /* THR_CREATE WITNESS: msg1 = the thr_create stub RVA
          * (default 0x130), msg2 = the spin stub (default 0x7A0).

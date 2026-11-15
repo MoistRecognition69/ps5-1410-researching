@@ -5187,3 +5187,17 @@ code. The identification must come from a different source:
 (a) the 13.60 offset table cross-reference (the text drift pattern),
 (b) the stub-ladder sweep (call each export entry, check scope),
 (c) a different readable structure that maps names to addresses.
+
+### SESSION 58 (the stub-ladder sweep begins): entry #63 (text 0x1B80) = MULTI-ARG WRITER (session died at the call moment)
+
+THE SWEEP LOG:
+- #63 (text 0x1B80): multi-arg writer, session died. Not thr_self.
+- #0 (text 0xD0): multi-arg writer, session died. Not thr_self.
+- #8 (text 0x410): NEXT CANDIDATE - previously verified as a live stub
+  (the game-lane-verified import). If getpid (0 args), the session
+  survives but the scope stays zeroed (no pointer arg to write to).
+- #8 (text 0x410): SURVIVED rawcall (scope all zeros, verified=true).
+  A zero/one-arg function that does NOT write to RDI. Likely getpid
+  or similar. callret DIED (the JSValue encoding crash - raw kernel
+  return is not a valid JSValue; String() on it kills the engine).
+  CONFIRMED: entry #8 is a SAFE CALL TARGET at lk_base + 0x410.

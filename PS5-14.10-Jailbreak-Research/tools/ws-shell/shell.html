@@ -5562,7 +5562,7 @@ function _startWsShell(){
           var tidOut=S.fakeScope+0x180n;           /* child_tid target */
           var parOut=S.fakeScope+0x188n;           /* parent_tid target */
           var stackBase=S.viewBase+0x100000n;       /* 1MB into the 64MB view */
-          var stackSize=0x100000;                  /* 1MB park stack */
+          var stackSize=0x40000;                   /* 256KB park stack (proven committed - 1MB fill hit an uncommitted cage page) */
           TW('6 building param stub=0x'+thrStub.toString(16));
           S.absWrite(S.fakeScope+0x00n,thrStub);
           S.absWrite(S.fakeScope+0x08n,argBuf);

@@ -4278,3 +4278,39 @@ but can no longer cost anything upstream. THE STACK ORDER IS
 NOW: core -> chase (gate v2) -> auxv -> triaged Thread
 anchors -> T2 -> LDSO (header-first) -> ENTRY -> FX.
 The ld.so header gamble finally gets its turn.
+
+### V113 RESULT: THE DEEPEST, CLEANEST RUN YET - the full upstream stack green (REALBODY 25th, auxv 7th, Thread anchors 9/9, T2 3/3) - AND THE HEADER GAMBLE FINALLY FIRED: *** LD.SO ELF HEADER PAGE IS UNMAPPED *** (the same SELF-loader treatment as our own module, V52); V114: THE TAIL-DOWN ORDER
+
+Session KTPX8Z. THE FULL UPSTREAM STACK GREEN IN ONE BOOT:
+gate, REALBODY=-6 (TWENTY-FIFTH consecutive boot), the
+out-of-cage write (24th), the chase clean (494 derefs, fps=17),
+the auxv anchored a SEVENTH consecutive time, the anchor
+triage (2-of-5), BOTH Thread anchors read (the 9/9 class),
+the T2 chase 3/3 mapped zero deaths - the rich heap page
+recurred (0x80c05c000: {self, 0x81136a084, 0x8806cf2e0,
+0x8806d58e0, 0x80c058010, 0x20000, 0x8806bc000} - the new
+0x81136a084 lead).
+
+*** THE HEADER GAMBLE FIRED AND ANSWERED: LDSO-START-
+atbase=0x827b18000 -> LDSO-C0-k0 -> DEATH. THE LD.SO ELF
+HEADER PAGE IS UNMAPPED - the same SELF-loader treatment as
+our own module (V52: the header page stripped, the interior
+mapped). No phdrs; no header-derived segment map. The
+negative returned CLEANLY, everything upstream banked first -
+the reorder worked exactly as designed.
+
+THE LD.SO MAP IS NOW:
+- +0x0 (the header page): DEAD (V113)
+- +0x30000 and above: DEAD (V105)
+- the module body: ~(0x4000, 0x2C000-0x30000), if it follows
+  our own module pattern (header stripped, interior mapped)
+- THE DATA SEGMENT SITS AT THE TAIL - where the resolved
+  libc/libkernel pointers live.
+
+### V114 (deployed): THE TAIL-DOWN PROBE ORDER
+
+Descend from +0x28000 (k=10, 9, 8 - the data-est pages), then
++0x2C000 (k=11 - possibly past-end), then the text pages
+descending (k=7..1 - XO risk each, taken only after the data
+is banked). Every probe PRE-beaconed; a death banks the
+boundary; the upstream stack runs green first, every boot.

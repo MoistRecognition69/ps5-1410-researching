@@ -1,6 +1,6 @@
 # PS5 14.10 WebKit Exploitation Research
 
-WebKit memory safety research targeting PlayStation 5 firmware 14.10. The **FontFace UAF chain** (V17–V99, leading) has achieved **full WebProcess control**: absolute read/write, arbitrary PC redirection with controlled arguments, return-value decoding, and out-of-cage writes — all device-proven, reproducible across boots, with full restoration discipline. The **Canvas `getContext()` reentrant UAF** (CVE-2026-43720) is designed but secondary.
+WebKit memory safety research targeting PlayStation 5 firmware 14.10. The **FontFace UAF chain** (V17–V119 + the interactive shell era, leading) has achieved **full WebProcess control**: absolute read/write, arbitrary PC redirection with controlled arguments, return-value decoding, out-of-cage writes — all device-proven, reproducible across 35+ consecutive boots, with full restoration discipline — plus a **live interactive WebProcess shell** (the probe-reboot cycle eliminated). The **Canvas `getContext()` reentrant UAF** (CVE-2026-43720) is designed but secondary.
 
 > **Disclaimer:** Authorized security research on personally owned hardware. For educational and research purposes only.
 >
@@ -25,18 +25,15 @@ Every contribution helps keep the models running and the research moving forward
 | Platform | PlayStation 5 |
 | Firmware | 14.10 (UA-confirmed) |
 | OS | Prospero (FreeBSD r230171) |
-| CPU | AMD Zen 2, 16KB pages |
+| CPU | AMD Zen 2, **16KB pages** |
 | Browser | Safari 17.0 / AppleWebKit 605.1.15 |
 | Source tree | **WebKit-1400** (616-era internal fork) |
 | JIT | **Disabled (LLInt-only, all tiers OFF)** — device-confirmed |
+| Process | NKWebProcess (self: /<random>/common_ex/lib/NKWebProcess.self) |
 
-**Available:** Workers, WebSocket, fetch, SubtleCrypto, Canvas 2D, ReadableStream, ResizableArrayBuffer, WeakRef, FinalizationRegistry, Proxy, BigInt, structuredClone, MediaSource, TransformStream, FontFace, Atomics, MessageChannel
+## Exploit Chain 1 — FontFace UAF (**WEBPROCESS CONTROL + LIVE INTERACTIVE SHELL**)
 
-**Not available:** WebAssembly, SharedArrayBuffer, WebGL, WebAudio, IndexedDB, ServiceWorker, ReadableStream BYOB, WebRTC, WebGPU, OffscreenCanvas, Clipboard API
-
-## Exploit Chain 1 — FontFace UAF (**WEBPROCESS CONTROL ACHIEVED**)
-
-The active chain: a JS-created `FontFace`'s native `CSSFontFace` is freed and reclaimed by a sprayed ArrayBuffer (byte control over the reclaimed object), the COOP write station fires arbitrary writes, a legitimate 64MB DataView gives absolute R/W, the NE census finds raw function pointers, and the `m_function` overwrite gives arbitrary PC. Device-proven on retail 14.10 hardware, probe series V17 → V99 (`tools/remote-loader/v*.html`).
+The active chain: a JS-created `FontFace`'s native `CSSFontFace` is freed and reclaimed by a sprayed ArrayBuffer (byte control over the reclaimed object), the COOP write station fires arbitrary writes, a legitimate 64MB DataView gives absolute R/W, the NE census finds raw function pointers, and the `m_function` overwrite gives arbitrary PC. Device-proven on retail 14.10 hardware, probe series V17 → V119 (`tools/remote-loader/v*.html`) **plus the interactive shell** (`tools/ws-shell/`).
 
 | Stage | Probes | Status | Description |
 |-------|--------|--------|-------------|
@@ -46,34 +43,31 @@ The active chain: a JS-created `FontFace`'s native `CSSFontFace` is freed and re
 | AB size expansion → OOB DataView | V40–V49 | **CONFIRMED** | The AB+0x17 surgical shot → legitimate 64MB DataView over 256-byte buffer |
 | **Absolute in-cage R/W** | V54 | **CONFIRMED** | DataView m_vector rewrite (cell+0x10/+0x18) — synchronous, arbitrary address |
 | Module rodata reads | V55 | **CONFIRMED** | Module vtables readable through the view (identity caging: GIGACAGE_ENABLED=0) |
-| NE census | V56–V62 | **CONFIRMED** | ~300 NativeExecutable cells enumerated; raw `m_function` function pointers |
-| **PC redirection** | V63 | **CONFIRMED** | `round.m_function := sign's fn` — `Math.round(-5.7)` returned `-1` (sign behavior); battery-diff identified both functions |
-| **Arbitrary PC** | V65 | **CONFIRMED** | `round.m_function := folded-empty (RVA 0x4001750)` — cross-signature call executed and survived; NO icall CFI on the NE dispatch path |
-| JSFunction → scope → globalObject → VM | V66–V81 | **CALIBRATED** | JSFunction layout device-corrected (scope@+0x10, exec@+0x18); globalObject G found; **VM calibrated** at `[G+0x38]`, topCallFrame at `VM+0x9ce8` (window-differential, first try) |
-| **Fake scope (R2 gate)** | V82 | **PASSED** | A zeroed 0x40-byte buffer carrying ONLY `[+0x38]=VM*` swapped into a live JSFunction's `m_scope` — the trampoline took the forged scope, loaded the VM from our buffer, wrote cfr into the calibrated topCallFrame, and returned cleanly |
-| **Controlled-return real-body call** | V84+ | **CONFIRMED** | `Math.round(-5.7)` through the forged scope with the REAL function body returned **exactly -6** — 13 consecutive boots |
-| **Out-of-cage write** | V86+ | **CONFIRMED** | Sentinel `0xdeadbeefcafebabe` written/read/restored in the 0x7ef stack band (outside the cage) — 11 consecutive boots |
-| Foreign-module pointers | V98 | **FOUND** | First foreign-band pointers in the WebProcess (hi32=1, the 4–8GB system-module band): a mid-function-shaped value and a page-aligned base candidate, found by the depth-2 deref chase through the VM's GC-thread structures |
-| Import resolution | V99+ | **ACTIVE** | The read-around validation: ELF-magic check at the foreign candidates → module bases → dynamic-symbol walk → strlen + syscall wrappers |
-| Kernel | — | **D2-GATED** | Kernel candidate selection has its reference corpus banked (external intel); the trigger begins after E2's syscall item |
+| NE census → **PC redirection** → **arbitrary PC** | V56–V65 | **CONFIRMED** | ~300 NativeExecutable cells; `round.m_function := sign's fn` (V63); cross-signature call survived (V65) — NO icall CFI on the NE dispatch path |
+| JSFunction → scope → VM calibration | V66–V81 | **CALIBRATED** | JSFunction layout device-corrected (scope@+0x10, exec@+0x18); **VM at [G+0x38]**, topCallFrame at `VM+0x9ce8` |
+| **Fake scope (R2 gate)** | V82 | **PASSED** | A zeroed buffer carrying ONLY `[+0x38]=VM*` swapped into a live JSFunction's `m_scope` — RDI controlled per call |
+| **Controlled-return real-body call** | V84+ | **CONFIRMED** | `Math.round(-5.7)` through the forged scope = exactly −6 — **35+ consecutive boots** |
+| **Out-of-cage write** | V86+ | **CONFIRMED** | Sentinel in the 0x7ef stack band — 24+ consecutive boots |
+| **The deterministic stack-top walk** | V100–V105 | **CONFIRMED** | cfr-upward (no layout lottery): the execve setup zone found every boot; **THE ANCHORED AUXV DECODE** — the complete auxv, noise-immune, 14 consecutive boots: AT_BASE (ld.so), AT_ENTRY (the executable), AT_PLATFORM cross-validated |
+| The ld.so & executable routes | V113–V119 + shell | **CLOSED (measured)** | Interactive one-command answers: ld.so body `+0x4000` DEAD, executable entry page DEAD — both XO; the ld.so vicinity is a fully-mapped dead zone, text cluster `[+0x304000,+0x348000)` |
+| **THE MODULE REGISTRY** | shell session 3 | **FOUND** | The heap string scan found the loader's malloc'd registry: module path strings (`/NJM6J6Ztb0/common_ex/lib/libSceRnpsNKInjectecedBundle.sprx` — the per-boot mount prefix + real module names), registry entries with native-heap pointers (0x8310exxxx-class), shared entry headers (0x8310ab7a8 ×20+), and resolved foreign pointers in unseen bands (0x802715af0, 0x80100a030, 0x80040f888) |
+| Import resolution | **IN PROGRESS** | The registry walk: module bases by name → the .got → resolved imports → strlen + syscall wrappers |
+| Kernel | — | **D2-GATED** | Kernel candidate selection has its reference corpus banked (external intel); the trigger begins after the syscall item |
 
-**Current streak:** 15 flawless fake-scope gates, 13 consecutive controlled-return boots, 11 consecutive out-of-cage writes — zero chain failures in the core.
+**Current streak: 35+ consecutive REALBODY boots, 24+ consecutive out-of-cage writes — zero core failures.** The last twenty boots died only in exploration stages, each death banked as a mapped boundary.
 
 Full record: [`CLAUDE_FINDINGS.md`](CLAUDE_FINDINGS.md) — every probe, every witness, every postmortem.
 
-## Exploit Chain 2 — CVE-2026-43720 (Canvas UAF)
+## The Interactive WebProcess Shell
 
-| Stage | Status | Description |
-|-------|--------|-------------|
-| UAF Trigger | CONFIRMED | `bitmaprenderer` outer + `Object.defineProperty` getter + `2d` inner frees 768B context |
-| Same-Type Reclaim | CONFIRMED | 500x Canvas2D spray reclaims freed slot (V573) |
-| Alias R/W | CONFIRMED | All 12 Canvas2D APIs work through stale wrapper (V630) |
-| Crash Oracle | CONFIRMED | Forged `m_stateStack` reads 8 bytes at arbitrary address (V650-V655) |
-| ASLR Defeat | CONFIRMED | APNG overread leaks 1651 heap pointers (V674) |
-| Arbitrary R/W | DESIGNED | lineDash Vector forge, needs info leak |
-| Code Exec | DESIGNED | vtable hijack + ROP (no PAC, no JIT, JSC Config unfrozen) |
+`tools/ws-shell/` — the probe-reboot cycle, eliminated. The shell page runs the full exploit pipeline (~30s), then connects to a host CLI over **XHR polling** (the guide webview's secure WebSocket is transport-dead — close code 1006, measured) and gives a live command loop:
 
-Secondary to the FontFace chain — retained as a backup entry point and for submission-completeness evidence.
+```
+ps5> read <addr> [len] [force]     ps5> scan <start> <len> str:<frag>   (byte-alignment-tolerant ASCII)
+ps5> write / dump / deref / str / auxv / threads / modules / call / callret / info
+```
+
+Built to the campaign's doctrines: **the V61 gate at the CLI** (reads gated to proven bands — the heap [lowB, jfuTop), the setup pages, the vtable band, and the session's own read-map; `force` overrides and is logged), full session evidence logging (`shell-beacons.log`), restore verification on every call, the auto-stages neutered of all proven-lethal probes. **Interactive answers are one command each**: the ld.so body question and the executable route both closed in single commands that would each have cost a probe-boot.
 
 ## The FontFace Bug
 
@@ -81,53 +75,53 @@ A JS-created `FontFace` is added to `document.fonts` and loaded. During the load
 
 ## The Native-Call ABI (source-verified, device-calibrated)
 
-The LLInt `nativeCallTrampoline` (LowLevelInterpreter64.asm, WebKit-1400):
-
 ```
 callee = JSFunction (from CallFrame)
 NE = [JF+0x18 m_executableOrRareData] (& ~rareDataTag)
 RDI = [JF+0x10 m_scope] — for builtins this IS the JSGlobalObject
 VM* = [scope + 0x38] — JSGlobalObject::m_vm (FIRST member)
-pre-call: trampoline WRITES cfr → VM::topCallFrame
+pre-call: trampoline WRITES cfr → VM::topCallFrame (VM+0x9ce8)
 post-call: re-reads scope → VM → checks VM::m_exception
 RSI = CallFrame; PC from NE+0x28 (the m_function overwrite point)
 ```
 
-With the fake scope: **RDI is under our control on every redirected call** (any controlled buffer with `VM*` at `+0x38`). The trampoline reads nothing else from the scope.
+With the fake scope: **RDI is under our control on every redirected call**. The behavioral round→sign battery identifies the victim BASE-independently (the V110 cross-check).
 
 ## Key Device Facts (all measured, not assumed)
 
 | Fact | Source |
 |------|--------|
-| Module text is **execute-only** (PKU on Zen 2) | V55-B; parallel effort's exec-only doc |
-| Module rodata readable (vtable band [0x715A200, 0x7392000)) | V55-A; the full band swept V88–V90 |
+| Module text is **execute-only** (PKU on Zen 2) — OUR module, ld.so, AND the executable | V55-B; shell sessions 1-3 (interactive one-command closures) |
+| ld.so: header page DEAD, body `+0x4000` DEAD, `+0x24000/+0x28000/+0x30000` DEAD; text `[+0x304000,+0x348000)` XO (the return-address residue cluster) | V105/113/115/116 + shell |
+| The auxv is at the main-thread stack top, walkable deterministically from cfr | V104-V119, 14 consecutive clean decodes |
+| 16KB pages (AT_PAGESZ=0x4000, confirmed twice) | auxv |
 | GIGACAGE_ENABLED=0 — identity caged() | V55-A |
-| ELF header page unmapped | V52 |
-| Cage floor at cage+0x100000 | V70/V71 (two boot-stable chunk-0 deaths) |
+| JSFunction: cell+0, butterfly+8, m_scope@+0x10, exec@+0x18, sizeof=0x20; type byte b5=0x1A | V71 device-correction |
 | No icall CFI on the NE dispatch path | V65 |
-| JSFunction: JSCell@+0, butterfly@+8, m_scope@+0x10, exec@+0x18, sizeof=0x20 | V71 device-correction |
-| VM topCallFrame at VM+0x9ce8 | V81 (window-differential) |
-| PS5 thread stacks at ~0x7exxxxxxx (not 0x7fff...) | V73–V75 |
-| Game-process module bands do NOT describe the WebProcess | V94 (decisive negative) |
-| Depth-1 VM-window deref: self-ptrs, stack bounds, module ptrs — NO foreign | V96 |
-| Foreign module pointers live at depth-2 through GC-thread structures | V98 |
+| The V61 gate v2: the chase ceiling is the proven-mapped heap top ([lowB, jfuTop)), NOT the DataView window extent | V108-V109 |
+| The filter stack (low-32 rule, alignment, clustering) is necessary but not sufficient — denormal doubles with exponent ~0x080 have hi32=8, the same range as the heap pointer band | V112, V117-V118 |
+| Recurring values are constants, and constants are not pointers (0x101000000 = 4GB+16MB, page unmapped) | V112 |
+| **The module registry is malloc'd IN THE HEAP** — path strings with the per-boot mount prefix, registry entries with native-heap pointers | Shell session 3 |
+| The native heap (0x831xxxxxx-class) is readable; the JS heap moves under GC (scan hits can go stale) | Shell session 3 |
+| The guide webview's secure WebSocket is transport-dead (1006); XHR to the same origin is beacon-proven | Shell sessions 1-2 |
 
 ## Repository Layout
 
 ```
 CLAUDE_FINDINGS.md          The campaign record — every probe, witness, and lesson
 tools/remote-loader/v*.html Probe pages (deployed via the guide DNS spoofer)
-tools/remote-loader/index.html  Dispatcher (redirects to the current probe)
-tools/host.py              DNS spoofer + HTTPS server (the delivery mechanism)
+tools/remote-loader/index.html  Dispatcher (probe mode ↔ shell mode)
+tools/ws-shell/             THE INTERACTIVE SHELL (server.js + shell.html)
+tools/host.py               DNS spoofer + HTTPS server (the delivery mechanism)
 tools/remote-loader/scan-watch-v81.ps1  Live beacon watcher (color-coded)
-docs/KERNEL_AUDIT.md       Kernel candidates + the external intel update
-docs/                       Historical analysis, source audits, dead-end investigations
+docs/KERNEL_AUDIT.md        Kernel candidates + the external intel update
+docs/PROGRESS_AUDIT.md      The stage ledger and timeline
 offsets/                    Kernel offset tables per firmware
 ```
 
 ## External Intel
 
-A parallel PS5 14.10 research effort exists (public, multi-contributor, AI-assisted). Their kernel lane — syscall contracts, module maps, kernel addresses via a game-process Lua loader — is banked as the D2-gate reference corpus. Their browser lane achieved RIP control via a forged-Client-vtable route (a second JS-reachable dispatch on the same bug) on 2026-11-14; for the bounty's browser-entry tier, this chain holds the only working WebProcess compromise of the two efforts.
+A parallel PS5 14.10 research effort exists (public, multi-contributor, AI-assisted). Their kernel lane — syscall contracts, module maps, kernel addresses via a game-process Lua loader — is banked as the D2-gate reference corpus (677-entry syscall table bound, dead routes, libkernel_base+0xB57). Their browser lane achieved RIP control via a forged-Client-vtable route on the same bug; for the bounty's browser-entry tier, this chain holds the only working WebProcess compromise of the two efforts — and now the only interactive one.
 
 ## License
 

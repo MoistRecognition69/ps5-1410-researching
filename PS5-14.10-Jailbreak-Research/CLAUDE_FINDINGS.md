@@ -3277,3 +3277,39 @@ CROSS-VALIDATION: their s3-s0 delta (0x80af916b0-0x80af90fb0 =
 the vtable structure. Their VP low-12 = 0xB28 = ours (their VP is
 the Client SECONDARY vtable - a different table from our primary
 FontFace vtable; both at +0xB28 page offsets in the rodata band).
+
+### V91 RESULT: gate #10, REALBODY 8th consecutive boot - the hunt caught only noise (my predicate matched our own module); V92: the self-calibrated predicate
+
+Session OIIQLW. A flawless core run: gate #10, REALBODY=-6 (EIGHTH
+consecutive boot), the out-of-cage write (6th boot), calibration
+clean, zero deaths. The foreign-pointer hunt fired on both scans -
+and the results decode into a clean self-diagnosis:
+
+THE STACK SCAN FILLED ITS 12-FP CAP ON PAGE 1 - with OUR OWN
+MODULES RETURN ADDRESSES (BASE+0x1D527D, +0x5326A6, +0x4CE612,
++0x3A3056 - the live LLInt call chain) plus EncodedJSValues
+(0x800000143 = LLInt stack locals). Page 1 below the cfr IS the
+live JS stack. CAUSE: this boots ASLR landed the module base at
+lo32~202MB - INSIDE the old libkernel band (lo<0x10000000,
+calibrated from the parallel teams boot where libkernel sits at
+lo32~138MB). The predicate matched every return address; the walk
+never descended toward the base.
+
+THE VMWIN HITS: the sub-4GB clause (lo>=0x400000) matched
+MB-scale data noise (0x2003233, 0x1AF7CC7, 0x6666666) and the
+doubled 0xE834484D pair at +0x40/+0x48 (likely Heap-internal
+data, not pointers). No credible libc light.
+
+### V92 (deployed): the SELF-CALIBRATED foreign predicate
+
+Computed from THIS boots BASE at runtime (no cross-boot band
+assumptions - the V91 lesson):
+- libkernel-band: hi32===modHi && lo32 in [0x400000, module_lo32
+  - 16MB) - a module in our hi-band but BELOW our base.
+- sub-4GB system modules: hi32===0 && lo32>=0x40000000 (boot.bin
+  1.8GB, libc.prx 4.12GB) - the MB-scale data noise excluded.
+- the 4-8GB modules: hi32===1 (libSceFios2 7.4GB).
+Under this predicate page 1 is noise-free (return addresses and
+JSValues fall out of every band); the stack fps cap raised to 24;
+the walk descends to the stack base where the pthread struct and
+its libc pointers live.

@@ -50,8 +50,9 @@ The active chain: a JS-created `FontFace`'s native `CSSFontFace` is freed and re
 | **Out-of-cage write** | V86+ | **CONFIRMED** | Sentinel in the 0x7ef stack band — 24+ consecutive boots |
 | **The deterministic stack-top walk** | V100–V105 | **CONFIRMED** | cfr-upward (no layout lottery): the execve setup zone found every boot; **THE ANCHORED AUXV DECODE** — the complete auxv, noise-immune, 14 consecutive boots: AT_BASE (ld.so), AT_ENTRY (the executable), AT_PLATFORM cross-validated |
 | The ld.so & executable routes | V113–V119 + shell | **CLOSED (measured)** | Interactive one-command answers: ld.so body `+0x4000` DEAD, executable entry page DEAD — both XO; the ld.so vicinity is a fully-mapped dead zone, text cluster `[+0x304000,+0x348000)` |
-| **THE MODULE REGISTRY** | shell session 3 | **FOUND** | The heap string scan found the loader's malloc'd registry: module path strings (`/NJM6J6Ztb0/common_ex/lib/libSceRnpsNKInjectecedBundle.sprx` — the per-boot mount prefix + real module names), registry entries with native-heap pointers (0x8310exxxx-class), shared entry headers (0x8310ab7a8 ×20+), and resolved foreign pointers in unseen bands (0x802715af0, 0x80100a030, 0x80040f888) |
-| Import resolution | **IN PROGRESS** | The registry walk: module bases by name → the .got → resolved imports → strlen + syscall wrappers |
+| **THE MODULE REGISTRY** | shell sessions 3-6 | **FOUND** | The heap string scan found the loader's malloc'd registry: module path strings (`/<mount>/common_ex/lib/libSceRnpsNKInjectecedBundle.sprx` - the per-boot mount prefix + real module names), registry entries with native-heap pointers (offsets +0x160/1b8/1e8 boot-stable), binding entries with resolved foreign pointers. The registry page (0x10001c8000) is BOOT-STABLE |
+| **THE CALL PRIMITIVE (interactive)** | shell session 5 | **PROVEN** | `callret` with sign's fn → **-1, verified:true** - the V63 witness live at the CLI: arbitrary PC + RDI = the fake scope + decoded return + verified restore |
+| Import resolution | **IN PROGRESS** | The native-heap graph walk (READ, not call): the registry entries' native targets → SceModule/link_map records → module bases → the corpus RVA arithmetic → strlen + syscall wrappers. THE BINDING-ENTRY POINTERS ARE THE WRONG CLASS for identification-by-call (WebCore C++ implementations - they deref RDI as ExecState* → SIGSEGV; proven by the session-5 crash). The callret-compatible E2 targets: strlen-class + no-arg syscall wrappers (getpid) - they tolerate RDI = the fake scope |
 | Kernel | — | **D2-GATED** | Kernel candidate selection has its reference corpus banked (external intel); the trigger begins after the syscall item |
 
 **Current streak: 35+ consecutive REALBODY boots, 24+ consecutive out-of-cage writes — zero core failures.** The last twenty boots died only in exploration stages, each death banked as a mapped boundary.
@@ -101,7 +102,9 @@ With the fake scope: **RDI is under our control on every redirected call**. The 
 | The V61 gate v2: the chase ceiling is the proven-mapped heap top ([lowB, jfuTop)), NOT the DataView window extent | V108-V109 |
 | The filter stack (low-32 rule, alignment, clustering) is necessary but not sufficient — denormal doubles with exponent ~0x080 have hi32=8, the same range as the heap pointer band | V112, V117-V118 |
 | Recurring values are constants, and constants are not pointers (0x101000000 = 4GB+16MB, page unmapped) | V112 |
-| **The module registry is malloc'd IN THE HEAP** — path strings with the per-boot mount prefix, registry entries with native-heap pointers | Shell session 3 |
+| **The module registry is malloc'd IN THE HEAP** - path strings with the per-boot mount prefix, registry entries with native-heap pointers; the registry page is boot-stable | Shell sessions 3-6 |
+| The binding-entry foreign pointers are WebCore C++ implementations - the WRONG CLASS for identification-by-call (RDI is dereffed as ExecState*) | Shell session 5 (the first genuine call crashed) |
+| **The call primitive works interactively** (arbitrary PC + controlled RDI + decoded return + verified restore, at the CLI) | Shell session 5 (-1, verified) |
 | The native heap (0x831xxxxxx-class) is readable; the JS heap moves under GC (scan hits can go stale) | Shell session 3 |
 | The guide webview's secure WebSocket is transport-dead (1006); XHR to the same origin is beacon-proven | Shell sessions 1-2 |
 

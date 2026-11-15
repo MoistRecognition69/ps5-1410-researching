@@ -5310,3 +5310,15 @@ SWEEP MAP UPDATED (first 64 entries):
   SAFE (wrote pointer): #2 (0x88-band pointer)
   SAFE (wrote TID=1): #5 (thr_self - E2 LANDED)
   MULTI-ARG (died): #0, #3, #6, #24, #49, #51, #63
+- #52 (text 0x1750): SURVIVED rawcall (scope all zeros).
+- #53 (text 0x1780): SURVIVED rawcall (scope all zeros).
+- #54 (text 0x1790): multi-arg writer, session died (beacon shows
+  the chain completed but no SURVIVED beacon).
+- #55 (text 0x17B0): SURVIVED rawcall (scope all zeros).
+
+SWEEP MAP UPDATED (first 64 entries):
+  SAFE (zero scope): #1, #4, #8, #16, #32, #48, #50, #52, #53, #55
+  SAFE (wrote pointer): #2 (0x88-band pointer)
+  SAFE (wrote TID=1): #5 (thr_self - E2 LANDED)
+  MULTI-ARG (died): #0, #3, #6, #24, #49, #51, #54, #63
+  UNTESTED: #7, #9-#15, #17-#23, #25-#31, #33-#47, #56-#62

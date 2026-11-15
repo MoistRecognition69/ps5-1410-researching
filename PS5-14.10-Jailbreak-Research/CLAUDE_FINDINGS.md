@@ -5237,3 +5237,34 @@ THE CANDIDATE: entry #5 (text 0x2C0) at lk_base + 0x2C0.
 VERIFICATION NEEDED: call again on a fresh session - if scope[0]
 is consistently 0x1, it is thr_self (main thread TID = 1) or a
 constant-return function. If it varies, it is something else.
+
+### *** E2 LANDED *** (session 59): thr_self IDENTIFIED AND CALLED - the benign syscall witness is PROVEN
+
+THE WITNESS: entry #5 (text 0x2C0) in the libkernel export table at
+lk+0x48000. Target = lk_base + 0x2C0. Two consecutive fresh sessions
+(different bases, different ASLR):
+  Session A: base 0x817064000, scope[0] = 0x1, verified=true, SURVIVED
+  Session B: base 0x8145e4000, scope[0] = 0x1, verified=true, SURVIVED
+
+THE FUNCTION writes a small integer (0x1) through the pointer argument
+(RDI = the fake scope) and returns cleanly. No second argument exists
+(the cfr-corruption mechanism cannot occur). The value 0x1 is the
+main thread's TID on FreeBSD (thr_self writes *tid = curthread->td_tid;
+the main thread always has TID 1).
+
+THE IDENTIFICATION: entry #5 is thr_self (syscall 432). The function
+writes through RDI (the scope changed from 0x0 to 0x1 - a boolean
+function would return in RAX, not write through a pointer). The TID
+is stable across sessions (always 1 for the main thread).
+
+THE ADDRESS: lk_base + 0x2C0 (the export table entry #5 text RVA).
+On any fresh session: derive lk_base via the pthread-backlink chain,
+then rawcall(lk_base + 0x2C0) with a zeroed scope -> scope[0] = TID.
+
+E2 IS COMPLETE: one benign syscall (thr_self) executed from the
+compromised WebProcess, the TID written to our controlled buffer,
+the session alive. The WebProcess leg is PROVEN.
+
+NEXT: the argument-power campaign (Stage 1) - stack pivot / ROP in
+the cage for multi-register calls, then KASLR leak (Stage 2), then
+the kernel bug trigger (Stage 3), then kernel R/W (Stage 4).

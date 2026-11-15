@@ -5302,3 +5302,11 @@ THE REMAINING ROUTES:
 4. THE ONE-ARG SYSCALL CHAIN: use only zero/one-arg syscalls to
    achieve the kernel leg. Limited but safe. The game lane's KASLR
    methods all need multi-arg syscalls.
+- #50 (text 0x1690): SURVIVED rawcall (scope all zeros).
+- #51 (text 0x1730): multi-arg writer, session died.
+
+SWEEP MAP UPDATED (first 64 entries):
+  SAFE (zero scope): #1, #4, #8, #16, #32, #48, #50
+  SAFE (wrote pointer): #2 (0x88-band pointer)
+  SAFE (wrote TID=1): #5 (thr_self - E2 LANDED)
+  MULTI-ARG (died): #0, #3, #6, #24, #49, #51, #63

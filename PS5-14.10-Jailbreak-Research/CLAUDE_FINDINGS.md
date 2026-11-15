@@ -5347,3 +5347,23 @@ THE CONCLUSION: thr_new (syscall 455) is NOT in the first 64 entries.
 The export table has 2092 entries; the syscall stubs are a subset.
 thr_new might be at a higher index, or it might not be exported at
 all (it might be an internal stub like gettimeofday at 0xB50).
+
+### SESSION 61: the VM-structure return-value scan failed - the encodedHostCallReturnValue offset is unknown and the deeper VM pages are unmapped
+
+THE FINDINGS:
+- Entry #8 (text 0x410) called twice via rawcall - the VM dumps show
+  NO consistent PID value. The values at candidate offsets changed
+  between calls (0xac->0xab, 0x1dfbd->0x1ebd0), meaning they are
+  counters/heap-values, not the PID.
+- The encodedHostCallReturnValue field offset in the VM structure
+  is UNKNOWN (the VM class has hundreds of fields; the offset is
+  not computable from the source without the exact layout).
+- The deeper VM pages (VM+0xA00) are UNMAPPED - the dump killed
+  the session.
+- Entry #100 (text 0x3120), #200 (text 0x60D0), #250 (text 0x7880)
+  all SURVIVED with zero scope - library functions, not syscall stubs.
+
+THE CONCLUSION: the RAX return value is UNREADABLE through the VM
+structure (the offset is unknown and the deeper pages are unmapped).
+The rawcall mechanism's scope-read is the ONLY reliable side-channel.
+The argument-power problem remains the fundamental blocker.

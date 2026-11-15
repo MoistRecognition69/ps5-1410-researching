@@ -4929,3 +4929,28 @@ THE 3-COMMAND LOOP (per session, fits any fuse):
    witness at candidate+0x1B840 (raw-discard + tv check)
 A wrong candidate may crash the session (re-enter, next candidate);
 the RIGHT candidate writes the wall clock into fakeScope -> E2.
+
+### THE SHELL SESSION 23: THE AUXV BANKED (AT_BASE=0x824454000 THIS BOOT) - LD.SO POST-TEXT DEAD (THE LD.SO ROUTE FULLY CLOSED) - THE NATIVE-HEAP MODULE-MAP PLAN (rtld mallocs the paths and the Obj_Entry chain IN THE READABLE HEAP)
+
+THE AUXV (pipeline decode, 16 entries, banked): AT_BASE=0x824454000
+(ld.so), AT_ENTRY=0x24444070 (the executable lives LOW - ~0x244xxxxx
+band, like the game-lane eboot 0x60388000), AT_PAGESZ=0x4000,
+AT_PHENT=0x38, AT_PHNUM=0xe, AT_HWCAP=0x40, platform strings on
+the stack (0x7efda3f74-class), AT_SECURE=3, AT_TIMEKEEP=0xdbba0
+(truncated/odd - noted). The auxv COMMAND handler returned empty
+(a re-walk bug - the pipeline beacons carry the values; fix later).
+
+THE LD.SO ROUTE CLOSED COMPLETELY: the post-text probe (AT_BASE+
+0x348000, the first address after the XO text island) KILLED the
+session - unmapped. ld.so is a TEXT-ONLY island: header/body/gap
+dead, text XO, post-text dead. _rtld_global is unreachable through
+ld.so own mapping.
+
+THE NEXT ROUTE (the native-heap module map): the rtld Obj_Entry
+chain AND the module path strings are MALLOCd - in the NATIVE HEAP
+(proven-readable bands, no page-source pollution). THE PLAN:
+entry read -> this session arena anchor -> scan str:sprx over
+[arena-0x100000, arena+0x100000) (the arena proves the neighbor-
+hood mapped; conservative window) -> every hit = an rtld path
+string -> read the vicinity -> the Obj_Entry (which points at the
+path) carries the LITERAL base field -> lk_base -> e2shot -> E2.

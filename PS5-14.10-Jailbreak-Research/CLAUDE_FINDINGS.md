@@ -4673,3 +4673,53 @@ THE SESSION-2 COMMAND: scan the 4MB structure corner for
 "prx." / "sprx" fragments; hits = module path strings;
 their neighborhoods = the link_map; the link_map = every
 module base by name - the import hunt endgame.
+
+### THE SHELL SESSION 5: THE CALL PRIMITIVE PROVEN (-1, VERIFIED) - THE FLOOR/ROUND BUG CLOSED; THE FIRST GENUINE IDENTIFICATION CALL CRASHED - THE BINDING-ENTRY FOREIGN POINTERS ARE THE WRONG TARGET CLASS (WebCore C++ implementations, not libc)
+
+THE FLOOR/ROUND BUG (closed): the callret returned -6 three
+times because batt63[0] is FLOOR (round is index 3) - the
+handler redirected the CORRECT slot (neEntry.addr+0x28 =
+the fnSlot, verified against the pipeline beacons) but
+called floor, whose NE is a different cell. Math.floor(-5.7)
+= -6 - the same number as round(-5.7) through a failed
+redirect, from opposite mechanisms. FIXED: both call
+handlers now invoke Math.round(-5.7) directly (the same
+dispatch path as the REALBODY witness, independent of
+battery order).
+
+THE A/B WITNESS, LIVE AT THE CLI: callret with sign's fn
+(round_fn+8, the V63 relationship) -> returned -1,
+verified:true (both restores verified). THE CALL PRIMITIVE
+IS FULLY OPERATIONAL INTERACTIVELY: arbitrary PC + RDI =
+the fake scope + decoded return + clean restore.
+
+THE REGISTRY RE-DERIVED THIS BOOT: the page at 0x10001c8000
+is BOOT-STABLE (same path string, same entry shape; the
+mount prefix /NJM6JZtb0 recurred). The native-heap targets:
+0x815814160/1b8/1e8 (the same +0x160/1b8/1e8 offsets, new
+base - the native structure offsets are boot-stable).
+
+THE FIRST GENUINE IDENTIFICATION CALL - AND THE CRASH:
+callret 0x80162f518 (the binding entry with len-field 0x20f,
+the same binding as the old boot 0x802715af0) -> SESSION
+DEATH. THE CLASSIFICATION: the binding entries {header,
+name-ptrs, position-pair (line/column-shaped), cage-ptr,
+FOREIGN_PTR, 1} are WebCore C++ IMPLEMENTATION functions -
+the compiled bodies behind JS bindings. Calling one with
+RDI = the fake scope (zeros + VM*) is fatal: a C++ function
+dereferences its first arg as ExecState*/this -> SIGSEGV.
+The A/B witness worked because round/sign are LLInt builtins
+receiving a trampoline-built CallFrame - arbitrary C++
+functions get no such courtesy. THE BINDING TABLES FOREIGN
+POINTERS ARE THE WRONG TARGET CLASS for identification-by-
+call. The E2 targets (libc/libkernel: strlen, syscall
+wrappers - functions that tolerate garbage RDI) are NOT in
+the WebCore binding table; the route to them remains the
+module bases via the native-heap graph (READ, not call).
+
+THE NEXT SESSION PLAN: read the registry entry native
+targets (0x815814000-class, the proven-readable native
+heap); read the other module-path entries (0x10002137f0,
+0x10003b7290, 0x10003c1b58 - in-band, zero risk); follow the
+C++ object graph toward SceModule/link_map records with
+module bases. NO blind calls on binding pointers.

@@ -47,6 +47,40 @@ function generateCert() {
 }
 
 function requestHandler(req, res) {
+  /* ---- AGENT API: POST /api/cmd — submit a command, block until the PS5
+   * executes it and returns the result. Returns JSON. This is the programmatic
+   * interface for Claude agents (shell-cmd.js calls this). ---- */
+  if (req.method === 'POST' && req.url === '/api/cmd') {
+    let data = '';
+    req.on('data', (c) => { if (data.length < 65536) data += c; });
+    req.on('end', () => {
+      let cmd;
+      try { cmd = JSON.parse(data); } catch(e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ err: 'invalid JSON' }));
+        return;
+      }
+      const timeout = parseInt(cmd.timeout) || 60000;
+      sendCmd(cmd, timeout).then((result) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result || { err: 'no response' }));
+      });
+    });
+    return;
+  }
+  /* ---- AGENT API: GET /api/status — connection state without touching the PS5 ---- */
+  if (req.method === 'GET' && req.url === '/api/status') {
+    const wsUp = activeWs && activeWs.readyState === WebSocket.OPEN;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      connected: wsUp || pollModeSeen,
+      transport: wsUp ? 'websocket' : (pollModeSeen ? 'xhr-poll' : 'none'),
+      cmdsSent: cmdId,
+      queueLen: cmdQueue.length,
+      pendingCmd: !!pendingResolve,
+    }));
+    return;
+  }
   /* SHELL XHR FALLBACK: the guide webview's secure WebSocket fails at
    * transport level (close code 1006, V-session 14:58) while XHR to the
    * same origin works flawlessly (every beacon proves it). The command

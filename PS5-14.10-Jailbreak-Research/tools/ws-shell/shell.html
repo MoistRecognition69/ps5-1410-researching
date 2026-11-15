@@ -4769,7 +4769,21 @@ function _startWsShell(){
 
       case 'scan':{
         var start=BigInt(msg.start),len=parseInt(msg.len)||0x10000;
-        var gerrS=shGate(start,len,msg.force);
+        /* SHELL: scans use a RANGE-MEMBERSHIP check, not the single-read len cap -
+         * the scan chunks internally at 16KB (the per-read granularity IS the page);
+         * the safety property is that the WHOLE range sits in a proven band. */
+        var gerrS=null;
+        {
+          var loS=start,hiS=start+BigInt(len);
+          var bandsS=[];
+          if(S.lowB&&S.jfuTop&&S.jfuTop>S.lowB)bandsS.push([S.lowB,S.jfuTop]);
+          if(S.cfr){var cpS=(S.cfr/0x4000n)*0x4000n;bandsS.push([cpS,cpS+0x8000n]);}
+          if(S.BASE)bandsS.push([S.BASE+0x7000000n,S.BASE+0x7400000n]);
+          for(var bi=0;bi<shOkPages.length;bi++)bandsS.push(shOkPages[bi]);
+          var okS=false;
+          for(var bi2=0;bi2<bandsS.length;bi2++){if(loS>=bandsS[bi2][0]&&hiS<=bandsS[bi2][1]){okS=true;break;}}
+          if(!okS&&!msg.force)gerrS='SCAN RANGE NOT IN A PROVEN BAND - append force to override (each 16KB chunk is a separate read; an unmapped chunk kills the session)';
+        }
         if(gerrS){reply.err=gerrS;break;}
         var pattern=msg.pattern||'elf';
         if(pattern.indexOf('str:')===0){
@@ -5006,7 +5020,8 @@ function _startWsShell(){
         var origFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
         S.absWrite(S.neEntry.addr+0x28n,target);
         var result;
-        try{result=String(S.batt[S.battIdx][1]());}catch(e){result='THREW:'+String(e&&e.message?e.message:'?');}
+        /* FIX9: batt63[0] is FLOOR (round is index 3) - the redirect targets ROUND's NE, so the invoked function MUST be round. A direct builtin call dispatches through round's NE identically to the REALBODY witness. */
+        try{result=String(Math.round(-5.7));}catch(e){result='THREW:'+String(e&&e.message?e.message:'?');}
         S.absWrite(S.neEntry.addr+0x28n,origFn);
         var vfyC=S.absRead(S.neEntry.addr+0x28n,8)[0];
         reply.verified=(vfyC===origFn);
@@ -5024,7 +5039,8 @@ function _startWsShell(){
         var origFn=S.absRead(S.neEntry.addr+0x28n,8)[0];
         S.absWrite(S.neEntry.addr+0x28n,target);
         var result;
-        try{result=String(S.batt[S.battIdx][1]());}catch(e){result='THREW:'+String(e&&e.message?e.message:'?');}
+        /* FIX9: batt63[0] is FLOOR (round is index 3) - invoke round directly. */
+        try{result=String(Math.round(-5.7));}catch(e){result='THREW:'+String(e&&e.message?e.message:'?');}
         S.absWrite(S.neEntry.addr+0x28n,origFn);
         if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
         var vfyC2=S.absRead(S.neEntry.addr+0x28n,8)[0];
@@ -5044,6 +5060,8 @@ function _startWsShell(){
         reply.vm=(S.gq&&S.gq[7])?S.hex(S.gq[7]):null;
         reply.lowB=S.lowB?S.hex(S.lowB):null;
         reply.cfr=S.cfr?S.hex(S.cfr):null;
+        reply.fakeScope=S.fakeScope?S.hex(S.fakeScope):null;
+        reply.neEntry=S.neEntry?('0x'+S.neEntry.addr.toString(16)):null;
         break;
       }
 

@@ -5212,3 +5212,15 @@ SWEEP MAP SO FAR (first 64 entries):
   All survivors wrote NOTHING to the scope - they are zero/one-arg
   functions that do NOT write to RDI. thr_self writes the TID to RDI,
   so the target entry must leave a NON-ZERO value in scope[0].
+- #1 (text 0x130): SURVIVED rawcall (scope all zeros).
+- #2 (text 0x1E0): SURVIVED rawcall - scope[0] = 0x880494fa0 (a pointer
+  into the 0x88-band = pthread/heap region). This is NOT a TID (a TID
+  would be a small integer). Likely pthread_self or a function that
+  stores a result pointer through RDI.
+- #3 (text 0x200): multi-arg writer, session died at the call moment
+  (beacon shows CALLING but no SURVIVED).
+
+SWEEP MAP UPDATED (first 64 entries):
+  SAFE (zero scope): #1, #8, #16, #32, #48
+  SAFE (wrote pointer): #2 (scope0 = 0x88-band pointer)
+  MULTI-ARG (died): #0, #3, #24, #63

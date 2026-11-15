@@ -5157,3 +5157,33 @@ readable band (gettimeofday's tail "eofd" scanned clean in session
 49 over [lk+0x48000, +0x76000)). The 0x410-stub record (A=0xf49c)
 at +0x416C base: binary, not a name. The name-linkage decode
 continues offline over the banked records.
+
+### SESSION 56 (the v17 stub disassembler): THE EIGHTH CANARY (base 0x8013f0000) - the export table A-fields are RUNTIME STRINGS not symbol names - the NID table (0xFFFF-class) does NOT exist in the readable band - THE TEXT IS EXECUTE-ONLY (the stub disassembler read at lk+0xD0 killed the WebProcess)
+
+THE FINDINGS (sessions 56-57):
+1. The NID computation is CRACKED (ps5rs algorithm.rs: SHA1(name +
+   salt 518D64A635DED8C1E6B039B1C3E55230) -> reverse first 8 bytes ->
+   custom base64 +- alphabet). thr_self NID = COc2Ua29+pI. Verified
+   against ps5rs test vectors (memcpy, sceKernelSleep, scePthreadCreate
+   all match 3/3).
+2. The NID TABLE (0xFFFFxxxx entries) does NOT exist in the readable
+   libkernel band on 14.10. Both the .data segment (lk+0x6C000) and
+   the mid-region (lk+0x4C000..+0x6C000) scanned clean. The game
+   lane's NID table was on a different firmware/module context.
+3. The export table A-fields point to RUNTIME STRINGS (debug/error
+   messages: "pp.fmem_size_pid] ERROR:", "_malloc_init()=%d",
+   "ite lock_barrier", "aeread_rwlock_timedrdlock()"), NOT symbol
+   names. The A-field is NOT a dynstr offset.
+4. THE TEXT IS EXECUTE-ONLY: the v17 stub disassembler (read 8 bytes
+   at lk_base + text_rva to extract the mov eax immediate) killed the
+   WebProcess. The libkernel text segment is mapped PROT_EXEC without
+   PROT_READ. The export table at lk+0x48000 is in the DATA segment
+   (readable), but the stub code at lk+0xD0 etc. is in the TEXT
+   segment (execute-only, read = SIGSEGV).
+
+THE IMPLICATION: the syscall stub bytes CANNOT be read from the
+WebProcess ARW. The syscall number cannot be extracted from the stub
+code. The identification must come from a different source:
+(a) the 13.60 offset table cross-reference (the text drift pattern),
+(b) the stub-ladder sweep (call each export entry, check scope),
+(c) a different readable structure that maps names to addresses.

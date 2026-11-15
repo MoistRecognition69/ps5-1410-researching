@@ -4152,3 +4152,38 @@ small ints, hi=0, names <OOR>) - the pool was polluted and the
    and RVA-independent: the anchor hunt becomes
    layout-family-proof, and the (a)-vs-(b) question settles
    from ground truth on the next run.
+
+### V110 RESULT: CLEAN SKIP #2, ZERO DEATHS - the anchor hunt SUCCEEDED (the V109 miss was a transient layout family, not a BASE error); the JF hunt starved on FALSE POSITIVES with no resume path; V111: THE WALK RESUME
+
+Session XLN2BX. THE ANCHOR HUNT SUCCEEDED: RAWSCAN hits=1,
+ANCHOR-CONFIRMED=round - the V109 all-routes miss does not
+recur; the 0x3B0000 question dissolved (the NE array was back
+in the rawscan band this boot; the V109 layout was transient).
+The behavioral battery/pool filter never needed to fire.
+
+THE JF HUNT STARVED ON FALSE POSITIVES: the up-walk
+early-stopped at chunk 12 on TWO shape-matching garbage hits
+(0x10003efaa8, 0x10008a84e8 - both execOK=true but hdrOK=false,
+type=0x0: NOT JSFunctions). v66proc correctly REJECTED both -
+and the hunt had NO RETRY PATH: the walk never reached the
+real JF family, PREFLIGHT-SKIP-no-vm-or-jf, graceful skip,
+clean restoration, DONE. ZERO DEATHS. The validation
+discipline held; the missing piece was the resume.
+
+THE PATTERN ACROSS V109/V110: two consecutive clean skips from
+two different hunts (anchor, then JF), both absorbed by the
+skip discipline with zero deaths and clean restoration. The
+hunts are hitting layout variance faster than the core is -
+expected as the probe stack grows; each variance gets its fix.
+
+### V111 (deployed): THE WALK RESUME
+
+The v66procFrom bookkeeping makes resuming natural: after a
+REJECTED batch, v66procFrom===v66hits.length again and the
+for-condition holds - the walk just CONTINUES from where it
+stopped. Up to 6 passes / 80 chunks; each pass beaconed
+(JFUP-DONE-...-pass=N, JFUP-RESUME-pass=N); the jfuTop
+computation unchanged (the final ck3); the chunk-beacon
+discipline unchanged (a death still localizes to the chunk).
+The early-stop optimization assumed the first hits are real;
+when they are not, the hunt now walks on.

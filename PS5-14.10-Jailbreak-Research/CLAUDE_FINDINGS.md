@@ -4543,3 +4543,66 @@ proven-class target.
    return-address evidence says text ends and data would
    begin), then 209, 208, 207. Twice the T3 died before it;
    now it fires right after the safe reads.
+
+### THE WS SHELL - AUDITED AND FIXED (14 fixes): Claude skeleton verified against the campaign doctrines; the lethal auto-stages neutered; the V61 gate brought to the CLI
+
+Claude built the shell skeleton (tools/ws-shell/: server.js - HTTPS+WSS+CLI;
+shell.html - the V110 pipeline + the WS command handler). THE AUDIT
+FOUND 14 ISSUES, all fixed:
+
+THE CRITICAL ONE: the shell page AUTO-RAN the V110-era lethal
+hunt stages AFTER opening the WS - the FX probes (0x101000000:
+the PROVEN constant-death, V112), the ld.so blind order k=0-
+FIRST (the PROVEN header-death, V113), Phase A/B (the PROVEN
+residue-death, V114), the entry probe (unknown), AND the
+V110-era T2 chase (predates the V112 low-32 rule - its
+second-degree targets can include the 0x400000002-class
+garbage that killed V111). THE SESSION WOULD HAVE DIED IN
+ITS OWN AUTO-FLOW BEFORE THE FIRST COMMAND. All five stages
+neutered (fixes 1,2,3,14): the safe stages stay (the gated
+chase, the anchored-auxv walk, the triaged anchor pages);
+everything risky is INTERACTIVE now.
+
+THE V61 GATE AT THE CLI (fixes 4,5,6): every read/dump/scan/
+deref is gated to PROVEN BANDS - the heap [lowB, jfuTop), the
+stack setup pages, the module vtable band, PLUS every page the
+session has already read safely (the session builds its own
+map). force overrides and is logged. len capped at 0x4000 per
+command (one 16KB page - a death localizes to the page).
+
+THE AUXV COMMAND (fix 7): rewrote with the V104/V105
+discipline - stop at the anchors OR the self-path string,
+NEVER read above the setup page, 3-page cap. (The old version
+walked 6 pages up blind - the V104 past-the-top death.)
+
+THE MODULES COMMAND (fix 8): was a DEATH MACHINE - blind-read
+every foreign-pointer page + a 1MB ELF downscan. Now CLASSIFY-
+ONLY by default (collect + group by region, report); force
+adds single page probes with PRE-logging; the downscan is
+DELETED (probe pages individually).
+
+THE THREADS COMMAND (fix 9): the jfuTop fallback was the
+window extent - the exact V108 window-not-mapping bug. Now
+refuses if jfuTop is unavailable.
+
+CALL/CALLRET (fix 10): restore verification added (readback
+after every restore, reply.verified).
+
+THE SERVER (fix 11): every command and every result now
+logged to shell-beacons.log (the session evidence record);
+ready messages logged too.
+
+RUNBOOK (coexistence - host.py UNTOUCHED): host.py keeps 443
++ DNS + the dispatcher; the shell server runs PORT=8443
+(node server.js); the dispatcher redirects to
+https://manuals.playstation.net:8443/ for shell sessions
+(one-line index.html switch); the shell beacons log to
+shell-beacons.log. Switch the dispatcher back to v119.html
+for probe sessions.
+
+THE SHELLS FIRST SESSION PLAN: (1) auxv - AT_BASE fresh;
+(2) the ld.so body question INTERACTIVELY - probe
+atbase+0x4000..+0x20000 one page-command at a time with
+instant feedback (the question that cost 6 probe-boots);
+(3) heap corner dumps - disambiguate the doubles HOST-SIDE;
+(4) the anchor/Thread pages on demand.

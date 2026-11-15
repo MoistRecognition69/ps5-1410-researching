@@ -4187,3 +4187,44 @@ computation unchanged (the final ck3); the chunk-beacon
 discipline unchanged (a death still localizes to the chunk).
 The early-stop optimization assumed the first hits are real;
 when they are not, the hunt now walks on.
+
+### V111 RESULT: THE DEEPEST RUN OF THE CAMPAIGN - the core full green (REALBODY 23rd, OOC-write 22nd), the chase clean under gate v2, the auxv 5th consecutive, the triage worked, both Thread anchors read - then the T2 chase died on its FIRST target (the low-32 form bug); V112: THE LOW-32 RULE
+
+Session BDL5KZ. THE FULL CORE: gate #26, REALBODY=-6 (TWENTY-
+THIRD consecutive boot), the out-of-cage write (22nd boot).
+The chase ran clean under the V61 gate v2: 458 depth-2 derefs,
+ZERO deaths - the proven-band ceiling HELD. The auxv anchored
+a FIFTH consecutive time. THE ANCHOR TRIAGE WORKED: thread-
+band=2-of-3-dropped (an unproven anchor correctly excluded).
+BOTH Thread anchors read (0x8802e4020, 0x8803390a0 - the 7/7
+class). The stack reached the T2 chase - its FIRST-EVER
+execution - and died on its first target:
+
+```
+V111-T2-0-@0x400000000-from=0x400000002
+```
+
+THE BUG: 0x400000002 is one of the round tagged-value garbage
+class (seen in anchor pages since V103: 0x400000002,
+0x200000000, 0x800000006...). Its LOW 32 BITS are 2 - the
+predicate original rule is lo32 < 0x400000 = REJECT - but the
+inline NEWBAND/T2/FX/LDSO/ENTRY filters checked the FULL VALUE
+>= 0x400000: THE WRONG HALF. 0x400000002 passed every band
+check (hi=4 in [1,0x10]) and its unmapped page (0x400000000,
+the low-mmap band) killed the probe. THE V61 LESSON, NINTH
+INSTANCE. The predicate (v95isForeign) had the correct form
+all along; the five inline filters diverged from it - a
+copy-drift bug, four probes old, waiting in the T2 code path
+that had never executed until this boot.
+
+### V112 (deployed): THE LOW-32 RULE, EVERYWHERE
+
+All five inline filters now check (val & 0xFFFFFFFF) <
+0x400000, matching the predicate original form: the NEWBAND
+loop (anchor pages), the T2 classification (NEWBAND2), the FX
+probes, the LDSO scanPage, the ENTRY probe. The entire round-
+tagged garbage class (lo32 = 2/6/8) dies at every filter.
+The stack is otherwise UNCHANGED - and has now been exercised
+deeper than ever: core, chase, auxv, triage, anchors all
+proven in one boot. Only the form fix stands between the
+campaign and the first complete end-to-end run.

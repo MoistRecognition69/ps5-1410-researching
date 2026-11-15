@@ -5520,3 +5520,28 @@ the 12KB scope-page sled, child_tid/parent_tid = cage pointers).
 child_tid != 0 = THREAD CREATION ON 14.10 = sustained execution +
 full child register control (RIP/RSP/RDI from the param) =
 ARGUMENT POWER.
+
+### SESSION 68 (the twc lottery): 0x130/0x230 eliminated (the valid-ctx deaths) - the RDI!=0 deeper-path class; the async witness beacon works (the bunched beacons prove the queueing); 0x3B0 is the next candidate
+
+THE TWC RUNS (0x130 and 0x230): both fired TWC-1..7 (the async
+beacons bunched at ~µs intervals - THE ASYNC QUEUEING WORKS) and
+died during the call - NO TWC-8 (the tid read). BOTH stubs take
+a deeper path when RDI != 0 (the sweep's zeroed-scope early-out
+masked them) and kill the parent via RSI/cfr or a context-jump
+(the setcontext-class hypothesis: a valid ctx = a one-way jump to
+my rip/rsp = the sled spin = the crash ~2.3ms later).
+
+THE SETCONTEXT-CLASS HYPOTHESIS (unresolved but noted): if
+0x130/0x230 = setcontext-class, that is ITSELF the argument-power
+primitive (full context control on the main thread: rip + rsp +
+all registers from my ctx). The fixed-register limitation: every
+chained syscall sees the same RDI/RSI/RDX (only RAX varies per
+stub). The witness channel problem: the one-way jump kills the JS
+engine - no beacon, no reply. PARKED for now.
+
+THE CANDIDATE QUEUE for thr_create (13.60 pos 31, order-preserving
+= sub-0x2C0, the exports eliminated): the INTERNAL stubs in the
+gaps [0xD0-0x130], [0x130-0x1E0], [0x1E0-0x200], [0x200-0x230],
+[0x230-0x2C0] (~0x100/0x160/0x190/0x210/0x250/0x280-class), plus
+the untested 1213a-verified 0x3B0 (order-violating but the order
+logic has been unreliable). NEXT: twc 0x3B0, then the gap lottery.

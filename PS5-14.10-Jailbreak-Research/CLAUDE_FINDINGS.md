@@ -5672,3 +5672,52 @@ A 1214a-style dump OF LIBKERNEL low text (0x0-0x20000) +
 offline disassembly = EVERY stubs syscall number = one-shot
 identification. Zero WebProcess sessions. (Probe 1213a last
 ran 2026-11-05 - the lane was live 11 days ago.)
+
+### SESSION 72b (the correction): the game lane is READ-ONLY - the corpus is mined out on libkernel text - ps5rs (public) knows the export-entry format - the deterministic NID-match route opens
+
+CORRECTIONS:
+1. The game lane (D:\ps5\PS5-14.10-Research) is EXTERNAL research we READ
+   only - we have never run probes there and cannot. Session 72 option 2
+   (a 1214a-style dump over there) is NOT executable by us.
+2. libkernel text is NOT syscall-number ordered: 0x2C0 (thr_self, 432)
+   < 0x3F0 (thr_exit, 431). The session 72 "thr_create sits below 0x2C0"
+   inference is RETIRED.
+
+THE CORPUS MINING CONCLUSION (verified this session):
+- 56g_libkernel_symbol_scan FAILED ("libkernel not found" in their enum).
+- 520a_libkernel_syscall_entry aborted early (candidate not in libkernel).
+- 1183b only re-derives the base (gettimeofday slot = lk+0xB50, syscall
+  at +0xB57).
+- ALL corpus dumps are eboot (1185a/1186a/1213d/1214a) - NO libkernel
+  text, NO symbol->RVA table exists in their results. Mined out.
+
+THE PS5RS DISCOVERY (github.com/claimore22/ps5rs, GPL-2.0, public):
+- ps5-prx crate: PrxModule parsing with exports - "ps5rs exports libc.prx"
+  lists NID, NAME, ADDRESS, SIZE per export. THE EXPORT-ENTRY FORMAT IS
+  PUBLIC KNOWLEDGE IN ITS SOURCE.
+- data/nids.csv: ~195K NID->name mappings; "ps5rs nid <name>" computes
+  NIDs (the algorithm we already replicated, verified 3/3).
+- ps5-firmware crate: FirmwareCatalog (version/modules/libraries/exports).
+
+THE DETERMINISTIC ROUTE (option A, zero device risk): read ps5-prx
+export-entry struct -> RE-DECODE our readable lk+0x48000 table (2092
+entries, DATA segment, read-only safe) with the correct field map ->
+if entries carry NIDs, compute thr_create NID offline -> match ->
+thr_create RVA deterministically; also names #4 (0x230), #7, and the
+whole sweep map. Fallback: ps5-firmware data may hold a libkernel DB.
+
+THE GATED-CTX PLAN (option B, sharpened): fire ONLY the +7-confirmed
+stubs (page-0 seven: 3B0/3F0/410/B50/B70/D50/FF0, all +7-verified
+syscall;ret shapes; + 10F0 page-1) with the FULL gated ucontext
+(mc_len=0x480, type=0x10000, uc_flags<=7, CS=0x43, SS=0x3B,
+RFLAGS=0x202, RIP=spin, RSP=stack sled, RDI/RAX markers).
+Discriminators per 56o/80a: SPAWN+survive = HIT (argument power);
+EINVAL-survive = wrong candidate, SESSION SURVIVES (multiple shots per
+session); death = writer/other (eliminated).
+NOTE: our ten dead candidates (130/230/2E0/300/320/3A0/3B0/3D0/430/450)
+were NULL-SELECTOR ctxs (CS=0/SS=0) - a real thr_create would spawn a
+child that faults on null-selector iret = process death = our observed
+class. Those eliminations are NOT clean thr_create eliminations; the
+gated ctx is the correct instrument and was never fired.
+
+PRIORITY: A first (free, deterministic), then B with A's output.

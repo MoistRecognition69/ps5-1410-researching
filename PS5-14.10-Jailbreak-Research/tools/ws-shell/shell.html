@@ -6428,6 +6428,10 @@ function _startWsShell(){
           * stub writes 8 bytes at [RSI=cfr] = the live frame = a
           * bounded death-after-return; each stub beacons before it
           * fires. The nonzero-scope readback runs after each call. */
+          /* session-178: THE SWEEP GATED OFF - 0xB70 (the writer class) kills
+           * every session before THE FIRE runs; the sweep's verdict is banked;
+           * the fire is the point. */
+          if(false){
           try{
             if(MBUF&&MBUF>=0x1000000000n){
             var scopeS=MBUF+0x1000n;
@@ -6465,6 +6469,7 @@ function _startWsShell(){
             reply.stubSweep=sweep;
             } else LB('t sweep SKIPPED (no MBUF)');
           }catch(eSw2){LB('t sweep fault');}
+          }
 
           /* (4d) *** THE FIRE *** (session-177: THE CORPUS DISASSEMBLY DELIVERED
           * THE MISSING 32-BIT VALUE: Thrd_create@libc+0x4C3C0 -> the

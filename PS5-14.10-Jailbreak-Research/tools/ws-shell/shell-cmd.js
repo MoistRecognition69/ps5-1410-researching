@@ -139,6 +139,11 @@ if (name === 'status') {
          * NID<->GOT<->lkRVA map + cross-check + thr_create. ALL reads in
          * mapped modules. Usage: rtld */
         cmd = { cmd: 'rtld' }; break;
+      case 'fire':
+        /* THE DISPATCH-FIRE: the fontface vtable dispatch fires thr_create
+         * (lk+0x13ED0) with the parent surviving (RIP2-AFTER) - the witness
+         * (the child's tid) read back in the reply. Usage: fire */
+        cmd = { cmd: 'fire' }; break;
       case 'lcbase':
         /* THE DETERMINISTIC LIBC HUNT: module-band-only harvest ->
          * the 12-known-RVA alignment oracle -> ELF verify (bounded

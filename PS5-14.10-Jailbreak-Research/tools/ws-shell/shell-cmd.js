@@ -124,6 +124,30 @@ if (name === 'status') {
          * READS (proven [lk+0x48000,+0x76000) band) - no calls, zero
          * crash risk. Usage: xtab [poolbytes] (default auto: maxA+0x100, 0x2000 floor, 64K cap) */
         cmd = { cmd: 'xtab', pool: clean[1] }; break;
+      case 'lcfind':
+        /* LIBC POINTER HARVEST (route A): foreign module-band qwords
+         * from stack-below-cfr (live libc return addrs of the XHR
+         * chain), the WK data band, the cage. PURE READS. Offline:
+         * tools/lcfind-match.js ranks libc-base candidates vs the
+         * game-lane libc_addrofs. Usage: lcfind */
+        cmd = { cmd: 'lcfind' }; break;
+      case 'lcverify':
+        /* THE DETERMINISTIC VERIFIER: read <base>+0x1179A8 (the
+         * boot-stable gettimeofday import slot) == lk+0xB50?
+         * ONE 8-byte read. Usage: lcverify <0xlibcbase> */
+        cmd = { cmd: 'lcverify', base: clean[1] }; break;
+      case 'lcnid':
+        /* THE SLOT<->NID MAP on the VERIFIED libc base: ELF ->
+         * phdrs -> PT_DYNAMIC -> STRTAB/SYMTAB/JMPREL -> per-import
+         * {NID, GOT slot, lk snippet RVA} + the 0x3F0/0x410/0xB50
+         * triple cross-check. Usage: lcnid <0xlibcbase> */
+        cmd = { cmd: 'lcnid', base: clean[1] }; break;
+      case 'tws':
+        /* THE FIXED SPAWN WITNESS: 156c field map + ARMED GATES
+         * (magic@+0x108=0x480, type@+0x110=0x10000), child RIP =
+         * thr_exit (clean exit => parent survives), tid at [cfr].
+         * msg1 = the snippet RVA (route A output). Usage: tws <0xRVA> */
+        cmd = { cmd: 'tws', rva: (clean[1]||'130').replace(/^0x/i,'') }; break;
       case 'nap':
         /* NANOSLEEP TEST: entry #arg called with scope={tv_sec:arg2}
          * - a blocking call = the entry IS nanosleep. Usage: nap <idx> <sec> */

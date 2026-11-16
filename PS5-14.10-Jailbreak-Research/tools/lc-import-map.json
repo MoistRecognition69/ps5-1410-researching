@@ -1,0 +1,204 @@
+{
+ "extracted": "2026-11-16 (offline corpus mining - zero sessions)",
+ "source": "external game-lane corpus ALL_RESULTS.md: 1215b (import window dump 0x114000-0x118000) + 1215a (libc text dump 0x0-0x114000)",
+ "lkbase_of_dump_session": "0x832bdc000 (derived: q(0x1179A8)-0xB50; triple-validated by thr_exit 0x3F0 + thr_new 0x410 anchors)",
+ "validation": "94/96 harvest slots reproduced exactly (the 2 beyond the dump end); the 9 printed stubs match; every page count matches",
+ "key_findings": {
+  "1": "the import table is NOT NID-sorted (verified algorithm 50/50; anchor raw-NID order != slot order)",
+  "2": "the table is build/syscall-number ordered: thr_exit(431)->i=73 and thr_new(455)->i=74 ADJACENT, exactly their number adjacency with nothing between imported; thr_self absent (E2-proven) and thr_create ABSENT (slot 72 -> another module 0x832510840)",
+  "3": "THR_CREATE IS NOT IMPORTED BY LIBC: the rtld/NID-map route was structurally incapable of naming it. The 94 = 9+ syscall stubs (mov rax,imm32; syscall; ret) + real lk functions",
+  "4": "the +7 universal syscall executor (game lane standard, 1183b-confirmed) works with ANY known stub: only RAX=430 is missing",
+  "5": "THE ROP CATALOG IN LIBC (offsets stable - same system .prx in every process): pop rax;ret x30 (first libc+0x5dcd4), pop rdi;ret x9 (first +0x27932), pop rsi;ret x4 (first +0xb2188), pop rcx;ret x23; syscall;ret x0",
+  "6": "THE STACK IS ARW-WRITABLE near cfr (below-cfr band proven mapped to -0x8000; ARW = out-of-cage writes 24+ proven) => a pop rax;ret gadget + a written sled = full RAX control with RDI untouched"
+ },
+ "the_new_architecture": {
+  "step1": "derive lk_base (the proven pthread-backlink chain, every session)",
+  "step2": "derive libc_base (THE ONE REMAINING BLOCKER - the hunt)",
+  "step3": "ARW-write the stack sled below/around the rawcall RSP: repeated qword pairs (0x1AE=430, lk+0x3F7=thr_exit stub+7 the raw syscall instruction)",
+  "step4": "rawcall(PC = libc_base + gadget_off (pop rax; ret), RDI = the armed ucontext (tws scope)) -> pop rax loads 430 from [RSP], ret lands on lk+0x3F7, RDI UNTOUCHED = the armed ucontext -> SYSCALL 430 = THR_CREATE FIRES",
+  "step5": "child RIP = thr_exit (clean exit), parent survives (E2-proven return path), tid witness -> ARGUMENT POWER -> the kernel leg opens"
+ },
+ "slot_table": [
+  [
+   "i=0",
+   "0x369c0"
+  ],
+  [
+   "i=1",
+   "0x369d0"
+  ],
+  [
+   "i=2",
+   "0x7820"
+  ],
+  [
+   "i=3",
+   "0x2a4d0"
+  ],
+  [
+   "i=4",
+   "0x2a4f0"
+  ],
+  [
+   "i=5",
+   "0xf0a0"
+  ],
+  [
+   "i=6",
+   "0x3aec0"
+  ],
+  [
+   "i=7",
+   "0x64c0"
+  ],
+  [
+   "i=8",
+   "0x5bd0"
+  ],
+  [
+   "i=9",
+   "0x3e050"
+  ],
+  [
+   "i=10",
+   "0x3f0e0"
+  ],
+  [
+   "i=11",
+   "0x2e10",
+   "STUB (harvest-printed)"
+  ],
+  [
+   "i=12",
+   "0x296e0"
+  ],
+  [
+   "i=13",
+   "0x29670"
+  ],
+  [
+   "i=14",
+   "0x35ed0"
+  ],
+  [
+   "i=15-20",
+   "0x13ea0..0x146f0"
+  ],
+  [
+   "i=21",
+   "0x27d70"
+  ],
+  [
+   "i=22",
+   "0xa820"
+  ],
+  [
+   "i=23",
+   "0xb370"
+  ],
+  [
+   "i=24",
+   "0xb100"
+  ],
+  [
+   "i=25",
+   "0x36180"
+  ],
+  [
+   "i=26",
+   "OTHER-MODULE 0x820af4c00"
+  ],
+  [
+   "i=27",
+   "0x15830"
+  ],
+  [
+   "i=28-32",
+   "0x142c0..0x416e0"
+  ],
+  [
+   "i=33",
+   "0xb50",
+   "STUB gettimeofday(118) ANCHOR"
+  ],
+  [
+   "i=34-58",
+   "0x15900..0x14260"
+  ],
+  [
+   "i=59-62",
+   "OTHER-MODULE 0x1ac649xxx"
+  ],
+  [
+   "i=63",
+   "0x10f0",
+   "STUB (harvest-printed)"
+  ],
+  [
+   "i=64-71",
+   "0x3a040..0x34b00"
+  ],
+  [
+   "i=72",
+   "OTHER-MODULE 0x832510840",
+   "PREDICTED thr_create POSITION (number-order) - NOT lk!"
+  ],
+  [
+   "i=73",
+   "0x3f0",
+   "STUB thr_exit(431) ANCHOR"
+  ],
+  [
+   "i=74",
+   "0x410",
+   "STUB thr_new(455) ANCHOR"
+  ],
+  [
+   "i=75-81",
+   "OTHER-MODULE 0x1ac646xxx"
+  ],
+  [
+   "i=82-98",
+   "0x16e20..0x149a0"
+  ],
+  [
+   "i=99",
+   "0x33070"
+  ],
+  [
+   "i=100",
+   "0xf220"
+  ],
+  [
+   "i=101",
+   "0x7cd0"
+  ],
+  [
+   "i=102",
+   "0x3b0",
+   "STUB (harvest-printed; game lane trampoline)"
+  ],
+  [
+   "i=103",
+   "0xb70",
+   "STUB (harvest-printed)"
+  ],
+  [
+   "i=104",
+   "0x153c0"
+  ],
+  [
+   "i=105",
+   "0xff0",
+   "STUB (harvest-printed)"
+  ],
+  [
+   "i=106",
+   "0xc1e0"
+  ],
+  [
+   "i=107+",
+   "ALL NULL (table ends)"
+  ]
+ ]
+}

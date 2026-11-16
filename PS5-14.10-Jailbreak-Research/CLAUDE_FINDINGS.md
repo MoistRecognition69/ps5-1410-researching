@@ -5916,3 +5916,98 @@ thr_create=Tidr0SYRmB4, thr_exit=U5VD1P181iA, thr_new=t1BJfub8VdY,
 gettimeofday=n88vx3C5nW8). The spawn instrument (tws) is BUILT
 and CORRECT. The ONLY missing piece: ONE 32-bit RVA. The campaign
 record is complete through commit 05b7cf81 (v=rtld1).
+
+
+### SESSIONS 159-160 (THE CORPUS REDISCOVERY - ALL OFFLINE, ZERO DEVICE SESSIONS): the import table extracted and validated - THR_CREATE IS NOT IMPORTED - the NID-map route is structurally dead - THE ROP ARCHITECTURE replaces it - the one remaining blocker = libc's base
+
+THE SESSION: a full re-examination of the external game-lane corpus
+(ALL_RESULTS.md) against our banked knowledge, looking for anything
+missed. Found: the corpus contains BOTH ENDS of the import chain:
+- 1215b_libc_import_window: a full qword dump of libc+0x114000-0x118000
+  (the import-slot region), and
+- 1215a_libc_dump: a full byte dump of libc+0x0-0x114000 (276 pages,
+  contiguous, zero gaps - the complete text of the system libc .prx).
+
+THE EXTRACTION (tools/corpus-import-extract.js, fully reproducible):
+1. lkbase of the dump session = q(libc+0x1179A8) - 0xB50 =
+   0x832bdc000 (the gettimeofday anchor) - TRIPLE-VALIDATED: the
+   slot at i=73 gives lk+0x3F0 (thr_exit) and i=74 gives lk+0x410
+   (thr_new), both E2-known RVAs.
+2. The full slot table: 94 lk-relative RVAs extracted (slots 0-106;
+   107+ = ALL NULL). The RVA page histogram MATCHES the 1213a harvest
+   EXACTLY (94 of the 96; the 2 beyond the dump end). The 9 printed
+   stubs (3B0 3F0 410 B50 B70 D50 FF0 10F0 2E10) match exactly.
+   => THE COMPLETE 14.10 IMPORT MAP IS NOW BANKED (lc-import-map.json).
+
+THE FIVE DECISIVE FINDINGS:
+1. THE TABLE IS NOT NID-SORTED. The NID algorithm (ps5rs algorithm.rs:
+   SHA1(name + the 16 RAW salt bytes 51 8D 64 A6 35 DE D8 C1 E6 B0 39
+   B1 C3 E5 52 30) -> first 8 bytes reversed -> Sony-alphabet base64)
+   was implemented and verified 50/50 against our banked NIDs. The
+   anchors' raw-NID order does NOT match their slot order.
+2. THE TABLE IS BUILD/SYSCALL-NUMBER ORDERED: thr_exit(431)=i=73 and
+   thr_new(455)=i=74 are ADJACENT slots - exactly their syscall-number
+   adjacency with nothing between them imported (thr_self(432) absent,
+   E2-proven). Under number order, thr_create(430) = slot 72 - and
+   slot 72's value = 0x832510840 = ANOTHER MODULE, not lk.
+   => THR_CREATE IS NOT IMPORTED BY LIBC (like thr_self). THE
+   RTLD/NID-MAP ROUTE WAS STRUCTURALLY INCAPABLE OF NAMING IT.
+   (The 94 = the 9+ syscall stubs + real lk functions.)
+3. THE +7 UNIVERSAL SYSCALL EXECUTOR IS THE TECHNIQUE (the game lane's
+   standard, 1183b-confirmed: their "syscall.syscall_address" =
+   slot_value+7): ANY known stub's +7 executes whatever number is in
+   RAX. Our 9 known stub addresses = 9 interchangeable executors.
+   ONLY RAX=430 IS MISSING ("RAX = LLInt leftover, NOT controlled").
+4. THE ROP CATALOG IN LIBC (tools/libc-rop-gadgets.json; offsets are
+   durable - the system .prx is the same binary in every process):
+   pop rax; ret x30 (first libc+0x5dcd4), pop rdi; ret x9 (first
+   +0x27932), pop rsi; ret x4 (first +0xb2188), pop rcx; ret x23.
+5. THE STACK NEAR cfr IS ARW-WRITABLE (the below-cfr band is proven
+   mapped to -0x8000; the ARW = out-of-cage writes, 24+ proven).
+   => A pop rax; ret GADGET + AN ARW-WRITTEN SLED = FULL RAX CONTROL
+   WITH RDI (the armed ucontext) UNTOUCHED.
+
+THE NEW ARCHITECTURE (replaces the RVA hunt entirely):
+(1) lk_base: the proven pthread-backlink chain (every session).
+(2) libc_base: THE ONE REMAINING BLOCKER (the hunt, below).
+(3) ARW-write the stack sled around the rawcall RSP: repeated qword
+    pairs (0x1AE = syscall 430, lk+0x3F7 = thr_exit's stub+7 = the
+    raw syscall instruction). The sled absorbs the RSP-delta unknown.
+(4) rawcall(PC = libc_base + gadget_off, RDI = the armed tws ucontext):
+    pop rax loads 430 from [RSP], ret lands on lk+0x3F7, RDI IS
+    UNTOUCHED = the armed ucontext -> SYSCALL 430 FIRES = THR_CREATE.
+(5) The child (RIP=thr_exit) exits cleanly; the parent returns through
+    the E2-proven path; the tid witness lands = ARGUMENT POWER = the
+    kernel leg opens (KASLR leak -> kernel bug -> kernel R/W).
+
+THE RANKED NEXT MOVES (the revised hunt - ONE blocker: libc's base):
+1. THE STACK-HARVEST RE-ANALYSIS (one session): re-run the deep
+   harvest (the below-cfr band [cfr-0x2220, cfr-0x8000], proven
+   survivable 6-chunk) with a LIBC-BAND filter + the low-12-bit
+   fingerprint matching against TODAY'S banked known-offset
+   structures: the GOT slot +0x1179A8 (low-12 = 0x9A8), the
+   errno-table pointer array (+0x114dd0-class), the import window.
+   A single stale libc pointer = the base. The old "no fresh module
+   returns" conclusion was drawn BEFORE the band filters were refined
+   and BEFORE we knew which low-bits to look for.
+2. RTLD v2 (the auxv -> AT_BASE -> ld data -> the module list): the
+   design stands; AT_BASE+0 died (the ld ELF header page = unmapped).
+   With TODAY'S knowledge the route's payoff is the GADGET BASE (not
+   the NID map). The auxv pair-sequence validation + the
+   +0x1000/+0x4000/+0x10000 probes as designed; the pthread-fields
+   route as the alternate.
+3. THE VALUE-INVERSION idea (if 1+2 stall): we KNOW lk_base; the
+   gettimeofday slot (libc+0x1179A8) CONTAINS lk+0xB50; any
+   readable location holding a pointer INTO libc's GOT or the known
+   data structures = the base via the known offset. Same fingerprint
+   logic as route 1, applied to any future harvest.
+4. THE FIRE (once the base lands): the sled + pop rax; ret +
+   stub+7 with the armed tws scope -> the spawn -> the kernel leg.
+
+THE STATE OF THE BIG PICTURE: E2 complete (thr_self). Full WebProcess
+control (ARW, arbitrary PC + RDI, restores). The complete lk function
+map banked. The NID algorithm cracked and 50 NIDs banked. The tws
+armed-ucontext instrument BUILT. The 14.10 import map EXTRACTED AND
+VALIDATED. The ROP catalog banked. THE CAMPAIGN IS ONE BASE AWAY FROM
+THE SPAWN. Artifacts: lc-import-map.json, libc-rop-gadgets.json,
+corpus-import-extract.js, corpus-rop-catalog.js (all committed).

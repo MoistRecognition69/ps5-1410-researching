@@ -5721,3 +5721,66 @@ class. Those eliminations are NOT clean thr_create eliminations; the
 gated ctx is the correct instrument and was never fired.
 
 PRIORITY: A first (free, deterministic), then B with A's output.
+
+### SESSION 73 (THE E2.5 DECODE): THE EXPORT TABLE = .eh_frame_hdr - THE COMPLETE 2092-FUNCTION MAP BANKED - THE TWC FIELD MAP WAS WRONG (+0x50 SHIFT, GATES UNARMED) - ALL TEN LOTTERY ELIMINATIONS INVALIDATED
+
+THE XTAB DECODE CHAIN (all from ONE read-only session, zero calls):
+1. THE HEADER: bytes 01 1b 03 3b = .eh_frame_hdr encodings (ver=1,
+   ptr_enc=0x1b, cnt_enc=0x03, tbl_enc=0x3b=datarel|sdata4|indirect).
+   count@+8 = 0x82C = 2092. Entries @+0xC: {u32 fde_off(A),
+   i32 loc} - loc datarel to tbl: text = 0x48000 + loc (VALIDATED:
+   #5=0x2C0 thr_self, #8=0x410 thr_new, THE E2 ANCHORS).
+2. THE POOL @ tbl+0x416C = .eh_frame: CIEs + FDEs + CFI programs
+   (the "0xd430286100e4100 pattern" = DW_CFA opcodes: 86 02 43 0d =
+   offset(rbp,2) advance_loc(4) def_cfa_register). The in-page hex
+   builder emitted qword-value-BE while absRead reads LE -> EVERY
+   8-BYTE CHUNK WAS MEMORY-REVERSED (the offline tools flip it back;
+   "Sbil"+"rhTgbDec" = "libSceDbgThread" reversed - CONFIRMED).
+   Pool strings = RODATA (debug msgs, source paths
+   .../libkernel/pthread/src/thread/*.c, sysctl names) + eh_frame.
+   NO symbol names - NOT a dynstr. thr_create/thr_self etc: ABSENT.
+3. THE FDEs: FDE@pool+(A-0x416C) = {len32, cie32, loc32, range32}:
+   init = 0x48000 + A + 8 + loc (datarel - VALIDATED ON BOTH
+   ANCHORS: #5 -> 0x2C0 EXACT, #8 -> 0x410 EXACT);
+   range@+12 = FUNCTION LENGTH.
+4. *** 2092/2092 FDEs VALIDATED *** - THE COMPLETE FUNCTION MAP:
+   perfectly sorted, non-overlapping, contiguous-ish:
+   #0 [0xD0,0x128) #1 [0x130,0x1D5) #2 [0x1E0,0x1F6) #3 [0x200,0x225)
+   #4 [0x230,0x2B8) #5 [0x2C0,0x33B) thr_self #6 [0x340,0x398)
+   #7 [0x3A0,0x40A) #8 [0x410,0x45C) thr_new #16 [0x7A0,0x8B0)...
+   SAVED: tools/lk-funcmap.json. THE 1213a "+7 SLOTS" = SYSCALL
+   SNIPPETS (mov eax,NUM;syscall;ret) INSIDE MERGED-FDE REGIONS
+   (FDE #7 covers snippets 0x3B0, 0x3D0?, 0x3F0=thr_exit(431)):
+   0x3D0 was NOT in the +7 test list -> NOT a slot.
+   The 96 libc-imported slots = 96 snippet starts; the SYSCALL
+   NUMBERS live in the mov eax,imm32 bytes (EXECUTE-ONLY).
+5. THE 13.60 COMPARISON: syscall_map EXISTS (430 thr_create ->
+   0x1B160, 429 -> 0x1BAB0, 431 -> 0x1B4E0) but 14.10 REORDERED
+   (13.60: 431<432<455 ascending; 14.10: 432@0x2C0 < 431@0x3F0 <
+   455@0x410) -> DIRECT OFFSET TRANSFER DEAD.
+
+*** THE TWC BUG (the campaign-changing discovery) ***:
+the twc writes CS@+0xE8, RFLAGS@+0xF0, RDI@+0x38 - the 156c
+DEVICE-PROVEN layout (rv=0 SPAWNED on 14.10) is CS@+0xC0,
+RFLAGS@+0xA0?, RDI@+0x48, RSP@+0xF8, SS@+0x100, RIP@+0xE0,
+magic@+0x108=0x480, flags@+0xD0<=7, type@+0x110=0x10000.
+TWC wrote RIP/RSP/SS at CORRECT offsets but CS 0x50 TOO HIGH
+(real CS slot zeroed = NULL SELECTOR) and NEVER ARMED THE
+MAGIC/TYPE GATES (zeroed). => EVERY TWV/TWC DEATH WAS TAKEN WITH
+A BROKEN CONTEXT. THE TEN "WRITER" ELIMINATIONS (130,230,2E0,
+300,320,3A0,3B0,3D0,430,450) ARE ALL INVALID. (Session 72b
+suspected null-selector ctxs - NOW CONFIRMED + located the bug.)
+
+THE ROUTES FORWARD:
+A (DETERMINISTIC): libc base (stack-scan return-addrs + the game
+   lane libc_addrofs - memcpy 0x42410 etc - lk-match method) ->
+   read libc .dynamic -> .rela.plt/.dynsym/.dynstr (ALL READABLE
+   DATA) -> SLOT<->NID MAP -> thr_create NID Tidr0SYRmB4 ->
+   its GOT slot -> *slot = the snippet RVA. TRIPLE CROSS-CHECK:
+   thr_exit slot -> 0x3F0, thr_new -> 0x410, gettimeofday ->
+   0xB50 (all three KNOWN). gettimeofday slot @ libc+0x1179A8
+   (game lane, boot-stable).
+B (GATED-CTX): rewrite twc with the 156c field map + gates ->
+   re-test the slot queue (0x3B0 first: a NON-thr_create snippet
+   with armed gates should EINVAL-SURVIVE; thr_create SPAWNS+
+   SURVIVES+tid-witness).

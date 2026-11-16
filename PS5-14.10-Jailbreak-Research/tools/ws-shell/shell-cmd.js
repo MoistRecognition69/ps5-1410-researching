@@ -142,8 +142,10 @@ if (name === 'status') {
       case 'fire':
         /* THE DISPATCH-FIRE: the fontface vtable dispatch fires thr_create
          * (lk+0x13ED0) with the parent surviving (RIP2-AFTER) - the witness
-         * (the child's tid) read back in the reply. Usage: fire */
-        cmd = { cmd: 'fire' }; break;
+         * (the child's tid) read back in the reply.
+         * fire diag -> s3 = thr_self (the non-fatal dispatch proof:
+         * tid at [FO], then the VP restore). Usage: fire [diag] */
+        cmd = { cmd: 'fire', diag: clean[1] || '' }; break;
       case 'lcbase':
         /* THE DETERMINISTIC LIBC HUNT: module-band-only harvest ->
          * the 12-known-RVA alignment oracle -> ELF verify (bounded

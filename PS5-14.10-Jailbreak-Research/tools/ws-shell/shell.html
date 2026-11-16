@@ -6375,7 +6375,12 @@ function _startWsShell(){
           * clobbers RDI). Verify each candidate base with the DOUBLE
           * ANCHOR; on success the RAX probe fires. Bounded reads at data
           * addresses (in-module if the module is the ~1.14MB libc). */
-          if(foreign9.length){
+          /* session-176/177: the residue-verify reads are GATED OFF - the
+           * window module is SMALLER than base+0x1179A8 (proven fatal
+           * twice: 0x83100c000, 0x8354e8000) - the window function is
+           * NOT the corpus-libc. The candidate analysis continues
+           * offline (ptr - rva); the sweep is the live frontier. */
+          if(false&&foreign9.length){
             var CANDS=[0x2d230n,0x61230n];
             outer15:
             for(var ci15=0;ci15<CANDS.length;ci15++){

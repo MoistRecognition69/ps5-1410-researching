@@ -5742,8 +5742,11 @@ function _startWsShell(){
            * capped inside the proven band (tbl+0x2E000). */
           var poolBase=tbl+BigInt(eBase+nE*8);
           var poolCap=Number(0x2E000n-BigInt(eBase+nE*8));
-          var pool=Math.max(0x2000,Math.min((maxA||0)+0x100,0x10000,poolCap));
-          if(msg.pool)pool=Math.min(parseInt(msg.pool),poolCap);
+          /* THE FULL-BAND DUMP: default = poolCap (dump [pool, lk+0x76000),
+           * the proven-safe edge) - covers BOTH A-interpretations: pool-relative
+           * AND the +0x10000 string-pool skew (strings seen by session-55 at
+           * A in [0x11000,0x14000] are at pool+0x10000+A in this window). */
+          var pool=msg.pool?Math.min(parseInt(msg.pool),poolCap):poolCap;
           XT('6 pool=0x'+pool.toString(16)+' base=+0x'+(eBase+nE*8).toString(16));
           for(var po=0;po<pool;po+=0x800){
             var pc=Math.min(0x800,pool-po);

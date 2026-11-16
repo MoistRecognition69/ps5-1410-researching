@@ -6363,22 +6363,38 @@ function _startWsShell(){
           try{document.fonts.forEach(function(f){facesArr.push(f);});}catch(eD){}
           FB2('7 faces n='+facesArr.length);
           var fired=false;
-          /* session-191: the corpus RIP2 triggers faces[zi] = the ORACLE FACE
-           * (found via check()===false - the face whose engine-side object
-           * the walk reaches = FO) - NOT an arbitrary face. Our facesArr[0]
-           * = likely the wrong face entirely */
-          var zi=-1;
-          for(var qO=0;qO<facesArr.length;qO++){
-            var rO=null;
-            try{rO=document.fonts.check('1em '+facesArr[qO].family,'A');}catch(eO){}
-            if(rO===false){zi=qO;break;}
-          }
-          FB2('7b oracle face zi='+zi+' of n='+facesArr.length);
-          if(zi>=0){
-            try{facesArr[zi].style='italic';fired='style-oracle';}catch(eS5){}
-            if(!fired){try{facesArr[zi].family='fy'+(Date.now()%1000);fired='family-oracle';}catch(eF5){}}
-          }
-          if(!fired){
+          /* session-192: THE CORPUS RECIPE (their p691 lines 81+99): the
+           * dispatch fires on a FRESHLY-LOADED face - create a new
+           * @font-face (family v1, local Arial, unicode-range U+0042),
+           * document.fonts.load('1em v1','AB') - the LOAD-STATE TRANSITION
+           * dispatches fontStateChanged/fontPropertyChanged to the client
+           * (FO) - then trigger on the LOADED face (their zi faces) */
+          var fsEl=null;
+          try{
+            fsEl=document.createElement('style');
+            fsEl.textContent='@font-face{font-family:v1;src:local(Arial);unicode-range:U+0042;}';
+            document.head.appendChild(fsEl);
+            FB2('7b style injected');
+          }catch(eI5){FB2('7b style inject fail');}
+          var loadedFaces=[];
+          try{
+            document.fonts.load('1em v1','AB').then(function(f){
+              loadedFaces=f;
+              FB2('7c loaded n='+f.length);
+              /* THE TRIGGER on the freshly-loaded face - INSIDE the .then:
+               * the load transition + the property change both happen
+               * while our FAKEVT is in place */
+              try{
+                if(f.length>0){f[0].style='italic';FB2('7d style on loaded face');}
+                else FB2('7d no loaded faces');
+              }catch(eT5){FB2('7d trigger fail');}
+            },function(){FB2('7c load rejected');});
+            fired='load-pending';
+          }catch(eL5){FB2('7c load throw');}
+          /* the immediate fallback (the old path) also runs - the readback
+           * checks the slots right after; the .then trigger may land
+           * within the settled window */
+          if(!fired||fired==='load-pending'){
             for(var rI=0;rI<facesArr.length;rI++){
               try{facesArr[rI].style='italic';fired='style-any';break;}catch(eR2){}
             }

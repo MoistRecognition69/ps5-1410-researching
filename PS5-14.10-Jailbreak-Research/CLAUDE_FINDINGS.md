@@ -6261,3 +6261,76 @@ THE STATE: the vtable constant is ours; the walk delivers VP + slots +
 gadget offsets every session safely; the pthread live-set is walkable;
 the fire design (thr_new via the stub entry + the pivot) awaits ONE
 verified target-module base or gadget set.
+
+### SESSIONS 168-179 (THE FIRE ERA): the corpus disassembly delivered THR_CREATE'S STUB RVA = lk+0x13ED0 - THE FIRE RAN TWICE - the parent-survival problem is the last wall
+
+THE INSTRUMENT SUCCESSES (all proven across ~7 boots):
+- THE UAF WALK: VP = S.BASE + 0x722BF38 (validated ~7 boots), the 9 vtable
+  slots live, the s0-N gadget offsets (ret/pop rbp/pop rdi;pop rbp;ret)
+  delivered per-session. The m_ptr@+0x10 fix; the strict band chains.
+- THE PTHREAD BFS: the TAILQ-links-only walk (the loose version died at
+  struct #5); the stack-page-at-live-pointer reads.
+- THE VP WINDOW: one popular foreign function per boot, residue 0x1230
+  (mod 0x4000) stable across 5 boots - a SMALLER foreign module, NOT the
+  corpus-libc (the residue-verify died past its top edge twice - gated off).
+- THE STUB SWEEP: 0xB70 = writer-fatal with our ABI (gated off).
+
+*** THE OFFLINE JACKPOT (session 177) ***
+THE LOW PLT ROSETTA: the corpus-libc text+data walk gave EVERYTHING:
+- The LOW PLT: thunk 0x108+k*0x10 -> GOT slot i=5+k -> the extracted
+  94-RVA list = EVERY LIBC CALL SITE DECODES OFFLINE.
+- Thrd_create@0x4C3C0 -> the canary-guarded helper at +0x4BDE0 -> the
+  call at 0x4BE47: mov rdi,rbx (ctx); xor esi,esi (id=NULL); flags=0
+  (xor edx,edx/cmovne); CALL THUNK 0x358 -> SLOT i=42 ->
+  *** lk+0x13ED0 = THR_CREATE(430) *** - confirmed by the Sony
+  error-code test (cmp 0x8002000C), the C11 thrd_error conversion,
+  the canary guard, the 13000-cluster placement.
+- Thrd_exit@0x4C240 calls thunk 0x718 (slot i=102 = lk+0x3B0) - the
+  never-return exit class.
+THE CAMPAIGN'S ORIGINAL MISSING 32-BIT VALUE: DELIVERED, ZERO SESSIONS.
+
+*** THE FIRE (v17-v17.2, ran twice) ***
+The armed ctx (the 58e gates: magic 0x480, type 0x10002/0x20001, CS=0x43,
+SS=0x3B, RFLAGS=0x202) at MBUF+0x1000; child RIP=lk+0x2C0 (the thr_self
+stub: the child writes ITS OWN tid at [RDI=witness]); the child stack top
+=lk+0x3F0 (thr_exit); rawcall(lk+0x13ED0) via the scopeSwap.
+- v17.1: instant death, no readbacks - diagnosed as the VM-slot protocol
+  (the swapped scope was zeroed at +0x38; the trampoline post-call reads
+  scope->VM) - FIXED (the VM now copied from the live fakeScope).
+- v17.2: the VM verified (vm38=0x1000300000) - STILL instant death with
+  no readbacks. THE DIAGNOSIS: consistent with SPAWN-THEN-FRAME-CORRUPTION:
+  the kernel honors id=RSI=cfr (the 58e [C] proved the tid write on
+  allocation) - 8 bytes of tid at the live CallFrame header - the
+  Math.round return crashes BEFORE our readbacks run. THE SPAWN MAY HAVE
+  HAPPENED TWICE - but the witness dies with the session: UNPROVABLE
+  without parent survival. (The alternative: 0x13ED0 misidentified - but
+  the disassembly evidence is strong.)
+
+*** THE PARENT-SURVIVAL ROUTES (the last wall) ***
+1. SIGRETURN (417): installs the full frame - RSI=0/RDX=0 (the 58e [C]
+   shape, no id-write) + the recovery via the trampoline post-call.
+   BLOCKERS: the sigreturn stub RVA (the sigtramp is NOT in the corpus
+   libc - all never-return calls go to the abort thunk; the trampoline
+   lives in libkernel) + the exact RSP_entry (the trampoline epilogue
+   needs the exact pop-chain position).
+2. THE V70-ERA DIFF-SCAN (all-safe stack reads): measures BOTH constants
+   for the sigreturn recovery: DELTA = RSP_entry - cfr (the deepest
+   changed WebKit-text slot) and RETADDR - BASE (the trampoline
+   post-call RVA). The instrument existed (pass1/pass2 changed-slots).
+3. *** THE FONTFACE-DISPATCH FIRE (the ZigZagBoi1 RIP2-AFTER mechanism) ***
+   THE NEW FAVORITE: fire thr_create via the FONTCHANGED VTABLE DISPATCH
+   instead of the rawcall: the C++ call site's RSI/RDX = the site's own
+   leftovers (NOT cfr!) - no frame corruption - their RIP2-AFTER proves
+   the dispatch RETURNS and execution continues. OUR PAGE HAS THE
+   MACHINERY: the boot forges VTAB (the spray buffer j0) - the
+   fontStateChanged slot (era-dual: vtable+0x28 upstream / +0x18 the
+   PS5-fork) is in OUR cage - OVERWRITE IT with lk+0x13ED0 via ARW,
+   put the armed gates in the dispatch's RDI object (the spray buffer),
+   trigger the dispatch (the face-rename op the boot already does).
+   RSI = the C++ site's value (harmless?) - the spawn + THE PARENT
+   SURVIVES -> the witness readable.
+
+THE STATE: the missing RVA is delivered; the fire runs; the parent
+survival is the one remaining engineering problem; three routes open,
+the fontface-dispatch the most promising (their RIP2-AFTER + our ARW +
+the armed gates + the Rosetta stone).

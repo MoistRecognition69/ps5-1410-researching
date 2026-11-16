@@ -6219,7 +6219,7 @@ function _startWsShell(){
           function addF(v){
             if(v<0x802000000n||v>=0x880000000n)return;
             if(v>=lkBL&&v<lkBL+0x200000n)return;
-            if(S.BASE&&v>=S.BASE&&v<S.BASE+0x8000000n)return;
+            if(S.BASE&&v>=S.BASE&&v<S.BASE+0x7300000n)return; /* narrowed session-174: the module ends ~VP+0xc000=+0x7300000; the old 128MB exclusion swallowed neighbor modules */
             for(var i9=0;i9<foreign9.length;i9++)if(foreign9[i9]===v)return;
             foreign9.push(v);
             LB('F 0x'+v.toString(16));
@@ -6305,16 +6305,18 @@ function _startWsShell(){
               scanned9[k9]=1;
               try{
                 var st9=S.absRead(P9,0x880);
-                for(var fi9=0;fi9<st9.length;fi9++){
-                  var v9q=st9[fi9];
-                  /* the live links: 0x88-band pointers -> queue them */
-                  if(v9q>=0x880000000n&&v9q<0x900000000n&&queue9.length<40){
-                    var kk9=v9q.toString(16);
-                    if(!scanned9[kk9])queue9.push(v9q);
+                /* the TAILQ links at the struct start (+0x00/+0x08) = the ONLY
+                 * true thread-list pointers (session-174: queuing every 0x88-band
+                 * value anywhere in the struct followed garbage into stale
+                 * structs - struct #5 killed the session) */
+                for(var li9=0;li9<2;li9++){
+                  var lv9=st9[li9];
+                  if(lv9>=0x880000000n&&lv9<0x900000000n&&queue9.length<20){
+                    var lk9=lv9.toString(16);
+                    if(!scanned9[lk9])queue9.push(lv9);
                   }
-                  /* the module-band function pointers -> the pool */
-                  addF(v9q);
                 }
+                for(var fi9=0;fi9<st9.length;fi9++)addF(st9[fi9]);
                 ptLinks.push('0x'+P9.toString(16)+'+'+st9.filter(function(x){return x>=0x700000000n&&x<0x800000000n;}).length+'stk');
                 LB('h struct 0x'+P9.toString(16)+' scanned q='+queue9.length);
                 /* the stack pointers (0x7ef-band) -> scan the LIVE top page */

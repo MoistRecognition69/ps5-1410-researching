@@ -5949,6 +5949,31 @@ function _startWsShell(){
         break;
       }
 
+      case 'lcelf':{
+        /* THE TOP-DOWN BASE PROBE: read C+0..0x20 - if ELF magic
+         * (0x464C457F) -> C is a module base. Fire candidates
+         * TOP-DOWN (highest first): candidates ABOVE the real base
+         * are inside the module (mapped, safe garbage-rejects); the
+         * first magic hit = the base. NEVER step below a hit. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        try{
+          var C2=BigInt(msg.base);
+          if(C2%0x4000n!==0n){reply.err='not 16KB-aligned';break;}
+          var eh2=S.absRead(C2,0x20);
+          var mg=Number(eh2[0]&0xFFFFFFFFn);
+          reply.magic='0x'+mg.toString(16);
+          reply.isElf=(mg===0x464C457Fn);
+          if(reply.isElf){
+            reply.eType='0x'+(Number(eh2[2]&0xFFFFn)).toString(16);
+            reply.entry='0x'+eh2[3].toString(16);
+            reply.phoff='0x'+eh2[4].toString(16);
+            reply.phentsize='0x'+(Number((eh2[5]>>48n)&0xFFFFn)).toString(16);
+            reply.phnum=Number(eh2[6]&0xFFFFn);
+          }
+        }catch(e2){reply.err='lcelf fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'lcverify':{
         /* THE DETERMINISTIC LIBC-BASE VERIFIER (route A step 3): the
          * game-lane 14.10-proven gettimeofday IMPORT SLOT at libc+

@@ -6306,7 +6306,15 @@ function _startWsShell(){
           if(isDiag4){
             var CLI=0n;
             try{CLI=BigInt('0x'+(localStorage.getItem('v688_cli')||'0'));}catch(eC4){}
-            if(!(CLI>=0x1000000000n)){reply.err='no v688_cli';break;}
+            if(!(CLI>=0x1000000000n)){
+              /* the fallback: client = SELF+0xB8 (the note: 'client at
+               * self+0xB8, base block at client-0x20=self+0x98') -
+               * v688_self is cached EVERY boot (the PH2 client scan
+               * is the one that sometimes misses) */
+              try{CLI=BigInt('0x'+(localStorage.getItem('v688_self')||'0'))+0xB8n;}catch(eS4){}
+              if(CLI>=0x1000000000n)FB2('D4 cli fallback = SELF+0xB8 = 0x'+CLI.toString(16));
+            }
+            if(!(CLI>=0x1000000000n)){reply.err='no client ptr (neither v688_cli nor v688_self)';break;}
             reply.CLI='0x'+CLI.toString(16);
             c98Pre=S.absRead(CLI-0x20n,8)[0];
             S.absWrite(CLI-0x20n,FAKEVT);

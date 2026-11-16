@@ -6109,3 +6109,107 @@ THE STATE: E2 complete. Full WebProcess control. The complete import
 map + gadget catalog + 12 RVAs + the SROP ABI + the longjmp pivot
 architecture ALL BANKED. ONE deterministic hunt stands between us
 and the spawn. Dispatcher v=lcbase1, everything committed.
+
+### SESSION 162 (THE ZIGZAGBOI1 CONVERGENCE - their repo + PRs mined): the two campaigns are at the SAME wall - and the pieces COMPLEMENT
+
+THE USER DIRECTIVE: ZigZagBoi1/PS5-14.10-Research claims a full ROP chain
+via WebKit+DNS. MINED: their README + STATE + p691 results + the probe
+code + PRs #281/#283/#285. THE TRUE STATE: RIP control CONFIRMED on
+device (forged vtable, RIP2-AFTER = the redirect RETURNS and execution
+continues); ROP chain toward kernel R/W in progress; kernel R/W NOT
+demonstrated. THEIR next_action = "find_syscall_ret_via_sprx_imports_
+or_offline_analysis" - THE EXACT PROBLEM WE ALREADY SOLVED (the 94-slot
+import map + the 9 named stubs + the corpus).
+
+WHAT THEY HAVE (all 14.10 device-proven, all transferable):
+1. VP = WebKit_base + 0xC6A1B28 - stable across 5 boots (all VP values
+   end 0xB28). VP = the CSSFontFaceSet vtable = a READABLE structure
+   (their W4 walks it). FOR US: VP = S.BASE + 0xC6A1B28 - our ARW reads
+   the 9 slots directly, NO lottery.
+2. THE VTABLE SLOTS: s0..s8 (s8=NULL end marker; s2==s4==s5 shared base
+   impl - the validation pattern). CONFIRMED GADGETS in the pre-s0
+   padding bytes: ret@s0-1, pop rbp@s0-2, pop rdi;pop rbp;ret@s0-4,
+   s0-7 (unnamed) - device-confirmed via RIP-control CALLS.
+3. RIP2-AFTER: the forged-vtable dispatch RETURNS - execution continues
+   after the redirect (their chain is a CALL, same shape as our
+   rawcall).
+4. GOT.PLT at VP+0x2000..VP+0x4000 - ALL ENTRIES WEBKIT-INTERNAL: "PS5
+   SPRX format does not use ELF GOT for libc" - THE EXPLANATION FOR OUR
+   V83/V84 .data-import-route DEATHS (the wk GOT never held libc
+   pointers; the band holes were real).
+5. PR #283 (jsrkamal2002, the LLInt-matched GTK-build census, 2198
+   objects): syscall;ret = ZERO (the single decoded syscall is an
+   unreachable LLInt opcode-table decoy); rdtsc;ret = 0;
+   mov r10,rcx;ret = 0; pop r8/r9/r10;ret = 0. POP GADGETS EXIST IN
+   THE CLASS: pop rdi;ret x35190, pop rsi;ret x16188, pop rsp;ret
+   x22229, pop rax;ret x359, pop rdx;ret x50 (pre-verification counts).
+   THE DOCTRINE: "the chain must call [import_slot] / the resolved
+   stub - the stub entry handles the r10 shuffle internally - the
+   chain only needs call [slot]". THE STUB ENTRY PRESETS ITS OWN RAX.
+6. THE 383a/384b RE-READ (their game-lane probes): thr_new(param, 0x38)
+   = SPAWNED (ret=0); (param, 0x100) = clean EINVAL (the size gate);
+   THE PARAM STRUCT (0x38): start_func, arg, stack_base, stack_size,
+   tls_base=0 OK, tls_size=0 OK, rtp=0 OK - ALL DEVICE-PROVEN.
+   384b: THE CHILD EXECUTED A 3-ARG WRITE through a socketpair -
+   the child-as-executor is PROVEN.
+
+*** THE FUSED FIRE (every piece now banked; NO RAX CONTROL NEEDED
+ANYWHERE; NO SIGRETURN NEEDED; NO thr_create RVA NEEDED) ***
+Parent (the pivot chain, on a controlled RSP):
+  pop rdi = &param  (the 0x38-byte struct in our cage)
+  pop rsi = 0x38    (the size - the ONE value the rawcall ABI cannot
+                    give us - hence the pivot)
+  ret -> lk+0x410   (the thr_new STUB ENTRY - presets RAX=455,
+                     does the r10 shuffle internally)
+  -> SYSCALL 455 = THR_NEW(param, 0x38) = *** THE SPAWN ***
+  -> ret -> pop rsp -> the captured original RSP -> ret -> the
+     original return path -> the JS continues cleanly.
+Child (start_func(arg) with RSP = our cage stack top):
+  start_func = lk+0x2C0 (the thr_self STUB ENTRY - writes THE CHILD
+              OWN TID at [RDI=arg]) - arg = a cage witness address
+  child stack top = lk+0x3F0 (the thr_exit stub) - after thr_self
+              returns, the child exits cleanly.
+  THE WITNESS: the cage slot holds the CHILD's tid (<> the parent
+  tid=1) - readable at leisure = THE ARGUMENT-POWER PROOF (the child
+  is the multi-register syscall executor; 384b-proven capable).
+
+THE REMAINING SINGLE BLOCKER: THE PARENT PIVOT (a controlled RSP).
+Ranked routes:
+(a) THE LIBC PIVOT (lcbase first): setjmp/longjmp. NOTE-CORRECTION:
+    the corpus addrofs setjmp=0xB020/longjmp=0xB070 point at WRAPPER
+    code, not raw setjmp/longjmp (the bytes at 0xB020/0xB070 are
+    ordinary frame-pointer code; NO setjmp/longjmp signatures exist
+    in the whole 0x0-0x114000 dump; the real functions live beyond
+    the dump or at other offsets). Once the base lands: identify the
+    real setjmp/longjmp IN-SESSION (the import-NID walk - the NID
+    strings live in libc data >0x118000, readable once we have the
+    base - OR pattern-verify candidate addresses via the rawcall
+    RAX probe - a setjmp call writes the frame into the scope with a
+    clean return = self-identifying).
+(b) THE WEBKIT GADGET ROUTE: their census says pop rsp;ret x22229
+    exists in the class - at PS5-unknown RVAs. Their p817
+    "magic-gated base discovery" (open PR #285) targets exactly this
+    class of problem - WATCH THEIR NEXT PRs. The 9 vtable slots +
+    pre-slot padding = a small confirmed gadget farm (ret/pop rbp/
+    pop rdi;pop rbp;ret) - no pop rsi/pop rsp among the CONFIRMED.
+(c) The rawcall RAX-at-entry measurement (lcbase step 4) - if RAX is
+    JS-influenceable, the +7 route revives (RAX=455, lk+0x417+7?? no
+    - the +7 sites are only at the 9 known stubs; thr_new +7 =
+    lk+0x417 with RAX=455 preset anyway - the stub entry IS better).
+
+THE NID-IMPORT IDENTIFICATION (once libc base lands): the import NID
+strings live in libc data (>0x118000, undumped); the lcnid machinery
+walks them live: ALL 94 imports identified in-session - including any
+getcontext/sigreturn stubs (getcontext NID dar03AOn+nM, setcontext
+2VRU7xiqLO8, sigreturn mo0bFmWppIw - computable + searchable live).
+THE CORPUS CONFIRMATIONS THIS SESSION: the memcpy@0x42410 alignment
+VERIFIED (the overlap-checking prologue at exactly 0x42410) - the
+corpus RVAs are exact.
+
+THE STATE: E2 complete. The fused fire is FULLY SPECIFIED. The pivot
+is the last engineering problem (libc setjmp/longjmp or a WebKit pop
+rsp). lcbase (v=lcbase2) is built and syntax-checked - the base plus
+the RAX probe in one command. The console sessions died twice pre-
+ready (the no-NE boots: RAWSCAN hits=0, SWAP-ALL-NODIFF pairs=72) -
+known boot variance; the fix is patience (re-enter until a ready
+lands), NOT code. Everything committed through this session.

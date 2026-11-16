@@ -5610,3 +5610,4 @@ Each twc shot: the tid witness (thr_create!) / EINVAL / death.
 - 0x300 (gap): writer, died. Queue: 0x320, 0x3D0, 0x430, 0x450.
 - 0x320 (gap): writer, died. Queue: 0x3D0, 0x430, 0x450.
 - 0x3D0 (gap): writer, died. Queue: 0x430, 0x450.
+- 0x430 (gap): writer, died. Queue: 0x450 (the last gap candidate).

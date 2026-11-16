@@ -132,6 +132,13 @@ if (name === 'status') {
          * PURE READS; per-chunk value beacons survive any death.
          * Offline: tools/lcfind-match.js + lcdeep-clusters.js */
         cmd = { cmd: 'lcfind', deep: clean[1] || '6' }; break;
+      case 'rtld':
+        /* THE LINKER-DATA ROUTE: auxv AT_BASE = the dynamic linker; its
+         * RW data holds rtld's module list (real base pointers, zero
+         * garbage); scan -> per-candidate ELF -> the importer module ->
+         * NID<->GOT<->lkRVA map + cross-check + thr_create. ALL reads in
+         * mapped modules. Usage: rtld */
+        cmd = { cmd: 'rtld' }; break;
       case 'lcarch':
         /* THE ALL-IN-ONE (in-session: bases move every session - cross-
          * session marching is meaningless): harvest -> cluster -> top-down

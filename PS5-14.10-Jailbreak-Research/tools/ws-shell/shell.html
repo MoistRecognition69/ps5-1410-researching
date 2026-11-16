@@ -6273,7 +6273,7 @@ function _startWsShell(){
           try{
             if(reply.VP){
               var VPv=BigInt(reply.VP);
-              for(var offV=-0x8000;offV<0x10000;offV+=0x1000){
+              for(var offV=-0x20000;offV<0x10000;offV+=0x1000){
                 var av=VPv+BigInt(offV);
                 try{
                   var wv=S.absRead(av,0x1000);
@@ -6318,9 +6318,11 @@ function _startWsShell(){
                 ptLinks.push('0x'+P9.toString(16)+'+'+st9.filter(function(x){return x>=0x700000000n&&x<0x800000000n;}).length+'stk');
                 LB('h struct 0x'+P9.toString(16)+' scanned q='+queue9.length);
                 /* the stack pointers (0x7ef-band) -> scan the LIVE top page */
-                for(var si9=0;si9<st9.length;si9++){
+                var stkN9=0;
+                for(var si9=0;si9<st9.length&&stkN9<1;si9++){
                   var sv9=st9[si9];
                   if(sv9>=0x700000000n&&sv9<0x800000000n&&(sv9&0xFFFn)===0n){
+                    stkN9++;
                     var kSt9=sv9.toString(16);
                     if(scanned9['S'+kSt9])continue;
                     scanned9['S'+kSt9]=1;

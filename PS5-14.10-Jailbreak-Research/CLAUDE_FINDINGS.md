@@ -6213,3 +6213,51 @@ the RAX probe in one command. The console sessions died twice pre-
 ready (the no-NE boots: RAWSCAN hits=0, SWAP-ALL-NODIFF pairs=72) -
 known boot variance; the fix is patience (re-enter until a ready
 lands), NOT code. Everything committed through this session.
+
+### SESSIONS 168-171 (THE LIVE-POINTER ERA): the walk COMPLETED and is now a proven per-session instrument - VP=S.BASE+0x722BF38 validated across two boots - the pthread BFS works - the pool problem identified
+
+THE ARC (four sessions, each death a banked lesson):
+168: the UAF walk reached L1 (0x1000240cc0 - the live hash table) but the
+    bucket filter took a WebKit TEXT pointer as the WeakPtrImpl -> the VP
+    read hit XO text. LESSON: strict band chains.
+169: the strict chains ran but "no valid walk chain" - THE REAL BUG: the
+    WeakPtr m_ptr is at +0x10 NOT +0x8 (their geometry doc: m_refCount@0,
+    m_ownerThread@4, m_areThreadChecks@8, m_ptr@0x10, m_thread@0x18 -
+    their step-2 reads IM+8 for 16 bytes, m_ptr is the SECOND qword).
+170: THE WALK COMPLETED: IM=0x100026c570 (cage) -> FO=0x1000240e00 (cage)
+    -> VP=0x81866bf38 (READABLE rodata!) -> 9 slots. VP-S.BASE=0x722BF38.
+    Died at pthread struct #2 (a STALE 0x88-band harvest value).
+    LESSON: the live-chain BFS (struct pthread links name the live structs).
+171: THE FULL REPLY (the session survived the whole command): the walk
+    re-validated VP-S.BASE=0x722BF38 (TWO BOOTS - OUR vtable constant);
+    the pthread BFS scanned 9 LIVE structs (0x880b5e680..0x880b5bc00 +
+    one 0x8f-band struct at 0x8ff818080) with ZERO deaths; the oracle pool
+    came up EMPTY (poolN=0) - explained: this boot's WebKit exclusion
+    [BASE, BASE+0x8000000) covered every in-band value; the earlier
+    "foreign" 0x80a76-class clusters are WebKit's own low pages.
+
+THE INSTRUMENT STATE (lcbase v10, dispatcher v=lcbase10): every step
+survives: the lk chain, the UAF walk (MBUF->L1->IM->m_ptr@+0x10->FO->VP->
+9 slots + the s0-N gadget offsets), the live pthread BFS, the oracle, the
+one verify, the RAX probe. THE MACHINERY IS PROVEN - the remaining problem
+is POINTER SOURCES containing target-module members.
+
+THE REMAINING SOURCE IDEAS (ranked):
+1. THE GOT.PLT WINDOW AT THE CORRECT VP: VP+0x2000..VP+0x4000 - never
+   scanned (the v5 attempt died at the WRONG constant 0xC6A1B28). Their
+   p691 found "PLT resolver + resolved entries" in their window; the
+   resolver slots hold LD.SO pointers; resolved slots may hold the
+   import targets (libc-class!). Also scan a wider rodata window around
+   VP ([VP-0x8000, VP+0x10000)) for in-band non-WebKit values.
+2. THE WORKER THREAD STACKS: the 9 live structs contain their stack-top
+   pointers (0x7ef-band values in the struct bytes) - the topmost pages
+   = each thread's ACTIVE call frames - network/GC threads' recent calls
+   cross module boundaries (memcpy/setjmp/libSceNet returns!). Scan
+   [top-0x1000, top) per thread - live stack pages = mapped = safe.
+3. The 0x8f-band region (the BFS reached 0x8ff818080 - a second struct
+   region - more threads there).
+
+THE STATE: the vtable constant is ours; the walk delivers VP + slots +
+gadget offsets every session safely; the pthread live-set is walkable;
+the fire design (thr_new via the stub entry + the pivot) awaits ONE
+verified target-module base or gadget set.

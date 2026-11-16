@@ -6497,6 +6497,17 @@ function _startWsShell(){
               var ctxF=MBUF+0x1000n;
               /* zero the ctx region */
               for(var zF=0;zF<0xA0;zF++)S.absWrite(ctxF+BigInt(zF*8),0n);
+              /* THE V82 SCOPE PROTOCOL (session-178's death cause: the
+               * swapped scope must carry [+0x38]=the calibrated VM - the
+               * trampoline post-call reads scope->VM and VM::m_exception;
+               * a zeroed +0x38 = VM=0 = NULL deref = instant death. Copy
+               * the VM slot (+0x38 AND the +0x40 neighbor) from the live
+               * fakeScope). */
+              var vm38=S.absRead(S.fakeScope+0x38n,8)[0];
+              var vm40=S.absRead(S.fakeScope+0x40n,8)[0];
+              S.absWrite(ctxF+0x38n,vm38);
+              S.absWrite(ctxF+0x40n,vm40);
+              LB('T vm38=0x'+vm38.toString(16)+' vm40=0x'+vm40.toString(16));
               /* the gates (the 58e ctx_alt shape) */
               S.absWrite(ctxF+0x108n,0x480n);          /* magic */
               S.absWrite(ctxF+0x110n,0x10002n);        /* type */

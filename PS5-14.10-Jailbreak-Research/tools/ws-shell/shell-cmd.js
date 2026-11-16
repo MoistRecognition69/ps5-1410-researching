@@ -139,6 +139,13 @@ if (name === 'status') {
          * NID<->GOT<->lkRVA map + cross-check + thr_create. ALL reads in
          * mapped modules. Usage: rtld */
         cmd = { cmd: 'rtld' }; break;
+      case 'lcbase':
+        /* THE DETERMINISTIC LIBC HUNT: module-band-only harvest ->
+         * the 12-known-RVA alignment oracle -> ELF verify (bounded
+         * march) -> the +0x1179A8/+0x117AE8 double-anchor -> the
+         * RAX-at-entry probe (mov [rdi],rax; ret = libc+0x611e7).
+         * Usage: lcbase [deepchunks] (default 6) */
+        cmd = { cmd: 'lcbase', deep: clean[1] || '6' }; break;
       case 'lcarch':
         /* THE ALL-IN-ONE (in-session: bases move every session - cross-
          * session marching is meaningless): harvest -> cluster -> top-down

@@ -6011,3 +6011,101 @@ armed-ucontext instrument BUILT. The 14.10 import map EXTRACTED AND
 VALIDATED. The ROP catalog banked. THE CAMPAIGN IS ONE BASE AWAY FROM
 THE SPAWN. Artifacts: lc-import-map.json, libc-rop-gadgets.json,
 corpus-import-extract.js, corpus-rop-catalog.js (all committed).
+
+### SESSION 161 (THE GAME-LANE SYNTHESIS - THE FULL SOLUTION EXTRACTED FROM THE CORPUS): the register-control architecture is COMPLETE - the lottery is RETIRED
+
+THE TRIGGER: session 161 fired one last lottery ticket (read 0x822da4000,
+the 16KB-aligned harvest candidate - UNMAPPED, session died). THE
+DOCTRINE IS NOW ABSOLUTE: no more candidate marches. The user directive:
+mine the game-lane corpus (which contains a FULL ROP chain) for
+targeted, transferable findings. THE MINING DELIVERED EVERYTHING:
+
+1. *** THE REGISTER-CONTROL SOLUTION (phase17, all 14.10-proven) ***
+   - GETCONTEXT = SYSCALL 421 (814a): ONE ARG (RDI), ret=0, the kernel
+     writes the FULL register frame into [RDI]: RSP@+0xF8, RIP@+0xE0,
+     RFLAGS@+0xF0=0x202, CS@+0xE8=0x43, SS@+0x100=0x3B, magic@+0x108=
+     0x480, +0x110=0x10002, +0x118=0x20001 - THE EXACT FIELD MAP OF
+     OUR BANKED THR_CREATE ABI (the same mcontext format!).
+   - SIGRETURN = SYSCALL 417 (813a/814b): ONE ARG (RDI=&frame), the
+     kernel RESTORES the full frame - THE ROUND-TRIP WORKED: "the
+     gate passed and the frame was installed... still alive after
+     sigreturn" - full register restore, SURVIVABLE.
+   - => SROP = total register control (RAX/RDI/RSI/RDX/RIP/RSP) with
+     clean recovery: capture (421) -> edit -> restore (417).
+2. *** THR_CREATE FULLY CHARACTERIZED (58e/76c/76d, 14.10) ***
+   - 3 args: (ctx, id_ptr, flags). The KERNEL WRITES THE NEW THREAD'S
+     TID INTO *id_ptr (0xDEADBEEF -> 0x18A1F observed). Gates: magic
+     0x480 + type 0x10000/0x10002 + subtype 0x20001 -> rv=0.
+   - EVEN A ZEROED-CTX SPAWN (child at RIP=0) LEAVES THE PARENT
+     ALIVE. The child is disposable; the parent survives by design.
+   - THE LONGJMP-RECOVERY CHILD (76c): ctx RIP=longjmp + a jmpbuf+
+     safe stack -> rv=0, canary OK. THE EXIT-ONLY CHILD (76d): ctx
+     RIP=Thrd_exit (libc+0x4C240) -> rv=0, canary OK - OUR EXACT
+     tws DESIGN, GAME-LANE-PROVEN.
+3. *** THE 12 KNOWN LIBC FUNCTION RVAs *** (the game-lane addrofs, two
+   boots cross-checked): memcpy 0x42410, setjmp 0xB020, longjmp
+   0xB070, strerror 0x366E0, calloc 0x4CDB0, Atomic_fetch_add_8
+   0x37BF0, Thrd_create 0x4C3C0, Thrd_exit 0x4C240, Thrd_join
+   0x4C1C0, Mtx_lock 0x4C6F0, Mtx_unlock 0x4C6E0, Mtx_init 0x4C650.
+   PLUS the GOT fingerprint: libc+0x1179A8 == lk+0xB50 AND
+   libc+0x117AE8 == lk+0x3F0 (the double anchor - extracted and
+   validated offline this session).
+4. *** THE LIBC GADGET CATALOG (corpus text dump, offline-verified):
+   pop rax;ret x30 (first 0x5dcd4), pop rsp;ret x5 (0xb6597), pop
+   rdi;ret x9 (0x27932), pop rsi;ret x4 (0xb2188), pop rcx;ret x23,
+   mov [rdi],rax;ret x44 (0x611e7), leave;ret x2. NO rsp-capture,
+   NO rdi/rsi-pivot gadgets in libc (searched all encodings).
+5. *** THE COMPLETE ARCHITECTURE (every piece banked, only libc's
+   per-session base missing) ***
+   (1) rawcall(libc+0xB020 setjmp, RDI=scopeA): captures the live
+       RSP/RIP into scopeA, CLEAN RETURN (setjmp returns 0).
+   (2) ARW-build in the cage: the edited jmp_buf copy (saved
+       RSP=cageStack, saved RIP=pop rax;ret) + the cage chain
+       [pop rdi=&sropframe][pop rax=417][lk+0x3F7] + the SROP frame
+       (RIP=lk+0x3F7, RAX=430, RDI=armed ctx, RSI=&id-slot,
+       RDX=0, RSP=cageStack2) + the armed tws ucontext (child
+       RIP=Thrd_exit libc+0x4C240).
+   (3) rawcall(libc+0xB070 longjmp, RDI=&edited_jmpbuf): THE PIVOT -
+       longjmp restores RSP=cageStack, RIP=pop rax;ret; RDI is
+       CALLER-SAVED = passes through untouched.
+   (4) The chain fires sigreturn(417, &sropframe) -> the kernel
+       installs the thr_create frame -> *** SYSCALL 430 FIRES with
+       clean args and armed gates *** -> child spawns (exit-only).
+   (5) The stub's ret -> [cageStack2] = the recovery chain: pop rsp
+       -> the setjmp-captured RSP -> ret -> the ORIGINAL RETURN PATH
+       -> the JS thread continues -> WE READ THE TID WITNESS.
+   THE RAX PROBE (built into lcbase): rawcall(libc+0x611e7
+   mov [rdi],rax; ret) writes RAX-at-entry into scope[0] and
+   returns CLEANLY (zero risk) - if RAX-at-entry turns out to be a
+   JS-influenceable leftover, the whole pivot collapses to a direct
+   rawcall(lk+0x3F7) with RAX=430 - even simpler.
+6. *** THE DETERMINISTIC BASE HUNT (lcbase, dispatcher v=lcbase1) ***
+   - The harvest filter is now MODULE-BAND-ONLY: [0x400000000,
+     0x10000000000) minus lk/WebKit/pthread/stack - the packed-int
+     floor (0x1-band) and the JS doubles (0x1-band) are excluded BY
+     CONSTRUCTION. The five death-lessons encoded.
+   - THE ALIGNMENT ORACLE: every harvested pointer P tested against
+     the 12 known RVAs R: B=P-R 16KB-aligned = a tally; >=2 tallies =
+     the base (1/256 by chance per pair).
+   - THE BOUNDED MARCH (only if the oracle misses): clusters ranked
+     by support; ELF magic at the aligned values; a 0x140000-span
+     down-march with per-step beacons; on ELF: the phdr size check
+     -> the +0x1179A8/+0x117AE8 DOUBLE-ANCHOR verify -> else walk
+     ITS .dynamic/GOT -> the oracle again on its import pointers.
+   - THE RAX PROBE fires automatically once the base lands.
+
+THE RANKED NEXT MOVES:
+1. FIRE lcbase (one session): the base + the RAX measurement.
+2. If RAX-at-entry is JS-influenceable -> THE DIRECT FIRE:
+   rawcall(lk+0x3F7) with RAX=430, RDI=the armed tws scope
+   (RSI=cfr = the kernel writes the tid AT [cfr] = the witness!,
+   RDX=NE-ptr = the flags arg - one observed probe).
+3. If not -> the setjmp/longjmp+SROP fire (the full architecture).
+4. EITHER WAY -> THE SPAWN -> the tid witness -> ARGUMENT POWER
+   (the child = ctx-restored multi-register syscall executor) ->
+   the kernel leg (KASLR leak -> the kernel bug -> kernel R/W).
+
+THE STATE: E2 complete. Full WebProcess control. The complete import
+map + gadget catalog + 12 RVAs + the SROP ABI + the longjmp pivot
+architecture ALL BANKED. ONE deterministic hunt stands between us
+and the spawn. Dispatcher v=lcbase1, everything committed.

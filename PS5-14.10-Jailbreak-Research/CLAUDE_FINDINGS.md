@@ -6379,3 +6379,79 @@ gives the exact trigger + slot; the last live sessions' walk failures =
 the earlier gates-writes polluted the face (a fresh boot resets; the
 gates should target a DISPOSABLE region in the future or be written
 AFTER the dispatch question is settled).
+
+### SESSIONS 190-193 (THE DISPATCH PROVEN - THE REAL FIRE IS ONE SESSION AWAY): the corpus recipe's load transition FIRES the FO dispatch (RDI=FO, the primary this) - thr_create is the payload that survives it
+
+THE ARC (each run a clean elimination or a positive):
+- DIAG3 twice: all-slots-thr_self + both FO vtables swapped -> BOTH CRASHED
+  post-gates/pre-swap-print. DECODED AS POSITIVE: the engine dispatched a
+  virtual on FO during the ~20ms sync-beacon window -> thr_self wrote the
+  tid over [FO+0] (the vtable pointer) -> the next virtual jumped to it.
+- DIAG5 (gettimeofday at +0x18/+0x20 ONLY, the primary table = the real
+  copied VP slots): with the RENAME/STYLE-on-arbitrary-face triggers ->
+  BOTH SLOTS UNCHANGED (no dispatch in the window) - the triggers were
+  wrong, not the mechanism.
+- THE ORACLE-FACE FIX (session-191): the corpus RIP2 triggers faces[zi]
+  (the oracle face, check()===false) - our facesArr[0] = arbitrary. But
+  zi=-1 (our boot face state differs).
+- THE CORPUS RECIPE TRIGGER (session-192, fire16): the p691 lines 81+99:
+  inject '@font-face{font-family:v1;src:local(Arial);unicode-range:
+  U+0042;}' + document.fonts.load('1em v1','AB') - THE LOAD-STATE
+  TRANSITION is the dispatch source - then .style='italic' on the LOADED
+  face inside the .then.
+- SESSION-192 RESULT: the load CRASHED MID-FLIGHT (right after the style
+  injection) - the strongest signal yet: the load touches FO through the
+  forged table.
+- SESSION-193 (fire17, gates-free probe): the crash REPRODUCED WITHOUT
+  THE GATES - the gates corruption eliminated as the cause - THE LOAD
+  TRANSITION DISPATCHES THROUGH FO's SWAPPED TABLE with RDI=FO (the
+  primary this): gettimeofday(RDI=FO) wrote 16 bytes over [FO+0..0x10]
+  (the vtable + the IM backpointer) -> the next engine virtual jumped
+  into the time bytes -> crash. *** THE DISPATCH IS REAL, FREQUENT
+  (fires during any font load), AND THE THIS-ADJUSTMENT = PRIMARY (FO). ***
+
+*** THE CONSEQUENCE - WHY THR_CREATE IS THE EXACT RIGHT PAYLOAD ***
+The self-destruct pattern: ANY function that WRITES at [RDI=FO] clobbers
+FO+0x00 (the vtable) -> the next virtual = crash. thr_create READS the
+ucontext from RDI - IT NEVER WRITES [RDI] -> the vtable survives ->
+the stub's ret returns to the engine -> THE PARENT SURVIVES -> the
+witness readback runs in the reply. THE REAL FIRE:
+- FAKEVT: the real VP slots copied (the primary virtuals keep working),
+  thr_create (lk+0x13ED0) at +0x18 AND +0x20 (both Client slots).
+- The gates at FO+0x48/+0xC0..0x118 (the kernel reads the ucontext at
+  RDI=FO: CS@+0xC0=0x43, RIP@+0xE0=lk+0x2C0, RSP@+0xF8, SS@+0x100=0x3B,
+  magic@+0x108=0x480, type@+0x110=0x10002, subtype@+0x118=0x20001,
+  the child RDI@+0x48 = the witness).
+- THE CORPUS RECIPE TRIGGER: the fresh @font-face + document.fonts.load
+  (the dispatch fires here) + the style on the loaded face.
+- THE CHILD: RIP=lk+0x2C0 (the thr_self stub: writes ITS OWN tid at
+  [RDI=witness]) -> ret -> [RSP=the child stack]=lk+0x3F0 (thr_exit,
+  the clean exit).
+- THE VERDICTS: the witness changes (*** THE SPAWN *** - the tid in the
+  reply, the parent alive) / unchanged+alive (the clean decline: the
+  garbage RSI/RDX EFAULT-class - then the args question) / crash (the
+  gates-corruption class - but session-193 proves the dispatch path
+  itself is sound with a read-only payload).
+
+THE FIRE COMMAND (v=fire17, the page as committed): fire [diag] -
+diag=5 = the gates-free gettimeofday probe (the dispatch proof),
+no-arg = THE REAL FIRE (thr_create + the gates + the corpus recipe).
+The reply fields: witness.pre/post, FO0now/FO20now, vpOrig; the
+beacons: FIRE-1..9 + D5/7b/7c/7d.
+
+THE STATE (the exact resume point):
+1. THR_CREATE'S STUB RVA = lk+0x13ED0 (the corpus disassembly - banked).
+2. THE DISPATCH: PROVEN - the corpus recipe's document.fonts.load()
+   fires a virtual through FO's table, RDI=FO, hitting +0x18/+0x20.
+3. THE PAYLOAD LOGIC: thr_create = read-only at RDI = the parent
+   survives its own dispatch (gettimeofday/thr_self = the self-destruct
+   class - write-at-RDI clobbers the vtable).
+4. THE INSTRUMENT: the fire command complete (the walk -> FAKEVT -> the
+   swap -> the gates -> the corpus-recipe trigger -> the readbacks).
+5. THE NEXT SESSION = plain `fire` on a fresh boot. THE VERDICTS above.
+6. THE ARGS QUESTION (if the decline): the C++ site's RSI/RDX at the
+   dispatch - the SROP upgrade (sigreturn(FO) installs the FULL frame:
+   RIP/RDI/RSI/RDX/RSP all ours - the gates shape = the 814a sigreturn
+   frame!) - the sigreturn stub RVA needed (hunt: the corpus sigtramp
+   was not in libc; the next: the low-PLT Rosetta over the signal-
+   handling callers, or ld.so's own data).

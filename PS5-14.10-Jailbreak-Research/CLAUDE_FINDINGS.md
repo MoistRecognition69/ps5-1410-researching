@@ -5784,3 +5784,135 @@ B (GATED-CTX): rewrite twc with the 156c field map + gates ->
    re-test the slot queue (0x3B0 first: a NON-thr_create snippet
    with armed gates should EINVAL-SURVIVE; thr_create SPAWNS+
    SURVIVES+tid-witness).
+
+### SESSIONS 74-158 (THE LIBC-HUNT ARC): every instrument built and fired - five sessions lost, each to a DIFFERENT well-understood cause - the campaign state for a fresh-context restart
+
+THE GOAL (unchanged): thr_create(430) takes ONE arg (RDI = the
+ucontext - the fake scope WE CONTROL; the 156c/80a/272a 14.10
+device-proven gates: magic@+0x108=0x480, type@+0x110=0x10000,
+flags@+0xD0<=7, CS@+0xC0=0x43, RIP@+0xE0, RSP@+0xF8, SS@+0x100=
+0x3B, RDI@+0x48). The armed tws instrument (v=lc1+ page) IS READY:
+child RIP=thr_exit(0x3F0) => spawn+clean exit+parent survives+tid
+witness at [cfr]. WHAT IS MISSING IS ONLY THE SNIPPET RVA of
+thr_create in lk text (one of the 96 libc-imported syscall
+snippets; the syscall numbers are in mov eax,imm32 = EXECUTE-ONLY).
+
+*** THE MAJOR RE-ANALYSIS (session-74-era, STILL STANDS) ***
+The OLD twc NEVER wrote magic@+0x108 (zeroed ctx). A REAL
+thr_create snippet with magic=0 => EINVAL => SURVIVES (80a-proven:
+rv=-1, no panic, canary alive). THEREFORE the ten twc deaths
+(130,230,2E0,300,320,3A0,3B0,3D0,430,450) are GENUINE
+eliminations - each did something fatal != thr_create. Also named:
+0x2C0=thr_self(432), 0x3F0=thr_exit(431), 0x410=thr_new(455),
+0xB50=gettimeofday(118), 0x3B0=? (a real snippet, fatal with our
+args). thr_create hides among the OTHER slots of the 96 (the
+1213a ascending print: 3B0 3F0 410 B50 B70 D50 FF0 10F0 2E10 ...
+page histogram: 0:7 1000:1 2000:1 5000:1 6000:1 7000:2 A000:1
+B000:2 C000:1 D000:1 F000:2 13000:21 14000:16 15000:4 16000:11
+18000:1 1C000:1 27000:1 29000:2 2A000:2 33000:3 34000:2 35000:1
+36000:3 3A000:2 3E000:1 3F000:1 41000:1 75000:1 84000:1).
+The 13000-16000 cluster = 52 slots = the densest family region.
+
+THE FIVE DEATHS (each a banked lesson):
+1. SESSION 148 (lcfind v1): the below-cfr stack read (cfr-0x8000)
+   died on the FIRST chunk (unmapped, zero beacons). The proven
+   stack band is ABOVE cfr: [cfr&~0x3FFF, +0x8000).
+2. SESSION 149 (lcfind v2): stk band landed 143 ptrs, then the wk
+   band [BASE+0x7000000,+0x400000) KILLED (a hole). The values
+   died with the reply - fixed by beaconing values BEFORE any
+   optional band.
+3. SESSION 150 (lcfind v3, stk-only): landed 143 foreign ptrs -
+   ALL cage-band heap values (~0x1_00xxxxxxx = the fakeScope
+   band). THE BAND ABOVE cfr = the CALLER side = LLInt/JSC frames:
+   WebKit returns (BASE-filtered) + JS heap garbage. The XHR call
+   chain runs BELOW cfr (callee side). ALSO: my 0x8-band blanket
+   exclusion [0x800000000,0x880000000) threw away EVERY non-lk
+   system module (libSceNet, libSceLibcInternal) - the returns
+   worth keeping.
+4. SESSIONS 152+155 (the cross-session marches): bases are
+   PER-PROCESS ASLR (lk moved 80267c000/810098000/82ef1c000/
+   821fa0000 across sessions; WebKit BASE moved too). Marching a
+   PREVIOUS session harvests addresses in a NEW session =
+   meaningless. 0x1efd84000 (the 0x1EFD8xxxx "libc-class"
+   cluster) = JS DOUBLES, unmapped; 0x80ec08000 (the tight
+   0x80EC08Exx 4-value cluster) = the module had MOVED (or the
+   values were garbage). MARCHES MUST RUN IN THE HARVEST SESSION.
+5. SESSION ~157 (lcarch): lk chain OK (0x819144000), harvest 382,
+   clustering 52/19 - then the march died on cluster0 = PACKED-
+   INT JS TAG WORDS at the range floor (min=0x100000000, n=20:
+   values 0x100000001-class) => first probe 0x100000000 unmapped.
+   CLUSTER FILTERS ADMIT NOISE; threshold-tuning is a losing game.
+
+THE DEEP-PROBE RESULT (session 151, the v4 lcfind): the downward
+chunks BELOW the page boundary survived 6 x 0x1000 (frontier is in
+(cfr-0x2220, cfr-0x8000]; session 148 died at cfr-0x8000). BUT the
+deep bands held mostly cage/doubles - NO fresh module returns in
+[pg-0x6000, pg). The stk band held the only 0x8-band survivors:
+0x80EC08EE0/F00/F10 (one hot function), 0x8369be9bc, 0x86e324000
+(exactly 16KB-aligned!), 0x88-band pthread ptrs. These die with
+their session (per-process ASLR) - only reusable as METHOD.
+
+SESSION 158 (rtld): the linker-data route - auxv AT_BASE = the
+dynamic linker; its RW data = rtld module list = REAL bases. The
+run: lk chain OK (0x821fa0000), AT_BASE found (0x830b88000) - then
+the ELF-header read AT AT_BASE+0 DIED (unmapped). The earlier-era
+libc command had derived an AT_BASE whose +0 was READABLE (the
+"module too small" test READ atbase pages fine) => THIS sessions
+AT_BASE was probably a MISPARSE (the anchor walk picked a garbage
+tag-7 pair). FIX: validate the auxv pair SEQUENCE (real auxv =
+contiguous tag/value pairs ending at AT_NULL; the anchor is
+[4,0x38,5,phnum,6,0x4000]; collect ALL plausible tag-7 pairs and
+cross-check: the true AT_BASE is a 0x8-band module-sized value
+appearing in a CONTIGUOUS well-formed auxv).
+
+THE INSTRUMENTS (all committed, dispatcher v=rtld1):
+- shell.html cases: lcfind (stk+deep harvest, per-chunk beacons,
+  real-lk-only filter), lcelf (top-down ELF probe), lcverify
+  (libc.prx slot check: C+0x1179A8 == lk+0xB50), lcnid (generic
+  importer ELF->NID walk + 0x3F0/0x410/0xB50 cross-check +
+  thr_create lookup), lcarch (all-in-one: harvest->cluster->march
+  ->NID map), rtld (auxv->AT_BASE->ld RW scan->module bases->the
+  importer->NID map), tws (THE ARMED SPAWN WITNESS - the fixed
+  field map, child RIP=thr_exit, tid at [cfr]), plus the E2-era
+  set (xcl, nap, twc, twr, read/write/dump/scan, xtab).
+- offline tools: lcfind-match.js (libc_addrofs ranker),
+  lcdeep-clusters.js (band split + cluster + full-fit bases),
+  xtab-eh.js (the 2092-FDE function map: lk-funcmap.json banked),
+  xtab-pool/names/look/study/match.js (the eh_frame decode suite).
+
+THE RANKED NEXT MOVES (for the fresh session):
+1. rtld v2 WITH THE AUXV FIX: collect ALL tag-7 pairs after the
+   anchor; walk the CONTIGUOUS pair chain (tags 3..30-class in
+   order, ending at AT_NULL(0,0)); the true AT_BASE = the pair
+   inside a WELL-FORMED auxv. THEN the ld RW scan (all reads in
+   the live ld module = safe) -> module bases (rtld-stored = real)
+   -> per-base ELF -> the importer -> NID map -> thr_create RVA.
+2. IF AT_BASE+0 STAYS UNMAPPED even with a good parse: the Sony
+   interpreter may have an unmapped base page (like the main
+   module). Probe atbase+0x1000/+0x4000/+0x10000 (one session per
+   probe, beacons first) - OR find ld a different way: the 0x88-
+   band struct pthread fields (pt_exitfunc/pt_cleanup = pointers
+   into the module that spawned the thread).
+3. THE ARMED-TWS LOTTERY (the fallback): with gates armed, wrong
+   snippets mostly EINVAL-SURVIVE => several slots per session.
+   BUT the queue needs EXACT slot addresses: the histogram gives
+   pages, not offsets; 0x20-grid guesses on those pages =
+   mid-instruction deaths. Only viable with the exact 96-list
+   (re-derivable: any importer GOT gives it - same as route 1).
+4. THE GATED-CTX RETEST QUEUE (cheap, uses known slots): tws at
+   0xB70, 0xD50, 0xFF0, 0x10F0, 0x2E10 (the unprinted named slots
+   from 1213a) - each an identified REAL snippet; thr_create could
+   be among JUST these five (cheap: armed-gate misses survive).
+   ALSO 0x3B0 (a real snippet, fatal with UNGATED args - with
+   armed gates it might be the spawn!). PRIORITY: 0xB70, 0xD50,
+   0xFF0, 0x10F0, 0x2E10, 0x3B0.
+
+THE STATE OF THE BIG PICTURE: E2 complete (thr_self proven,
+banked, counterfactually valid). The full WebProcess control
+(ARW, arbitrary PC+RDI, decode-immune rawcall, restores) is
+proven. The complete lk function map (2092 FDEs) is banked
+(lk-funcmap.json). The NID algorithm is cracked (50 NIDs banked,
+thr_create=Tidr0SYRmB4, thr_exit=U5VD1P181iA, thr_new=t1BJfub8VdY,
+gettimeofday=n88vx3C5nW8). The spawn instrument (tws) is BUILT
+and CORRECT. The ONLY missing piece: ONE 32-bit RVA. The campaign
+record is complete through commit 05b7cf81 (v=rtld1).

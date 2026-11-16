@@ -126,11 +126,12 @@ if (name === 'status') {
         cmd = { cmd: 'xtab', pool: clean[1] }; break;
       case 'lcfind':
         /* LIBC POINTER HARVEST (route A): foreign module-band qwords
-         * from stack-below-cfr (live libc return addrs of the XHR
-         * chain), the WK data band, the cage. PURE READS. Offline:
-         * tools/lcfind-match.js ranks libc-base candidates vs the
-         * game-lane libc_addrofs. Usage: lcfind */
-        cmd = { cmd: 'lcfind' }; break;
+         * from the stk band + (arg 'deep') the DOWNWARD probe below
+         * the page boundary (the XHR chain's stale frames = the live
+         * module returns). arg1 = deep chunks (default 6 = 0x6000).
+         * PURE READS; per-chunk value beacons survive any death.
+         * Offline: tools/lcfind-match.js + lcdeep-clusters.js */
+        cmd = { cmd: 'lcfind', deep: clean[1] || '6' }; break;
       case 'lcverify':
         /* THE DETERMINISTIC VERIFIER: read <base>+0x1179A8 (the
          * boot-stable gettimeofday import slot) == lk+0xB50?

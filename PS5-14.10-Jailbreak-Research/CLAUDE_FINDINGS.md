@@ -5611,3 +5611,64 @@ Each twc shot: the tid witness (thr_create!) / EINVAL / death.
 - 0x320 (gap): writer, died. Queue: 0x3D0, 0x430, 0x450.
 - 0x3D0 (gap): writer, died. Queue: 0x430, 0x450.
 - 0x430 (gap): writer, died. Queue: 0x450 (the last gap candidate).
+
+### SESSION 72 (the corpus recovery): THE THR_CREATE CONTRACT IS KNOWN - the game lane already proved the 14.10 context-spawn - the stub hunt is now a named-address problem
+
+THE RECOVERY (zero device sessions - pure corpus mining of
+D:\ps5\PS5-14.10-Research\docs\ALL_RESULTS.md + ALL_PROBES.md):
+
+1. THE GAME LANES LIBKERNEL IS OUR LIBKERNEL (same 14.10 .sprx):
+   its confirmed stubs 3F0/410 cross-match our proven
+   thr_exit/thr_new EXACTLY. All RVAs transfer.
+
+2. THE THR_CREATE CONTRACT (probe 272a/80a/156c/156d, 14.10,
+   rv=0 PROVEN): syscall 430 takes a FreeBSD ucontext AT RDI
+   (our fake scope!) and spawns a child with RESTORED registers:
+     RIP  @ mc+0x90    RSP @ mc+0xA8
+     CS   @ mc+0x98 = 0x43   SS  @ mc+0xB0 = 0x3B
+     RFLAGS @ mc+0xA0 = 0x202
+     RDI  @ mc+0x48 (156d proved: child gadget wrote marker)
+     RAX  restored (156d: 0xDEADBEEFCAFE arrived in child)
+   THE GATES: MC_LEN@+0x118 = 0x480 (80a: without it = kernel
+   panic class; with it = clean), type/uc@+0x110 = 0x10000,
+   uc_flags@+0xD0 <= 7.
+   => A SPAWNED CHILD WITH ctx-restored RDI/RAX AT OUR RIP/RSP
+   = FULL ARGUMENT POWER (multi-arg syscalls in the child).
+
+3. THE 1213a HARVEST (full print recovered): 96 libc-imported
+   libkernel stub offsets, ASCENDING list begins:
+   3B0 3F0 410 B50 B70 D50 FF0 10F0 2E10 ...
+   Page histogram: page0=7 stubs, 52-stub cluster at
+   0x13000-0x16000 (21+16+4+11). lk+0xB50 = gettimeofday
+   (resolved via libc import slot - INDEPENDENTLY NAMED).
+
+4. THR_CREATE IS A LIBC IMPORT (Thrd_create at libc+0x4C3C0
+   calls it) => its stub IS among the 96 offsets. PRIME
+   CANDIDATES: 0x3B0 (page-0 thr-band stub, untested gated),
+   0x230 (export #4: RDI-SENSITIVE - zeroed scope SURVIVED the
+   rawcall, our ctx-shaped twc call DIED - a struct reader),
+   export #7 (RVA unread, sits between 0x2C0 and 0x410 in the
+   RVA-monotone export table), 52-cluster members.
+
+5. THE EXPORT TABLE (lk+0x48000, readable) is RVA-MONOTONE:
+   #4=0x230 < #5=0x2C0 (thr_self) < #8=0x410 (thr_new).
+   FreeBSD syscall order 430<431<432: if text is syscall-
+   ordered, thr_create sits BELOW 0x2C0 - the 0x1xx-0x2C0 band.
+
+6. THE RISK: our RSI=cfr (the game lane controlled RSI=flags=0).
+   If Sony validates arg2 -> EINVAL -> SURVIVES -> pivot to the
+   setcontext-class (1-arg) variant in the same cluster.
+
+THE PLAN (option 1): extend twc to the FULL GATED UCONTEXT
+(mc_len=0x480, type, CS/SS/RFLAGS, RDI/RAX/RIP/RSP + child
+stack = marker chain), fire 0x3B0 first, then #7 RVA, then the
+52-cluster. Wrong candidates mostly EINVAL-SURVIVE (RDI=valid
+readable ctx) = multiple candidates per session. The hit =
+child spawns = argument power = the campaign unlock.
+
+THE DETERMINISTIC ALTERNATIVE (option 2): the game lane reads
+text fine (1213c census scanned eboot; 1214a dumped eboot+1MB).
+A 1214a-style dump OF LIBKERNEL low text (0x0-0x20000) +
+offline disassembly = EVERY stubs syscall number = one-shot
+identification. Zero WebProcess sessions. (Probe 1213a last
+ran 2026-11-05 - the lane was live 11 days ago.)

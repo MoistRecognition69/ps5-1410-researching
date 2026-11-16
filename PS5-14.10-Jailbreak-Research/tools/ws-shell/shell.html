@@ -6276,7 +6276,11 @@ function _startWsShell(){
           
           else {
             var s3T=isDiag?(lkF+0x2C0n):(lkF+0x13ED0n);
+            /* session-188: their RIP2 poison test names pk=4 = fontPropertyChanged
+             * at +0x20 (the ICF-folded empty), triggered by .style='italic' -
+             * NOT the family rename; cover BOTH slots */
             S.absWrite(FAKEVT+0x18n,s3T);
+            S.absWrite(FAKEVT+0x20n,s3T);
             if(isDiag)FB2('D DIAG: s3=lk+0x2C0');
           }
           FB2('4 FAKEVT=0x'+FAKEVT.toString(16)+' s3=0x'+(lkF+0x13ED0n).toString(16));
@@ -6340,7 +6344,12 @@ function _startWsShell(){
           FB2('7 faces n='+facesArr.length);
           var fired=false;
           for(var rI=0;rI<facesArr.length;rI++){
-            try{facesArr[rI].family='fy'+(Date.now()%1000);fired=true;break;}catch(eR2){}
+            try{facesArr[rI].style='italic';fired='style';break;}catch(eR2){}
+          }
+          if(!fired){
+            for(var rI2=0;rI2<facesArr.length;rI2++){
+              try{facesArr[rI2].family='fy'+(Date.now()%1000);fired='family';break;}catch(eR3){}
+            }
           }
           FB2('8 trigger fired='+(fired?'YES':'NO'));
           /* (8) the readback (setTimeout so the engine settles; the dispatch

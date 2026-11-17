@@ -7051,6 +7051,30 @@ VF+0x500. The one risk: the engine validated the HEAP fake scope
 (>=64GB) across the E2 and the fire era; the VIEW fake (4-8GB) is the
 same shape at a different address class. Dispatcher v=srop26.
 
+SROP26 IC RESULT + THE HONEST COLLISION VERDICT (id=108, 08:31:51): the
+death moved BEFORE the rehearsal call - the beacons end at SROP-2, in the
+VF build. THE VIEW TRUTH: the shell's 64MB "view" is a FORGED
+ArrayBuffer size - the real backing is the original small allocation,
+and every view offset past it is just neighboring heap. THE WEBPROCESS
+OFFERS NO ENGINE-FREE REGION: the fake scope = 0x40 tuned bytes in a
+live marker buffer; the MBUF neighbors = live spray slots; the view =
+a forged size over the live heap. THE COLLISION IS ABSOLUTE: any 0x4C0
+record corrupts neighbors somewhere, and every scope call with a
+modified record dies - srop12-26 (eleven install/rehearsal shapes,
+three regions, one identical failure class). THE WEBPROCESS-ONLY
+SCOPE-SWAP SROP ROUTE IS EXHAUSTED. THE REMAINING IDENTIFIED PATHS:
+(1) THE GAME-LANE LAB (deferred by the user, revivable): the loader's
+fcall_with_rax = RAX-controlled syscalls with NO scope-swap constraint -
+getcontext(421) captures the TRUE record safely, the record diffs map
+the layout, sysarch(165/128) reads the FS base directly, and
+thr_new(455) spawns are 383a/384b-proven - the lab answers the exact
+ABI questions the WebProcess cannot host; (2) the offline deep-dive of
+the corpus's full 417 kernel body (the FP/XSAVE and copyin-size
+handling beyond the excerpted success path); (3) the
+fundamentally-different delivery: the FontFace DISPATCH call (the
+fire-era's RDI=FO virtual) as the sigreturn RDI carrier, accepting the
+one-shot nature. The game lane remains the recommendation.
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

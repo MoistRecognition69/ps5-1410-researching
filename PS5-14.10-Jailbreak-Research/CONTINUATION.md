@@ -2,7 +2,7 @@
 
 **Checkpoint date:** 2026-11-17  
 **Current dispatcher:** `v=srop26`  
-**Next device command:** `sropfire ic` (the install-control with the tuned fake + the record entirely in the shell's 64MB view + the discovered FS base)  
+**Status:** the WebProcess-only scope-swap SROP route is EXHAUSTED (the honest verdict in CLAUDE_FINDINGS, the srop26 entry). Every region for a 0x4C0 record corrupts engine-heap neighbors; eleven install/rehearsal shapes across three regions share one failure class. The recommendation is the game-lane lab (deferred, revivable).  
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 
 ## 1. Exact current state

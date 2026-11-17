@@ -7083,6 +7083,20 @@ NO gates yet), the gates + the FS base go in AFTER the rehearsal (the
 retSlot read), then the ic patches, then the install - the call-path
 test decoupled from the kernel-test writes. Dispatcher v=srop29.
 
+SROP29 IC RESULT + THE PURE-REHEARSAL BISECT (id=111, 08:59:39): the
+death RETURNED to the rehearsal call with the head cleaned and the
+pristine scope (NO gates written yet in this run). THE CONTENT THEORIES
+ARE EXHAUSTED. THE REMAINING VARIABLE = THE SESSION ITSELF: the E2's
+gettimeofday proof ran through the shell's own rawcall command on an
+OLDER shell state - TODAY's gettimeofday-through-the-scope is UNPROVEN.
+srop30 adds the b50 mode = THE PURE REHEARSAL ONLY: the lk derivation +
+the head cleaning + gettimeofday through the scope + the retv read. NO
+gates, NO ic, NO install. THE BISECT: dies = the
+gettimeofday-through-the-scope is broken TODAY (the session/shell
+state - NOT the sropfire architecture); survives = the sropfire's
+deeper flow = the difference and the bisect continues within the
+sropfire. Dispatcher v=srop30.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

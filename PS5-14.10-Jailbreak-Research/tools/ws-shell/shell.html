@@ -5526,6 +5526,25 @@ function _startWsShell(){
            * with OUR FS base and OUR RIP/RSP - the pure resume, no
            * target runs. SURVIVES = the install + the FS base PROVEN. */
           var isIC=(msg.mode==='ic');
+          if(msg.mode==='b50'){
+            /* THE PURE REHEARSAL (srop30, the b50 mode): the lk derivation +
+             * the head cleaning + gettimeofday through the scope + the retv
+             * read. NO gates, NO ic, NO install. THE BISECT: dies = the
+             * gettimeofday-through-the-scope is broken TODAY (the session/
+             * shell state - NOT the sropfire architecture; the E2 proved
+             * this exact call on an older shell); survives = the sropfire's
+             * deeper flow (the depth, the ic patches) = the difference. */
+            for(var hz=0;hz<4;hz++)S.absWrite(CAP+BigInt(hz*8),0n);
+            SF_CALL(lkS+0xB50n,CAP);
+            var retv=S.absRead(retSlotAddr,8)[0];
+            reply.icRet='0x'+retv.toString(16);
+            reply.b50=true;
+            if(!(retv>=0x800000000n&&retv<0x1000000000n)){
+              reply.err='retSlot still not a code return after the rehearsal';break;
+            }
+            SF('3 PURE REHEARSAL SURVIVED - the gettimeofday path is healthy');
+            break;
+          }
           if(isIC){
             for(var hz=0;hz<4;hz++)S.absWrite(CAP+BigInt(hz*8),0n);
             SF_CALL(lkS+0xB50n,CAP);

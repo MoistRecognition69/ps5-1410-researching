@@ -1,8 +1,8 @@
 # PS5 14.10 Jailbreak — Continuation Handoff
 
 **Checkpoint date:** 2026-11-17  
-**Current dispatcher:** `v=srop23`  
-**Next device command:** `sropfire ic` (the install-control with the untouched B2 clone: the TCB-discovered FS base, the scope-record collision fixed, the +0x20 field preserved)  
+**Current dispatcher:** `v=srop24`  
+**Next device command:** `sropfire ic` (the install-control with the fire-shape record at R=MBUF+0x1000 + the discovered FS base)  
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 
 ## 1. Exact current state

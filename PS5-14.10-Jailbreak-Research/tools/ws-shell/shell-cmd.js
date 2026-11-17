@@ -218,6 +218,13 @@ if (name === 'status') {
          * (RDI = the pre-zeroed fake scope; tv copies before tz; every step
          * on a blocking sync beacon). */
         cmd = { cmd: 'e2witness' }; break;
+      case 'vpmap':
+        /* THE #295 FORWARD-MAP SWEEP: pure reads. The lk derivation +
+         * VP=BASE+0x724DB28 + the 24-byte records at VP+0x10CC40, the
+         * GOT-like page at VP+0x110000, the tag=1 records at VP+0x120000,
+         * and the module-band pointer sweep over VP+0x10000..0x120000
+         * (the libkernel-class hits tagged with their lk delta). */
+        cmd = { cmd: 'vpmap' }; break;
       case 'sropfire':
         /* MEASURED-RETURN SROP: the V70 diff-scan finds the native return
          * slot; sigreturn(lk+0x13ED0) installs thr_create(lk+0x13D20) with

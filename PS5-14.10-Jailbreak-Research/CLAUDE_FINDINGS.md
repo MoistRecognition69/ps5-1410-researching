@@ -7480,3 +7480,38 @@ child executor end to end); (4) the in-game libc-data NID walk (libc data
 pages readable there) = DIRECT identification of the context stubs,
 ending the five-block-order ambiguity. Prerequisites if revived: the demo
 installed + the payload save staged + PSN sign-in.
+
+### SESSION 224 (THE #295 FORWARD-MAP LEVERAGED - the vpmap prep)
+
+THE MINING CONTINUES: their issue #295's second-bench walk left TWO
+OPEN ASKS that are directly valuable to us: (1) a GOT-like page at
+VP+0x110000 and (2) 24-byte {kind=5,len,ptr,extra} records at
+VP+0x10CC48 - untyped .data in the readable band. IF those records are
+the SPRX linkage/module metadata (the rtld Obj_Entry class we hunted
+in the ld.so era), walking them gives the SPRX BASE LIST (libc
+included) from the WebProcess side -> THE NID WALK (getcontext
+dar03AOn+nM, setcontext 2VRU7xiqLO8, sigreturn mo0bFmWppIw - computable
++ searchable in readable libc data) -> DIRECT STUB VERIFICATION
+(0x13ED0/0x142C0/0x13F20 by READING the resolved import slots, not
+inferring from wrapper ordering) = the last open question of the srop
+campaign answered WITHOUT A SINGLE FIRE, and the same-attribution data
+the game lane needs. ALSO: RealOrko's #284 APNG anchor (P&0x3FFF==
+0x3850, base=P-0x7f850) = an INDEPENDENT per-boot base derivation to
+cross-check the pthread-chain derivation (a second method we never
+had).
+
+vpmap (dispatcher v=vpmap1, PURE READS, zero death risk - every
+region proven: the readable band [BASE+0x7000000,BASE+0x7400000) is
+the scan gate's own band; the thread-record addresses are read every
+session): the lk derivation (the SROP-1 chain) + VP=BASE+0x724DB28 +
+(a) the 24-byte records at VP+0x10CC40 (0x180 = 16 records), (b) the
+GOT-like page head at VP+0x110000, (c) the eight tag=1 records at
+VP+0x120000, (d) the module-band pointer sweep over VP+0x10000..
+0x120000 in 16KB chunks - the hits clustered by 64MB band, the
+libkernel-class hits (within lk..lk+0x200000) tagged with their lk
+DELTA for immediate attribution checks (a hit with d=0x13ED0/0xB50/
+0x142C0-class = a resolved stub slot), heap-band hits sampled for the
+Obj_Entry-class chains. THE PLAN: next boot run vpmap, analyze the
+records offline, type them, and answer #295's asks 1-2 with real data -
+and if the module metadata is there, run the NID walk against the
+libc base.

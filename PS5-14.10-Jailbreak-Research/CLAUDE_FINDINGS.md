@@ -7648,3 +7648,40 @@ THE REDIRECT - LK'S OWN LINKAGE (the attribution data source):
 THE NEXT-BOOT PLAN: (1) read 0x751D8-0x76000 (the canary page rest);
 (2) probe 0x76000 (one page; death = the segment ends there; alive =
 continue page-by-page); (3) scan each page for the three NIDs.
+
+### SESSION 228 (THE TAIL PROBE + THE NID ELIMINATION COMPLETE)
+
+THE TAIL PROBE RAN CLEAN (lk=0x809554000 this boot): (1) the canary
+page rest 0x751D8-0x76000 = MISC DATA (7 hash-like qwords, the
+NPXS4008 title-ID string, module config) - no NIDs; (2) *** LK+0x76000
+= ALL ZEROS = THE .BSS START *** - the segment CONTINUES past 0x76000
+(bss, runtime-initialized) - NIDs cannot live there; (3) THE GAP READS
+FROM SESSION 227's BACKGROUND PROCESS WERE ALL TIMEOUTS (the session
+died at the 0x44000 XO-text read before they ran) - the "read ok"
+prints were node's exit-0 on error replies (a logging lesson: check
+the reply content, not the exit code).
+THE HEAP NID SCANS: the exact-value ptrscans over [lowB, jfuTop) for
+the three NIDs returned ONE hit (setcontext at 0x10002a4be0) - WHICH
+WAS A SELF-HIT: the surrounding memory = the shell's own session
+structures (the 0x7000000/0x7400000 band constants, chunk sizes), and
+the value CHANGED between the scan and the read - the scan found its
+own parsed argument in the heap. *** THE SELF-HIT ARTIFACT: exact-
+value scans can hit the command's own argument data - verify hits by
+reading the neighborhood BEFORE celebrating ***.
+THE VP-BAND NID SCAN (offline over the full session-226 dump,
+0x104000-0x120000, 114688 bytes): ZERO hits for all three NIDs in any
+form (8-byte LE/BE, 32-bit halves).
+*** THE NID ELIMINATION IS COMPLETE ***: the three context-family
+NIDs are NOT in ANY readable WebProcess region - lk's segments (FDE/
+SceRel/strings/canary page/bss), the VP band, or the scanned heap.
+THE WEBPROCESS DOES NOT IMPORT THE CONTEXT FUNCTIONS (no NID bindings
+exist to find) - the attribution verification (0x13ED0=sigreturn etc.)
+IS STRUCTURALLY UNREACHABLE FROM THE WEBPROCESS. The evidence chain
+remains: the corpus's LOADER-ENV captured GOT (libc+0x117988 held
+lk+0x13ED0 - a real measured resolution) + the FDE/block ordering.
+THE GAME LANE = THE ONLY REMAINING VERIFICATION + CAPTURE + SPAWN
+ARCHITECTURE (libc.sprx exists there, its GOT/NID data readable).
+THE CAMPAIGN STATE: E2 complete (ARW + call primitive); the srop
+route closed on the mechanism level; the attribution rests on the
+loader-env evidence; the module map complete (12-band census + lk's
+internal map); all findings committed.

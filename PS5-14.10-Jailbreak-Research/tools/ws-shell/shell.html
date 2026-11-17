@@ -5544,16 +5544,24 @@ function _startWsShell(){
            * proven; DIES = the install itself. */
           var isIC=(msg.mode==='ic');
           if(isIC){
+            /* THE REHEARSAL-FIRST RETSLOT READ (srop21): the PRE-call slot
+             * is stale (0xa on the 08:13 boot - no trampoline call had run).
+             * The push writes the return address DURING the call, and a ret
+             * pops the slot but LEAVES the value - so run one harmless
+             * rehearsal through the SAME call site (gettimeofday, E2-proven)
+             * and read the slot AFTER it: the value = exactly what the 417
+             * call's own push will write. */
+            SF_CALL(lkS+0xB50n,CAP);
             var retv=S.absRead(retSlotAddr,8)[0];
             reply.icRet='0x'+retv.toString(16);
             if(!(retv>=0x800000000n&&retv<0x1000000000n)){
-              reply.err='retSlot does not hold a code return';break;
+              reply.err='retSlot still not a code return after the rehearsal';break;
             }
             S.absWrite(CAP+0x0E0n,retv);
             S.absWrite(CAP+0x0F8n,retSlotAddr+0x8n);
             S.absWrite(CAP+0x048n,0n);
             S.absWrite(CAP+0x050n,0n);
-            SF('3 INSTALL-CONTROL RIP=[retSlot] RSP=cfr-0x320 (no target)');
+            SF('3 INSTALL-CONTROL RIP=[retSlot post-rehearsal] RSP=cfr-0x320 (no target)');
           }else if(msg.mode==='rt'){
             S.absWrite(CAP+0x048n,CAP);     /* tv buffer = the scope head (E2-proven) */
             S.absWrite(CAP+0x050n,0n);      /* tz = NULL */

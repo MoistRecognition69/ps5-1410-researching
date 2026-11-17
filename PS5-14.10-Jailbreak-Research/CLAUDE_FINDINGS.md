@@ -6950,6 +6950,21 @@ record minimization: the kernel copies only +0x48-0xD8, +0xD8-0x108,
 +0x480/0x488, +0x08 - every other field is invisible to the install).
 Dispatcher v=srop20.
 
+SROP20 IC RESULT + THE RETSLOT SEMANTIC FIX (id=102, 08:13:37): the
+parent SURVIVED the whole command again - the ic gate read the retSlot
+PRE-CALL and found icRet=0xa - STALE DATA, not a code return. THE
+MEASUREMENT LESSON: the return address is pushed DURING the call; the
+pre-call slot = whatever last used that stack depth. The installs were
+never wrong about the slot (the 417 call's own push writes it before the
+target rets). ALSO: ptS=0x881023b20 but fsbase=0x8ff81c080 AGAIN - the
+TCB allocation repeats across boots (strong validation of the mutual-
+reference discovery). SROP21 = the rehearsal-first ic: one harmless
+gettimeofday through the SAME call site first, THEN read [cfr-0x328] (a
+ret pops but leaves the value = exactly what the 417 push will write),
+validate as a code address, build the control record, install. The
+verdicts are unchanged: survive = the install proven; die = the install.
+Dispatcher v=srop21.
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

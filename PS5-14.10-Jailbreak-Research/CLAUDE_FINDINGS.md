@@ -6932,6 +6932,24 @@ read +0x18 at each, accept [C+0x10]===ptS || [C]===C || [C+8]===C (the
 mutual reference), write it to the record's +0x480, +0x488=0. Then the
 normal rt/real flow. Dispatcher v=srop19.
 
+SROP19 RT RESULT + THE BISECT (id=101, 08:10:35): the TCB discovery WORKED
+(SROP-1b fsbase=0x8ff81c080, the same value the live-session reads
+validated - the TCB allocation repeats) and the install STILL DIED after
+SROP-CALL target=lk+0x13ED0. The correct FS base was necessary but not
+sufficient. THE BISECT POINT: the install phase (the iretq with the
+switched stack + the copied GPRs/tail + FS/GS) vs the target phase
+(gettimeofday executing at RSP=cfr-0x328 and returning through the slot).
+SROP20 adds `sropfire ic` = THE MECHANICS CONTROL (the 1359a [B]
+instrument): the full record + the FS base, but RIP = the return address
+the call itself pushed at [cfr-0x328] (read live, validated as a code
+address) and RSP = cfr-0x320 (the post-call value) - the iretq resumes
+the trampoline EXACTLY as a normal callee return, no target runs.
+SURVIVES = the install (gates+copies+FS/GS+the stack switch) PROVEN and
+the death is in the target phase; DIES = the install itself (then the
+record minimization: the kernel copies only +0x48-0xD8, +0xD8-0x108,
++0x480/0x488, +0x08 - every other field is invisible to the install).
+Dispatcher v=srop20.
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

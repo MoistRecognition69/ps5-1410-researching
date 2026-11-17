@@ -5535,8 +5535,26 @@ function _startWsShell(){
           }
           var isRT=(msg.mode==='rt');
 
-          /* (3) THE MODE PATCHES on the record at CAP. */
-          if(isRT){
+          /* (3) THE MODE PATCHES on the record at CAP. mode=ic is the
+           * INSTALL-CONTROL (the 1359a [B] mechanics control): RIP = the
+           * return address the call itself pushed at [retSlot], RSP =
+           * cfr-0x320 (the post-call value) - the iretq resumes the
+           * trampoline exactly as a normal callee return. No target runs.
+           * SURVIVES = the install (gates+copies+FS/GS+the stack switch)
+           * proven; DIES = the install itself. */
+          var isIC=(msg.mode==='ic');
+          if(isIC){
+            var retv=S.absRead(retSlotAddr,8)[0];
+            reply.icRet='0x'+retv.toString(16);
+            if(!(retv>=0x800000000n&&retv<0x1000000000n)){
+              reply.err='retSlot does not hold a code return';break;
+            }
+            S.absWrite(CAP+0x0E0n,retv);
+            S.absWrite(CAP+0x0F8n,retSlotAddr+0x8n);
+            S.absWrite(CAP+0x048n,0n);
+            S.absWrite(CAP+0x050n,0n);
+            SF('3 INSTALL-CONTROL RIP=[retSlot] RSP=cfr-0x320 (no target)');
+          }else if(msg.mode==='rt'){
             S.absWrite(CAP+0x048n,CAP);     /* tv buffer = the scope head (E2-proven) */
             S.absWrite(CAP+0x050n,0n);      /* tz = NULL */
             S.absWrite(CAP+0x0E0n,lkS+0xB50n);
@@ -5553,6 +5571,11 @@ function _startWsShell(){
           /* (4) THE INSTALL: sigreturn reads the record at RDI=CAP. */
           var origSr=SF_CALL(lkS+0x13ED0n,CAP);
           reply.sigreturnRestored=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origSr);
+          if(isIC){
+            SF('4 INSTALL-CONTROL SURVIVED - the install is PROVEN');
+            reply.installControl=true;
+            break;
+          }
           if(isRT){
             var tvSec=S.absRead(CAP,8)[0],tvUsec=S.absRead(CAP+8n,8)[0];
             reply.roundtrip={sec:'0x'+tvSec.toString(16),usec:'0x'+tvUsec.toString(16),

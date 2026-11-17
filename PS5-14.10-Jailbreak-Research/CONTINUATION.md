@@ -1,8 +1,8 @@
 # PS5 14.10 Jailbreak — Continuation Handoff
 
 **Checkpoint date:** 2026-11-17  
-**Current dispatcher:** `v=srop19`  
-**Next device command:** `sropfire rt` (the roundtrip with the TCB-discovered FS base)  
+**Current dispatcher:** `v=srop20`  
+**Next device command:** `sropfire ic` (the install-control bisect; `sropfire rt` after it passes)  
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 
 ## 1. Exact current state
@@ -149,8 +149,8 @@ The capture modes are gone; the fix is surgical. The record at `CAP=fakeScope`:
 - **`+0x480` = the discovered live FS base** — srop19's v2 rule: scan the pthread struct (`ptS`, from the walk) for `0x88`-region pointers, read `+0x18` at each candidate, and accept the one whose **`+0x10` equals the pthread itself** (the mutual reference) — measured live: `ptS=0x880613b60`, its `+0x1F0` slot = `0x8ff81c080`, and `[TCB+0x10] == ptS`; TCB allocations end in `0x080` across boots/processes (`0x881068080`, `0x881090080`, `0x8ff81c080`). `+0x488 = 0` (the captured GS).
 - **`+0x08-0x28` zeroed** — the empty signal mask instead of live scope bytes (the kernel sets the mask from there).
 - The 814a constants ride along (GPR tail, selector pack, FP/reserved, captured D0 `0x3B003B00000001`), the `+0x280..0x2D8` chain zeroed (never copied — irrelevant), and the live VM pair `+0x38/+0x40` skipped (a 417 rejection still returns through the trampoline alive, the fire19 proof).
-- Patches after the loop: args `+0x48/+0x50/+0x58`, RIP `+0xE0`, RSP `+0xF8 = cfr-0x328`.
-- `reply.fsbase` + `SF 1b` beacon confirm the discovery; if no self-pointer is found, `reply.pthreadHead` dumps the first 0x40 qwords for offline analysis and nothing fires.
+- Patches after the loop: the mode decides — `ic` = RIP `[cfr-0x328]` + RSP `cfr-0x320` (the 1359a [B] mechanics control, no target), `rt` = gettimeofday (`RDI=CAP`, `RSI=0`, `RIP=lk+0xB50`), real = `RDI=CTX, RSI=WIT, RIP=lk+0x13D20`; RSP = `cfr-0x328` and `RDX=0` for rt/real.
+- `reply.fsbase` + `SF 1b` beacon confirm the discovery; if no TCB is found, `reply.pthreadHead` dumps the first 0x40 qwords for offline analysis and nothing fires.
 
 ## 6. How to interpret the next run
 

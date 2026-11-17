@@ -7071,6 +7071,30 @@ the same surgical architecture with the child block removed (the ic
 needs no child context; the rt/real return after the install is
 proven). Dispatcher v=srop28.
 
+SROP28-31 ARC + THE FP-STATE DISCOVERY (ids 110-113): srop28 died at
+the rehearsal (the dirty JSValue slots — the rawcall's +0x00-0x20
+cleaning discipline was missing from SF_CALL); srop29 died at the
+rehearsal even with the head cleaned (the gates written BEFORE the
+rehearsal = the rehearsal ran on the modified scope); srop30's pure
+rehearsal died on the fully RESTARTED clean console (no gates, no ic)
+— the gettimeofday rehearsal = the DOCUMENTED writer-class death (the
+corpus's own sweep ledger: MULTI-ARG (died) #0/#3/#24/#63);
+srop31 removed the rehearsal entirely (sigreturn = a READER-class
+syscall — the kernel READS the ucontext, never writes to it — the
+writer-class rule doesn't block it) and used the ret gadget
+(BASE+0x4001750, the shell's own proven constant) as the restored RIP
+with RSP = cfr-0x328 (the double-ret resume: the gadget's ret pops the
+install call's own pushed return address = the trampoline
+continuation). srop31 STILL died inside the sigreturn call — the
+beacons end at SROP-CALL target=lk+0x13ED0 with the SROP-3 patches
+banked. THE MISSING PIECE: the kernel's sigreturn ALSO restores the FP
+state (xrstor) from the frame's +0x140+ area — srop31 left it as the
+scope's ORIGINAL marker garbage = the #GP inside the kernel = the
+silent death. srop32 = the surgical gates + THE 814a FP CONSTANTS
+(+0x140-0x278, a REAL captured FP state, in the neighbor slots past
+the 0xC0 marker buffer = collision-free writes) + the FS base + the
+ret-gadget resume. Dispatcher v=srop32.
+
 SROP28 LIVE RESULT + THE HEAD-CLEANING DISCIPLINE (id=110, 08:56:17):
 the death returned to the REHEARSAL call (SROP-CALL target=lk+0xB50)
 with the gates written before it. ROOT CAUSE by comparison with the

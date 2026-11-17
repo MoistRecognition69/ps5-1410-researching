@@ -7071,6 +7071,18 @@ the same surgical architecture with the child block removed (the ic
 needs no child context; the rt/real return after the install is
 proven). Dispatcher v=srop28.
 
+SROP28 LIVE RESULT + THE HEAD-CLEANING DISCIPLINE (id=110, 08:56:17):
+the death returned to the REHEARSAL call (SROP-CALL target=lk+0xB50)
+with the gates written before it. ROOT CAUSE by comparison with the
+E2's rawcall: THE RAWCALL ZEROES THE SCOPE'S +0x00-0x20 BEFORE EVERY
+CALL - the JSValue slots must be clean (the stale encodings from
+earlier calls = the engine's first-touch death); every SF_CALL that
+skipped this step inherited the preflight's dirty slots. srop29 also
+REORDERS: the rehearsal runs on the PRISTINE scope (the head cleaned,
+NO gates yet), the gates + the FS base go in AFTER the rehearsal (the
+retSlot read), then the ic patches, then the install - the call-path
+test decoupled from the kernel-test writes. Dispatcher v=srop29.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

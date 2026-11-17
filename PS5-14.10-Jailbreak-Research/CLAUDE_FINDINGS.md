@@ -7564,3 +7564,43 @@ region): (1) re-run vpmap for the fresh VP/lk; (2) dump the full
 table region VP+0x104400..VP+0x106E00 in 0x1000 chunks; (3) offline:
 cluster by module band -> the module base list (libc included?) ->
 the NID walk prep; (4) NEVER sweep past VP+0x120000 (the hole).
+
+### SESSION 226 (THE FULL IMPORT-GOT DUMP + THE REGISTRY + THE NID DECODES)
+
+THE FULL TABLE DUMP RAN CLEAN (the prep script: vpmap + 12 reads covering
+VP+0x104000..0x107000 + 76 reads covering VP+0x107000..0x120000; the
+session SURVIVED the entire sweep - only the earlier past-0x120000
+extension had died). THE BANKED DATA (vpmap2-dump.jsonl + vpmap2-rest.
+jsonl + vpmap2-table.json, ~14336 slots + the 8KB registry dump):
+1. THE 12-BAND MODULE CENSUS (this boot): band 0x201 (141 ptrs, span
+2.6MB), 0x202 = lk (83, stable count across boots), 0x203 (362,
+35MB = multi-module), 0x204 = WebKit self (45), 0x205 (221, 1.8MB),
+0x206 (9), 0x207 (92, 42MB multi), 0x209 (239, 5.5MB = the JSC-class
+module), 0x20b (34), 0x20c (142, 414KB), 0x20e (75, 33MB multi),
+0x20f (14). ONE OF THEM IS LIBC - identification below.
+2. THE MODULE REGISTRY ENTRY FOUND (the heap '/U59' scan, 3 hits): the
+entry at 0x10001c8000+ = /U59S16EXZp/common_ex/lib/libSceRnpsNK
+InjectedBundle.sprx (the path TWICE, at 0x10001c80b4 and 0x10001c8150,
+with the {len|flags, ptr} string-object header 0x3900000002 = len 0x39).
+The heap scan found NO other full entries (straddling misses + other
+partitions possible) - the full module list is NOT in the [lowB,jfuTop)
+band as plain strings.
+3. THE NID DECODES (offline): sigreturn NID mo0bFmWppIw =
+0x8ca4a965161b8d9a, getcontext dar03AOn+nM = 0x73faa703dcf4aa75,
+setcontext 2VRU7xiqLO8 = 0xef2caa18ef5454d9 - the RAW VALUES are now
+known; the plain-SHA1(name) formula does NOT match (Sony's scheme) so
+arbitrary NIDs are NOT computable without the formula or a table.
+4. THE FIRMWARE CHECK: D:/ps5/firmware/14.10/ = the encrypted PUP only
+(1.26GB) - no decrypted SPRX; the offline-firmware route is closed.
+5. THE IDENTIFICATION ATTEMPTS: (a) the memcpy@0x42410 anchor gave two
+16KB-aligned candidates (0x817500000/0x8312ec000) - BOTH FAILED the
+structure test (the +0x117800 region showed repeating record tables,
+not the corpus-measured libc GOT pointer array) = coincidence, not
+libc; (b) the 1215a prologue-start voting (1689 patterns, capstone)
+gave flat low votes (best 15/142 band 0x20c) = too noisy. THE LIBC
+BAND IDENTIFICATION NEEDS: a dedicated offline session (clean
+function-start extraction from the 1215a dump + the pairwise-delta
+fingerprint) OR the game lane (trivial there).
+6. THE SHELL TOOLS VALIDATED: the str: ASCII scan (the '/U59' sweep),
+the read-chunk dump loop, the ptrscan exact-value mode (lo=V hi=V+1
+= the NID-value search once we have a NID table location).

@@ -7264,6 +7264,30 @@ SS/RSP canonicality or the FP mxcsr mask). NEXT: the offline
 kernel-body dump (the full 0xa07xxx-0xa08xxx sigreturn path from the
 kernel_text.bin corpus) BEFORE any more fires.
 
+SESSION 221 - THE FULL 417 DISASSEMBLY DELIVERED THE MISSING MECHANISM
+(offline, capstone over kernel_text.bin 0xa07280-0xa07632): the
+COMPLETE body confirms every annotated gate (D0<[8]@0xa0731a; the
+RFLAGS equality-mask@0xa07326-0xa0733e; CS&3==3@0xa073b0;
+type 0x10000|0x10002@0xa074c7; subtype 0x20001-2@0xa074eb; the GPR
+bcopy user+0x48→tf 0x90 + the tail bcopy user+0xD8→tf+0xe0 0x30 + the
+FS/GS install from user+0x480/0x488 + the sigmask from user+0x00 +
+EJUSTRETURN@0xa0759a-0xa07605) - AND EXPOSES THE FP PATH WE MISSED:
+*** for type 0x10002 + subtype 0x20001 the kernel calls
+0x7318f0(td, user+0x140, …, 0x140) - reading the FP state at
+user+0x140, 0x140 BYTES (0xa07503-0xa0751c) - and the kernel also
+masks the dword at user+0x158 with the global mxcsr mask ***
+(so 814a's +0x158=0x2ffff00009fe5 is the masked captured value).
+srop32 wrote that area SPARSELY (the 814a constants only, the
+neighbor garbage in the gaps) = THE MALFORMED XSAVE AREA = the #GP
+inside the kernel = the silent death. The 814b roundtrip survived
+because the kernel's own captured record carried a FULLY-FORMED FP
+area. ALSO NOTE: type 0x10000 jumps DIRECTLY to the success path
+(0xa074d4 je 0xa0759a) SKIPPING the FP call entirely - the cleaner
+no-FP alternative if the complete write still dies. srop35 = the
+COMPLETE FP write: all 40 qwords of +0x140..+0x280 (zeros where 814a
+has zeros, constants where it has constants - no gaps, no garbage).
+Dispatcher v=srop35.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

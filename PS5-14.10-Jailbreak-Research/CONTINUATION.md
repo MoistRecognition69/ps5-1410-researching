@@ -2,7 +2,7 @@
 
 **Checkpoint date:** 2026-11-17  
 **Current dispatcher:** `v=srop34`  
-**Next device command:** `sropfire ic` (the PS5 TCB self-pointer validated at the measured +0x38 offset; the FP constants + the gates + the ret-gadget resume unchanged)  
+**Status:** the fully-validated install (the gates, the FP state, the +0x38-validated TCB, the ret-gadget resume) STILL died inside the sigreturn call — every element individually proven, so the remaining suspect is the `0x13ED0` attribution itself or a deeper gate in the kernel body. Next: the offline full-417 disassembly from the kernel_text.bin corpus (no more fires until it's read).  
 **Status:** the WebProcess SROP route is EXHAUSTED (the clean-console verdict): the scope-call path is healthy for userland-only targets but ANY syscall target through the fake scope dies - the kernel's copyin/copyout of the ucontext crosses the cage-class pages and the record writes collide with live neighbors - the constraints have no overlap in the WebProcess. THE ROUTE FORWARD = the game lane (the Lua loader's fcall_with_rax: no scope-swap, RAX-controlled syscalls, the 383a/384b-proven spawns); the PSN constraint is manageable (the DNS spoofer blocks the update hosts while passing the auth servers, and the Hamidashi demo is a 14.00-era title).  
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 

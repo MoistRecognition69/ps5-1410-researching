@@ -7234,6 +7234,36 @@ THE VALIDATED STRUCTURE: the TCB = the pthread-tail pointer (or any
 The FP constants + the gates + the ret gadget unchanged. Dispatcher
 v=srop34.
 
+SROP34 LIVE RESULT - THE VALIDATED TCB FIRED AND STILL DIED (id=117,
+09:28:21): SROP-1b fsbase=0x8ff81c080 selfPtr=VALID (the +0x38
+validation PASSED - the measured TCB installed) - and the install
+STILL died inside the sigreturn call (the beacons end at SROP-CALL
+target=lk+0x13ED0). THE ELIMINATION IS NOW COMPLETE: the gates (the
+corpus-decoded set), the FP state (the 814a constants), the FS base
+(the +0x38-validated TCB), the resume (the ret gadget + the banked
+retSlot) - every element individually proven or measured, and the
+kernel's sigreturn STILL kills the session. THE REMAINING SUSPECT =
+the 0x13ED0 ATTRIBUTION ITSELF: the five-context-wrapper block order
+(142C0/13ED0/13F20/13F40/416E0) was inferred from import ordering
+AFTER the sigaction label was retracted - and the corpus's kernel
+disassembly excerpt covers the sigreturn BODY but never PROVED that
+the libc wrapper at 0x2F310 -> thunk 0x288 -> lk+0x13ED0 is 417. THE
+DECISIVE OFFLINE MOVE: the FULL 417 kernel-body disassembly + the
+wrapper-argument-shape analysis (sigreturn takes ONE arg; setcontext
+also takes ONE - the block-order ambiguity is resolvable from the
+wrapper bodies in the 1215a libc text: a sigreturn wrapper passes its
+arg straight through; a setcontext wrapper may touch errno or do a
+tail-call with different registers). Also note the 1359a [C] RIP
+experiment: RIP 0x10000 gave error 0x14 = a KERNEL-side frame
+validation failure signature (a clean EFAULT-style reject would be
+errno 14 = EFAULT from the copyin of the frame) - CONSISTENT with
+0x13ED0 BEING A REAL sigreturn that REJECTS our frame on a gate we
+have not yet identified (the 0xa074c7-area gates cover CS/type/
+subtype/RFLAGS - there may be more gates deeper in the body, e.g. the
+SS/RSP canonicality or the FP mxcsr mask). NEXT: the offline
+kernel-body dump (the full 0xa07xxx-0xa08xxx sigreturn path from the
+kernel_text.bin corpus) BEFORE any more fires.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

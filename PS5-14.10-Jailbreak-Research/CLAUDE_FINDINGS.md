@@ -7119,6 +7119,29 @@ or the pthread-adjacent heap (ptS is in the >=64GB class: 0x88083fb60
 today) with the live-neighbor risk. THE RESTART WAS THE RIGHT CALL: it
 isolated the class from the session state. Dispatcher v=srop30.
 
+SROP30 B50 VERDICT DECODED + THE WRITER-CLASS RULE (id=112): the pure
+rehearsal died on the restarted clean console - AND THE CORPUS'S OWN
+SWEEP LEDGER EXPLAINS IT: "MULTI-ARG (died): #0, #3, #24, #63 - session
+died at the call moment" - multi-arg WRITERS through the scope cost a
+session death (the documented, reproduced rule); gettimeofday = a 2-arg
+writer (the kernel writes the tv through RDI and reads the tz through
+RSI) = THE DOCUMENTED DEATH CLASS - and the E2-era gettimeofday witness
+was at candidate+0x1B840 (the HIGH-STUB MAP this same project later
+falsified on 14.10) - the lk+0xB50 gettimeofday was NEVER actually
+proven through the WebProcess scope. THE IMPLICATION: the writer-class
+rule = the copyout (the kernel WRITES to the scope) - but SIGRETURN IS
+A READER-CLASS SYSCALL (the kernel READS the ucontext from RDI, never
+writes to it) - THE READER CLASS = THE SURVIVING CLASS (the ret gadget,
+thr_self, the rejected frames) - THE SROP INSTALL = NOT BLOCKED BY THE
+WRITER-CLASS RULE. srop31 = THE REHEARSAL-FREE, WRITER-FREE IC: the
+surgical gates + the FS base + RIP = the shell's own proven ret gadget
+(BASE+0x4001750, called through this scope every boot in the preflight)
++ RSP = cfr-0x328 - the restored context = the ret gadget, whose ret
+pops the install call's own pushed return address = the trampoline
+continuation - THE DOUBLE-RET RESUME with zero syscalls and zero kernel
+writes to the scope. SURVIVES = the install + the FS base PROVEN. The
+ic = the ONLY mode. Dispatcher v=srop31.
+
 SROP30 B50 VERDICT UPDATE - THE CLEAN-CONSOLE REPLICATION (id=112, the
 fully restarted console, clean session): the pure rehearsal DIED AGAIN -
 gettimeofday(lk+0xB50) through the fake scope with the head cleaned, the

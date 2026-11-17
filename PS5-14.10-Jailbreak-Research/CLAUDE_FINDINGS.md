@@ -7035,6 +7035,22 @@ FS base at +0x480, the patches at CAP, the rehearsal through CAP (the
 E2's exact shape), the rt's tv at CAP+0x500 (inside the zeroed region,
 no neighbor writes), the install with RDI=CAP. Dispatcher v=srop25.
 
+SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
+through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
+INSTALL-CONTROL beacon) - the content theories are exhausted: the fake
+scope = a 0x40-byte tuned slot inside a 0xC0-byte MARKER BUFFER, and
+EVERY record tail (+0x48-0x4C0) spills into the NEIGHBORING spray slots.
+THE ONLY ENGINE-FREE REGION = the shell's private 64MB view
+(S.viewBase, the typed-array Gigacage backing: the GC does not scan
+typed-array backings and no engine objects live there). SROP26 builds
+the tuned fake + the fire-shape record ENTIRELY in the view:
+VF=viewBase+0x3000000 (deep, away from the shell's early scratch), 0x4F0
+zeroed, the VM pair copied from the real fake scope, the gates, the FS
+base at +0x480, the mode patches, scopeSlot<-VF, RDI=VF, the rt's tv at
+VF+0x500. The one risk: the engine validated the HEAP fake scope
+(>=64GB) across the E2 and the fire era; the VIEW fake (4-8GB) is the
+same shape at a different address class. Dispatcher v=srop26.
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

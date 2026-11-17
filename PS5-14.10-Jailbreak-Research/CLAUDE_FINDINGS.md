@@ -6965,6 +6965,27 @@ validate as a code address, build the control record, install. The
 verdicts are unchanged: survive = the install proven; die = the install.
 Dispatcher v=srop21.
 
+SROP21 IC RESULT + THE SECOND STRUCTURAL KILLER (id=103, 08:15:58): the
+beacons end at SROP-CALL target=0x83f550b50 = THE REHEARSAL CALL
+(lk+0xB50 gettimeofday) - the SROP-3 INSTALL-CONTROL beacon never
+printed. THE REHEARSAL ITSELF DIED - right after the record build. THE
+DIAGNOSIS: the record build at CAP zeroed the scope's live fields
+(+0x00-0x37 minus the VM pair) and the NEXT native call through that
+scope died - THE SCOPE-RECORD COLLISION, the second structural killer
+alongside the stale FS base. EVERYTHING now fits: srop12-15 died inside
+the 417 call's return path on the POISONED scope (the loop's zeros);
+fire19 survived because its gates lived in a DIFFERENT buffer; srop19's
+correct-FS rt died on the same poisoning; srop21's rehearsal died the
+same way seconds after the build. SROP22 = THE SCOPE-RECORD COLLISION
+FIX: the record moves to B2=CAP+0x2000 (proven mapped), pre-cloned with
+the live scope head so B2 is a VALID scope for the call path (the VM
+pair preserved by construction), the mask region (+0x08-0x28) zeroed
+(proven survivable), and the 417 call passes RDI=B2 - the kernel reads
+the record, the call path sees a valid scope. The rt's tv buffer moves
+to B2+0x800 (beyond the record, no scope writes). The ic control keeps
+the rehearsal-first retSlot read (through B2 - safe now). Dispatcher
+v=srop22.
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

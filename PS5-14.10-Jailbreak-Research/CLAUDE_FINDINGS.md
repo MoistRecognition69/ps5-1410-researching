@@ -6999,6 +6999,22 @@ live bytes stay; the signal mask the kernel reads from the record's
 and a fault-generated SIGSEGV is delivered regardless of the mask, so a
 garbage mask is safe. Dispatcher v=srop23.
 
+SROP23 IC RESULT + THE FIRE-SHAPE ANSWER (id=105, 08:21:24): the
+untouched-B2 clone STILL DIED at the rehearsal (SROP-CALL target=lk+0xB50,
+no INSTALL-CONTROL beacon) - the +0x20-field theory is dead (the fire's
+ctxF zeroed +0x20 and survived). THE DECISIVE TRIANGLE from the shell's
+own fakeScope setup (the MBUF+0x80 fake = 0x40 zeroed bytes + the VM) and
+the fire-era code: the fire's ctxF (MBUF+0x1000: 0xA0 qwords zeroed +
+vm38/vm40 + the gates) SURVIVED 417/thr_create calls with RDI=ctxF; the
+fake scope as built SURVIVED the E2; our 814a-constant records DIED on
+the first scope call wherever they lived. THE CALL PATH TOLERATES THE
+FIRE SHAPE AND DIES ON THE 814a SHAPE. srop24 = the fire's exact shape
+(R=MBUF+0x1000 = fakeScope-0x80+0x1000: 0xA0 qwords zeroed, vm38/vm40,
+the gates CS/RFLAGS/SS/magic/type/subtype, D0=0 = the 814b no-FP-restore
+shape) + the two real fixes (the discovered FS base at +0x480, the
+identified RIP/RSP/args patches). The mask = zeros (the fire's shape).
+The rt's tv at R+0x800. Dispatcher v=srop24.
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

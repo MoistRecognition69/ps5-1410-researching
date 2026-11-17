@@ -7515,3 +7515,52 @@ Obj_Entry-class chains. THE PLAN: next boot run vpmap, analyze the
 records offline, type them, and answer #295's asks 1-2 with real data -
 and if the module metadata is there, run the NID walk against the
 libc base.
+
+### SESSION 225 (THE VPMAP RESULTS - the import GOT found + the FDE cross-reference)
+
+THE VPMAP RAN CLEAN (id=120, the parent survived; a LATER ptrscan past
+VP+0x120000 killed the session = THE READABLE BAND HAS A HOLE THERE -
+never sweep past VP+0x120000 again). THE FINDINGS:
+1. *** THE IMPORT GOT AT VP+0x104680-0x106D08 ***: 83 lk-class
+resolved pointers (value = lk+delta), and the offline cross-reference
+against our banked lk-funcmap.json (the 2092-FDE map) shows 82/83 are
+FDE-EXACT FUNCTION ENTRIES (the 83rd = the canary slot d=0x751D0 =
+data). THIS IS THE WEBPROCESS'S RESOLVED-LIBKERNEL IMPORT TABLE - a
+readable, per-boot-stable structure of verified callable entries.
+2. THE FDE MAP vs THE STUB CLUSTER: the "five tiny wrappers" at
+0x13EB0+ are grouped by the UNWIND TABLE as ONE FDE region (FDE#685,
+start 0x13EB0, >=0x130 long) - thr_exit 0x13EC0 = MID+16, sigreturn
+0x13ED0 = MID+32, setcontext 0x13F20 = MID+112; getcontext 0x142C0 =
+MID+160 of FDE#691 (start 0x14220, 0x425 long). THIS DOES NOT DISPROVE
+THE PER-ADDRESS ATTRIBUTION: FDEs describe UNWIND boundaries - Sony's
+stub clusters sit inside one unwind region - and the corpus's libc-GOT
+measurements pointed at exactly these mid-labels (0x117988 -> 0x13ED0).
+The known-RVA check: thr_self 0x2C0 = FDE#5 ENTRY, thr_new 0x410 =
+FDE#8 ENTRY, the rehearsal spin 0x7A0 = FDE#16 ENTRY (a real 0x110-byte
+function), gettimeofday 0xB50 = MID+64 of FDE#24 (start 0xB10), the
+r10 trampoline 0x3B0/0x3B7 = MID of FDE#7 (start 0x3A0).
+3. *** THE WEBPROCESS DOES NOT IMPORT THE THREAD/CONTEXT SYSCALLS ***:
+the 82 imports are the "normal" libc-style functions (FDE#16-1613
+spread: 0x7A0, 0x1390, 0x2220, 0x3950, ... 0x282C0) - NO 0x13ED0, NO
+0x13D20, NO 0xB50, NO 0x2C0. The sigreturn/getcontext attribution
+CANNOT be settled from the WebProcess GOT - it needs the NID walk
+(the game lane's readable libc data).
+4. *** THE TABLE IS MULTI-MODULE ***: the same region holds resolved
+pointers into MANY module bands (the 64MB-band histogram: 0x203 = 439
+hits, 0x206 = 223, 0x200/0x201/0x205/0x20c/0x20d/0x20e/0x20f...)- the
+WebProcess's FULL import GOT across all SPRX modules. ONE OF THOSE
+BANDS IS PROBABLY LIBC - and a full dump of the table region gives
+the complete module-base list from the WebProcess side (the sys-593
+data without the syscall).
+5. The record systems at VP+0x10CC48/VP+0x110000/VP+0x120000 =
+JSC STRING/ATOM TABLES (the ptr fields -> "MAX_SAFE_INTEGER\0
+charCodeAt\0delete..." - .rodata atoms), NOT SPRX NID metadata; the
+tag=1 array at VP+0x120000 indexes the 24-byte records (its first
+entry = VP+0x10CC48 exactly). The band-0x209 module (~0x826c00000,
+63273 references) = a second big SPRX (JSC?) with a +8-thunk table
+interleaved at VP+0x10000.
+THE NEXT-SESSION PLAN (all within the PROVEN-SAFE region, the vpmap
+region): (1) re-run vpmap for the fresh VP/lk; (2) dump the full
+table region VP+0x104400..VP+0x106E00 in 0x1000 chunks; (3) offline:
+cluster by module band -> the module base list (libc included?) ->
+the NID walk prep; (4) NEVER sweep past VP+0x120000 (the hole).

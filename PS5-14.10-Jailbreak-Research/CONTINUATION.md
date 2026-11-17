@@ -2,7 +2,7 @@
 
 **Checkpoint date:** 2026-11-17  
 **Current dispatcher:** `v=vpmap1`  
-**Next device command:** `vpmap` (pure reads, zero risk: the lk derivation + the #295 forward-map sweep — the 24-byte records at VP+0x10CC40, the GOT-like page at VP+0x110000, the tag=1 records at VP+0x120000, and the module-band pointer sweep with the libkernel-delta tagging — the module metadata hunt that could unlock the NID walk and the direct stub verification)  
+**Next device commands:** `vpmap` (fresh VP/lk), then the full table dump `VP+0x104400..VP+0x106E00` in 0x1000 chunks (the multi-module import GOT — 82 FDE-exact lk entries found; the full dump maps every module's resolved imports and may hand us libc's base). NEVER sweep past `VP+0x120000` (the readable band has a hole there — one session already died).  
 **Status:** the WebProcess SROP route is EXHAUSTED (the clean-console verdict): the scope-call path is healthy for userland-only targets but ANY syscall target through the fake scope dies - the kernel's copyin/copyout of the ucontext crosses the cage-class pages and the record writes collide with live neighbors - the constraints have no overlap in the WebProcess. THE ROUTE FORWARD = the game lane (the Lua loader's fcall_with_rax: no scope-swap, RAX-controlled syscalls, the 383a/384b-proven spawns); the PSN constraint is manageable (the DNS spoofer blocks the update hosts while passing the auth servers, and the Hamidashi demo is a 14.00-era title).  
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 

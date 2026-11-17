@@ -7062,6 +7062,15 @@ install -> the pure resume -> SURVIVES = the install + the FS base
 PROVEN. The ic = the ONLY mode (the rt/real return after the proof).
 Dispatcher v=srop27.
 
+SROP27 LIVE RESULT + THE CHILD-BLOCK FIX (id=109, 08:54:31): the run
+SURVIVED the record build (recordSurgical=true — the surgical gates +
+the FS base written, the scope untouched) and hit a JS reference error
+(CTX undefined) — a leftover child-gates block from the srop26 state
+survived my edit. THE PARENT SURVIVED THE ENTIRE COMMAND. srop28 =
+the same surgical architecture with the child block removed (the ic
+needs no child context; the rt/real return after the install is
+proven). Dispatcher v=srop28.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

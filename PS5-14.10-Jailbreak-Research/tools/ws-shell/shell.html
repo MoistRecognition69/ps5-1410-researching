@@ -5510,19 +5510,6 @@ function _startWsShell(){
           S.absWrite(CAP+0x480n,fsB);                /* THE FS BASE FIX */
           S.absWrite(CAP+0x488n,0n);                 /* GS base */
           reply.recordSurgical=true;
-          /* the child starts at the identified Thrd_exit import. Only the
-           * proven manual gates are used; parent TLS/stack state is not copied. */
-          S.absWrite(CTX+0x048n,0n);
-          S.absWrite(CTX+0x0C0n,0x43n);
-          S.absWrite(CTX+0x0D0n,0n);
-          S.absWrite(CTX+0x0E0n,lkS+0x13EC0n);
-          S.absWrite(CTX+0x0E8n,0x43n);
-          S.absWrite(CTX+0x0F0n,0x202n);
-          S.absWrite(CTX+0x0F8n,STK);
-          S.absWrite(CTX+0x100n,0x3Bn);
-          S.absWrite(CTX+0x108n,0x480n);
-          S.absWrite(CTX+0x110n,0x10002n);
-          S.absWrite(CTX+0x118n,0x20001n);
           function SF_CALL(target,scope){
             if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,scope||CAP);
             var orig=S.absRead(S.neEntry.addr+0x28n,8)[0];

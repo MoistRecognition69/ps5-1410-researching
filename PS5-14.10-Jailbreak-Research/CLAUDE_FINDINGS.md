@@ -7314,6 +7314,31 @@ register values unobtainable in-process = THE ROUTE CLOSES (the game
 lane's fcall_with_rax captures the true state safely). Dispatcher
 v=srop36.
 
+SROP36 RESULT - THE PRE-REGISTERED NEGATIVE LANDED (id=119, 09:40:53):
+the GPR-restored install (RDI=CAP, RBP=cfr, the caller-saved zeroed,
+the callee-saved zeroed) STILL died inside the sigreturn call. THE
+VERDICT AS PRE-REGISTERED: the trampoline keeps live data in
+callee-saved registers across the call - those values are
+UNOBTAINABLE FROM JS (the frame slots hold the caller's pushed
+values, not the trampoline's live ones) - and without them the
+sigreturn resume faults in the trampoline's post-call code. THE
+WEBPROCESS SCOPE-SWAP SROP ROUTE IS CLOSED ON THE MECHANISM LEVEL:
+every element of the frame is now individually proven or measured
+(the gates decoded from the kernel disassembly, the complete FP area,
+the +0x38-validated TCB, the known GPRs, the banked retSlot, the ret
+gadget) - the one missing piece (the trampoline's live callee-saved
+register values) is STRUCTURALLY INACCESSIBLE from the compromised
+JS context. THE ONLY ARCHITECTURES THAT CAPTURE THE TRUE REGISTER
+STATE: (1) the game lane (the Lua loader's fcall_with_rax: the
+getcontext captures run OUTSIDE any scope-swap constraint - the
+383a/384b-proven lane); (2) a fundamentally different WebProcess
+carrier whose call path's register state we could capture - none
+identified (the dispatch path's registers differ from the trampoline's,
+and the getcontext-through-the-scope zeroes the VM pair = the V82
+death). THE CAMPAIGN STATE: E2 (the full WebProcess ARW + the call
+primitive) remains COMPLETE and PROVEN - the srop spawn leg moves to
+the game lane.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

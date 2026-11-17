@@ -5476,7 +5476,12 @@ function _startWsShell(){
           var fsOK=(fsB!==0n&&fsB>=0x880000000n&&fsB<0x900000000n);
           var fsSelf=false;
           if(fsOK){
-            var fsR=S.absRead(fsB,8)[0];
+            /* THE PS5 TCB SELF-POINTER LIVES AT +0x38 (measured 09:26: the
+             * readback of 0x8ff818080: [+0x38] = ITSELF; [+0x00] = 0; [+0x08]
+             * = TCB+0x40; [+0x10] = ptS) - Sony's layout, NOT stock FreeBSD
+             * ([TCB]===TCB at +0). The +0x38 offset = the same slot the
+             * native-call scope uses for the VM = Sony's TLS convention. */
+            var fsR=S.absRead(fsB+0x38n,8)[0];
             fsSelf=(fsR===fsB);
             if(!fsSelf){fsB=0n;}
           }

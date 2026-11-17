@@ -7220,6 +7220,20 @@ for the self-referential qword (V === its own address) — that's the
 REAL TCB — and validate [fsbase]===fsbase before any fire. The FP
 constants + the gates + the ret gadget stay. Dispatcher v=srop33.
 
+SROP33 LIVE RESULT + THE PS5 TCB SELF-POINTER AT +0x38 (id=115-116,
+09:26:20): the v3 gate REFUSED TO FIRE (fsSelf=false) and the
+pthreadHead dump + a direct read delivered the truth: ptS+0x1D8 =
+0x8ff818080 (the TCB, in the pthread's TAIL this boot), and the
+readback of 0x8ff818080: [+0x00] = 0, [+0x08] = TCB+0x40, [+0x10] =
+ptS, and *** [+0x38] = 0x8ff818080 = ITSELF *** - THE PS5 TCB
+SELF-POINTER LIVES AT +0x38, NOT +0 (Sony's TLS layout, NOT stock
+FreeBSD; the same +0x38 slot the native-call scope uses for the VM).
+THE VALIDATED STRUCTURE: the TCB = the pthread-tail pointer (or any
+0x88-region pointer in ptS whose [+0x10] === ptS), confirmed by
+[TCB+0x38] === TCB. srop34 = the validation at the measured offset.
+The FP constants + the gates + the ret gadget unchanged. Dispatcher
+v=srop34.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

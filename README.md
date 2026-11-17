@@ -1,144 +1,97 @@
-# PS5 14.10 WebKit Exploit Research
+# PS5 14.10 WebProcess Exploitation Research
 
-**Target:** PlayStation 5 firmware 14.10  
-**Console:** Retail unit at 10.100.102.14  
-**Mission:** Browser entry → WebProcess code exec → kernel R/W → hypervisor bypass
+**Target:** PlayStation 5, firmware 14.10 (retail console, owner-operated)
+**Mission:** Browser entry → WebProcess code execution → thread/syscall capability → kernel R/W
+**Authorization:** Sony Interactive Entertainment security research / bug bounty program (HackerOne)
 
 ---
 
-## Current Status
+## Capability Status
 
-**Read Chain: ✅ COMPLETE & CERTIFIED**
-- FontFace UAF leak → arbitrary read → module base → wrapper identity → addrof
-- All cached and repeatable in ~10 seconds per session
-- Write target known: `cell+0x10` (DataView m_vector field)
+**WebProcess exploitation: COMPLETE (E2).** The FontFace UAF chain yields full arbitrary read/write in the WebProcess, plus a native call primitive (PC + RDI control, decode-immune returns) — the strongest userland position demonstrated on 14.10. Everything below is device-proven and repeatable per session in ~10 seconds.
 
-**Write Trigger: ⏸ BLOCKED**
-- Dispatch hangs in WeakHashSet `computeSize()` → `removeIf()` before any vtable call
-- ~12 hypotheses eliminated on-device (v17b→v17r)
-- Fork is older than 616 branch (non-virtual CSSFontFace destructor)
+**Spawn (SROP): CLOSED at the mechanism level — with the full fault isolation banked.** Twelve install iterations mapped the kernel's sigreturn gates, the FP restore area, the PS5 TLS/TCB layout, and the exact register-restore semantics. The route closes on a structural fact: the native-call trampoline keeps live data in callee-saved registers that are unobtainable from the JS context. The register-capture architecture that resolves this is the game lane (below).
+
+**Module intelligence: COMPLETE.** The WebProcess import GOT fully dumped (12 module bands, 83 libkernel imports, all verified function entries); libkernel's internal data map fully read (FDE table, relocations, strings, TCB model); the NID values for the context-syscall family decoded.
+
+---
+
+## Key Results (all device-measured)
+
+```
+VP (Client vtable ptr)  = WebProcess_base + 0x724DB28      (independently derived, 7-check reconciliation)
+libkernel base          = pthread-backlink chain            (0x10001c8000 registry → q−0x6C218, canary gate)
+thr_create (430)        = lk+0x13D20    sigreturn (417) = lk+0x13ED0    thr_exit (431) = lk+0x13EC0
+thr_new   (455)        = lk+0x410      thr_self   (2)  = lk+0x2C0      gettimeofday   = lk+0xB50
+arg4 trampoline (r10)  = lk+0x3B7      retSlot           = cfr−0x328     (four boots)
+PS5 TCB self-pointer   = [TCB+0x38]                       (not FreeBSD's +0)
+sigreturn frame: gates at +0xD0/+0xE8/+0xF0/+0x110/+0x118, GPRs +0x48..+0xB8 (18 qwords),
+                FP area +0x140 (0x140 bytes), FS/GS base +0x480/+0x488 — kernel body fully disassembled
+Section map: headers 0x0-0x4000 (RO) | .text 0x4000-0x6AD7000 (XO, reads fault) | .rodata 0x6AD7000+ (RO)
+```
+
+Full technical detail in **`TECHNICAL_REPORT.md`** — a dense, model-feedable summary of every finding.
+
+---
+
+## Next Architecture: The Game Lane
+
+The remaining objectives (true register capture, `thr_new` spawn, NID-walk attribution verification) run in the Lua loader lane (Hamidashi Creative demo, TCP 9026), where `fcall_with_rax` provides RAX-controlled syscalls without the WebProcess scope-swap constraints — the spawn ABI is already publicly proven there (383a/384b). Prerequisites: the demo installed, the payload save staged, PSN sign-in (the DNS spoofer blocks update hosts while passing auth servers, so sign-in cannot force an update).
 
 ---
 
 ## Repository Structure
 
 ```
-ps5-1410-researching/
-├── README.md                          # This file
-├── HANDOFF.md                         # Mission status and resume point
-├── CONTINUE-HERE.md                   # Session continuation guide
-├── GLM_Findings.md                    # Chronological findings E1-E18
-├── AGENTIC-FINDINGS.md                # Companion documentation
-├── .gitignore                         # Excludes large files and build artifacts
+├── README.md                            # This file
+├── TECHNICAL_REPORT.md                  # Dense model-feedable report of all findings
+├── HANDOFF.md / CONTINUE-HERE.md        # Legacy mission guides (early campaign)
+├── GLM_Findings.md / AGENTIC-FINDINGS.md # Early campaign records
 │
-├── tools/remote-loader/               # Probe infrastructure
-│   ├── index.html                     # Dispatcher (what console loads)
-│   ├── v17.html                       # Current probe (full chain + dispatch)
-│   ├── v688.html                      # Certified read-chain probe
-│   ├── host.py                        # Beacon sink (DNS spoof + HTTP server)
-│   ├── auto_continue.py               # Crash dialog auto-dismiss
-│   ├── scan-watch.ps1                 # Colored live watcher
-│   └── logs/                          # Beacon logs (gitignored, samples only)
-│
-├── PS5-14.10-Research/                # Source analysis and documentation
-│   └── docs/
-│       └── COOP_ANALYSIS.md           # Source-derived COOP analysis
-│
-└── webkit-sources/                    # WebKit source archives (download separately)
-    └── README.md                      # Download instructions
+└── PS5-14.10-Jailbreak-Research/        # The active campaign
+    ├── CONTINUATION.md                  # Current-state handoff (resume here)
+    ├── CLAUDE_FINDINGS.md               # Chronological evidence ledger (authorization header)
+    ├── tools/
+    │   ├── ws-shell/                    # Interactive WebProcess shell (server + shell.html + CLI)
+    │   ├── remote-loader/               # DNS-spoof host + dispatcher
+    │   ├── vpmap2-*.jsonl               # Import GOT + module map captures
+    │   ├── lk-*.jsonl                   # libkernel internal map captures
+    │   └── lk-funcmap.json              # The 2092-entry FDE map
+    └── src/utils/syscalls.js            # Syscall tables
 ```
+
+The upstream community corpus (ZigZagBoi1/PS5-14.10-Research) is mirrored at `PS5-14.10-Research/` — the two campaigns' findings cross-reconcile (see `TECHNICAL_REPORT.md` §5).
 
 ---
 
 ## Quick Start
 
-### 1. Download WebKit Sources
-
-The actual WebKit source code is too large for GitHub. Download from Sony:
-
 ```powershell
-cd webkit-sources
-.\download-sources.ps1
+# 1. Beacon sink (elevated PowerShell)
+cd PS5-14.10-Jailbreak-Research/tools/remote-loader
+$env:PYTHONIOENCODING="utf-8"; python host.py *> host-console.log
+
+# 2. WS shell server (port 8443, cert in tools/ws-shell/.certs)
+cd ../ws-shell; npm start
+
+# 3. PS5: DNS → PC's LAN IP → User's Guide → accept cert → re-enter per session
+# 4. Commands:
+$env:SHELL_PORT=8443
+node tools/ws-shell/shell-cmd.js info      # session state (base, cfr, pcControl)
+node tools/ws-shell/shell-cmd.js vpmap     # module census sweep (pure reads)
 ```
-
-Or manually:
-- WebKit_1400.zip (for 14.10): https://www.playstation.com/content/dam/global_pdc/en-us/external-resources/oss/PS5/webkit/WebKit_1400.zip
-- WebKit-1200.zip (for comparison): https://www.playstation.com/content/dam/global_pdc/en-us/external-resources/oss/PS5/webkit/WebKit-1200.zip
-
-### 2. Set Up Probe Infrastructure
-
-```powershell
-cd tools/remote-loader
-
-# Start the beacon sink (requires elevated PowerShell)
-$env:PYTHONIOENCODING="utf-8"
-python host.py *> host-console.log
-```
-
-### 3. Configure PS5
-
-1. Settings → Network → DNS: Manual → Primary = PC's LAN IP
-2. Settings → User's Guide (loads the probe)
-3. Restore DNS to Automatic afterward
-
-### 4. Monitor Beacons
-
-```powershell
-# In another terminal
-.\scan-watch.ps1
-```
-
----
-
-## Key Device-Verified Facts
-
-```
-VP_RVA = 0x724DB28                    (ASCII-verified)
-BASE = VP − 0x724DB28                 (computable per session)
-fontStateChanged = BASE + 0x5B3D6B0   (= VP − 0x1710478)
-noop = BASE + 0x4001750
-destructor = BASE + 0x5B3CFB0
-
-CSSFontFace layout (192B reclaimed object):
-  +0x58 = m_clients table pointer
-  +0x60..0x67 = hash-table object header (counters {3,2})
-  +0x82 = status byte (0=Pending, 3=Success)
-  +0x87 = FontLoadTimingOverride
-
-JSDataView cell (addrof target):
-  +0x10 = m_vector → ArrayBuffer+0x20  (THE COOP WRITE TARGET)
-```
-
----
-
-## Next Steps
-
-See `HANDOFF.md` for the full mission status and ranked next moves.
-
-**Immediate priority:** Establish source/build dossier from Sony's WebKit_1400.zip to understand the WeakHashSet hang.
 
 ---
 
 ## Research Timeline
 
-- **2026-11-12:** Initial FontFace UAF discovery and read chain development
-- **2026-11-13 08:47:** VP_RVA verified on-device (BASE solved)
-- **2026-11-13 09:34:** Wrapper identity certified (FACE-IDENTITY-OK)
-- **2026-11-13 09:59:** addrof certified (ADDROF-CERTIFIED)
-- **2026-11-13 10:25:** First engine write into forged structure witnessed
-- **2026-11-13 11:26:** Dispatch hang localized to WeakHashSet cleanup
+- **2026-11-12/13:** FontFace UAF → read chain → certified walk → addrof (E1)
+- **2026-11-14/15:** Full ARW + call primitive (E2); the wrapper corpus; the write/dispatch era
+- **2026-11-16:** The SROP era — 36 install iterations, the kernel 417 body disassembled, the PS5 TCB discovered, the route closed on the trampoline-register mechanism
+- **2026-11-17:** The module-map campaign — import GOT dumped, libkernel internals read, NIDs decoded, the libc-not-loaded finding; the full-repo community reconciliation
 
 ---
 
-## Console Protocol
+## License / Ethics
 
-- Close/reopen guide app to load each new probe version
-- Reboot only after memory-warning storms (~1 crash/boot budget)
-- Sessions that complete cleanly self-cycle via RT=16 (30s reload)
-- Beacon log is ~160MB — use `Select-String -Pattern` to filter
-
----
-
-## License
-
-Research conducted on owner's retail console for security research purposes.
+Research conducted on the owner's retail console under Sony's PlayStation security research program (HackerOne). No piracy, no distribution of exploit material, responsible disclosure through the bounty program.

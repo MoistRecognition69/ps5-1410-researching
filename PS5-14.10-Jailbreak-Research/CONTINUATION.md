@@ -2,7 +2,7 @@
 
 **Checkpoint date:** 2026-11-17  
 **Current dispatcher:** `v=srop30`  
-**Status:** the b50 bisect VERDICT (on the restarted console): the scope-call path is HEALTHY for userland-only targets (the ret gadget); gettimeofday (the kernel copyout) through the fake scope dies because today's fake scope is Gigacage-class (the kernel copyout to the cage pages faults). The fake scope must be normal-heap-class (≥64GB) for any kernel-side write. The next experiment: a heap-class fake scope (the pthread-adjacent region, the live-neighbor risk) or the game-lane lab.  
+**Status:** the b50 bisect on the restarted console: the scope-call path is HEALTHY for userland-only targets (the ret gadget); gettimeofday through the fake scope dies even on a clean machine with no record writes — so the sropfire architecture is exonerated and the difference is the standalone-command depth (the E2's rawcall shape) vs the sropfire handler depth, or the syscall-target class. The next bisect: the export-table read + the shell's SWEEP command (the E2-replica standalone call).
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 
 ## 1. Exact current state

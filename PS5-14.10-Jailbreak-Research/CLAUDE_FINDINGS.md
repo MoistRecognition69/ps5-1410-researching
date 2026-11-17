@@ -7119,6 +7119,25 @@ or the pthread-adjacent heap (ptS is in the >=64GB class: 0x88083fb60
 today) with the live-neighbor risk. THE RESTART WAS THE RIGHT CALL: it
 isolated the class from the session state. Dispatcher v=srop30.
 
+SROP30 B50 VERDICT UPDATE - THE CLEAN-CONSOLE REPLICATION (id=112, the
+fully restarted console, clean session): the pure rehearsal DIED AGAIN -
+gettimeofday(lk+0xB50) through the fake scope with the head cleaned, the
+pristine scope, NO gates, NO ic, NO install. THE SROPFIRE ARCHITECTURE
+IS EXONERATED. AND THE SHELL'S OWN PREFLIGHT (09:03:15, seconds before)
+showed all three of its fake-scope calls SURVIVED - but those calls used
+the RET GADGET (RDI ignored, no syscall). MY REHEARSAL = THE SYSCALL
+TARGET (gettimeofday, the kernel copyout). THE REMAINING DIFFERENCE
+SET: (a) the standalone-command depth (the E2's rawcall = the shell's
+top-level command handler; my rehearsals = INSIDE the sropfire handler,
+1+ frames deeper) and (b) the target class (the ret gadget vs the
+syscall). THE NEXT DECISIVE BISECT = THE STANDALONE E2-REPLICA: read
+the libkernel export table (lk+0x48000, proven-readable data), find the
+gettimeofday entry (RVA 0xB50), then the shell's SWEEP command (the lk
+derivation + the export-table rawcall = the E2's exact standalone shape
+and depth). SURVIVES = the sropfire's handler depth/flow = the killer
+(the fix = the sropfire restructure); DIES = the scope-syscall
+interaction is broken TODAY (vs the E2 era) = the deeper diagnosis.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

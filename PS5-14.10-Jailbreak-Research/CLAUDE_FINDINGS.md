@@ -7097,6 +7097,28 @@ state - NOT the sropfire architecture); survives = the sropfire's
 deeper flow = the difference and the bisect continues within the
 sropfire. Dispatcher v=srop30.
 
+SROP30 B50 VERDICT ON THE RESTARTED CONSOLE (id=112, 09:03:33): the pure
+rehearsal DIED on the fully restarted clean console - and THE SHELL'S
+OWN PREFLIGHT BEACONS (09:03:15, seconds before) show all three of its
+fake-scope calls SURVIVED (FAKE-RESULT + REALBODY=-6 exact). THE
+DIFFERENCE: the shell's calls = the ret gadget (RDI ignored by the
+target, no kernel involvement); my b50 = gettimeofday (RDI DEREFERENCED
+by the kernel's copyout) through a fake scope at 0x10002f0480 = INSIDE
+THE GIGACAGE (the shell's MBUF scan found the view today because the
+leak-derived search space is 4GB-class). THE E2's PROOF used a fake
+scope in the >=64GB ENGINE HEAP - the normal class. THE MODEL: the
+kernel's copyout to a Gigacage-class fake scope DIES (the protection-
+key-class fault on Sony's cage pages) while userland-only calls through
+it survive. THE SHELL'S FAKE SCOPE MOVED CLASSES because the MBUF
+scan's search space is derived from the leaked pointers and today's
+leaks are 4GB-class (the cage). THE FIX DIRECTION: the fake scope (and
+any record) must live in the NORMAL HEAP class (>=64GB) for any
+kernel-side write to survive - the shell's MBUF scan searches the
+leak-derived space, so a heap-class fake needs either a heap-class leak
+or the pthread-adjacent heap (ptS is in the >=64GB class: 0x88083fb60
+today) with the live-neighbor risk. THE RESTART WAS THE RIGHT CALL: it
+isolated the class from the session state. Dispatcher v=srop30.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

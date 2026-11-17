@@ -7015,6 +7015,26 @@ shape) + the two real fixes (the discovered FS base at +0x480, the
 identified RIP/RSP/args patches). The mask = zeros (the fire's shape).
 The rt's tv at R+0x800. Dispatcher v=srop24.
 
+SROP24 IC RESULT + THE MBUF TRUTH (id=106, 08:25:38): the fire-shape
+record at R=MBUF+0x1000 STILL died at the rehearsal (SROP-CALL
+target=lk+0xB50, no INSTALL-CONTROL beacon). READING THE SHELL'S MBUF
+SETUP CRACKED IT: MBUF is NOT a private buffer - it is a SPRAYED MARKER
+BUFFER found by the mPat pattern scan (+0x88/+0xB8) in the ENGINE'S LIVE
+HEAP; the fake scope = MBUF+0x80 = the shell's TUNED call-safe slot; R
+(MBUF+0x1000) and B2 (MBUF+0x2080) = the NEIGHBORING SPRAY SLOTS whose
+bulk writes corrupted live heap objects - the engine's next touch (the
+rehearsal) died. THE MODEL THAT FITS EVERYTHING: the tuned fake scope =
+the one proven call-safe region; srop12-15's installs at CAP were
+call-safe (the kernel ACCEPTED the frames) and died on the FS base;
+srop19's correct-FS-base death and srop21-24's rehearsal deaths =
+records/writes in the NEIGHBORING heap slots. SROP25 = the fire-shape
+record AT THE FAKE SCOPE ITSELF (CAP): the tuned head +0x00-0x40
+PRESERVED (no writes!), +0x48-0x4F0 zeroed (the fire's record shape,
+proven call-safe by the srop12-15 installs), the gates, the discovered
+FS base at +0x480, the patches at CAP, the rehearsal through CAP (the
+E2's exact shape), the rt's tv at CAP+0x500 (inside the zeroed region,
+no neighbor writes), the install with RDI=CAP. Dispatcher v=srop25.
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

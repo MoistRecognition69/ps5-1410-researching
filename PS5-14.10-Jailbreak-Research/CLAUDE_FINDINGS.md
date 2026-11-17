@@ -7035,6 +7035,33 @@ FS base at +0x480, the patches at CAP, the rehearsal through CAP (the
 E2's exact shape), the rt's tv at CAP+0x500 (inside the zeroed region,
 no neighbor writes), the install with RDI=CAP. Dispatcher v=srop25.
 
+SROP25-26 IC RESULTS + THE SURGICAL SYNTHESIS (ids 107-108): srop25's
+rehearsal through the TUNED fake scope died (the +0x48-0x4F0 zeroing =
+the scope's live call-path region past the 0x40 tuned head); srop26's
+view build died BEFORE the rehearsal (the shell's 64MB view = a FORGED
+ArrayBuffer size - the real backing is the original small allocation,
+every view offset past it = neighboring heap). THE WEBPROCESS OFFERS NO
+ENGINE-FREE REGION AND THE SCOPE'S +0x48+ REGION IS LIVE CALL-PATH
+STATE. THE UNIFIED THEORY THAT FITS ALL TWELVE DEATHS: (a) the FS base
+at +0x480 (the corpus's kernel-side sigreturn reads FS/GS from
+[user+0x480]/[user+0x488]) = the stale loader TCB 0x881090080 in
+srop12-15; (b) ANY bulk write into the scope's live region (+0x00-0x4F0
+across the records/masks/zeroing) = the call-path corruption; (c) the
+view = fake. SROP27 = THE SURGICAL MINIMUM: gates ONLY at +0xC0-0x118
+(fs/gs selectors 0x1B001300000000, D0=0 the 814b gate, CS=0x43,
+RFLAGS=0x202, SS=0x3B, magic 0x480, type 0x10002, subtype 0x20001),
+the discovered FS base at +0x480 (+0x488=0), NOTHING else written (the
+scope's +0x00-0xC0 = the E2-proven live shape preserved; the kernel's
+sigreturn success path reads only the gates + +0x48-0x108 + +0x480/0x488
+- the restored GPRs = the scope's own saved state = the pure-resume
+semantics, no args needed for the install control). THE FLOW: the
+rehearsal first (gettimeofday through the scope, the E2 shape, its ret
+LEAVES the return address at [cfr-0x328]) -> the ic patches (RIP = that
+return address, RSP = cfr-0x320, both in the neighbor slots) -> the
+install -> the pure resume -> SURVIVES = the install + the FS base
+PROVEN. The ic = the ONLY mode (the rt/real return after the proof).
+Dispatcher v=srop27.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

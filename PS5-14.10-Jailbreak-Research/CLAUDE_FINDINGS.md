@@ -6986,6 +6986,19 @@ to B2+0x800 (beyond the record, no scope writes). The ic control keeps
 the rehearsal-first retSlot read (through B2 - safe now). Dispatcher
 v=srop22.
 
+SROP22 IC RESULT + THE THIRD SCOPE FIELD (id=104, 08:19:07): the
+rehearsal through B2 STILL DIED at SROP-CALL target=lk+0xB50 (the
+INSTALL-CONTROL beacon never printed). THE BOUNDARY IS NOW EXACT: the
+proven-survivable rawcall zeroes the scope's +0x00-0x20 (the qwords 0-3)
+and survives; the srop22 mask loop zeroed +0x08, +0x10, +0x18 AND +0x20
+- THE +0x20 QWORD IS A THIRD LIVE-CRITICAL SCOPE FIELD (after the
+side-channel +0x00-0x20 and the VM pair +0x38/+0x40), and zeroing it
+killed the call. THE FIX (srop23): the B2 clone is UNTOUCHED - all 0x48
+live bytes stay; the signal mask the kernel reads from the record's
++0x08-0x28 = the clone's live bytes - any 128-bit mask is valid input,
+and a fault-generated SIGSEGV is delivered regardless of the mask, so a
+garbage mask is safe. Dispatcher v=srop23.
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

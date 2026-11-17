@@ -46,7 +46,7 @@ function cstr(off, max) {
 // ---- 1) lkbase from the gettimeofday anchor ----
 const VGT = q(0x1179A8);
 say('q(0x1179A8) = 0x' + (VGT === null ? 'NULL' : VGT.toString(16)));
-if (VGT === null) { fs.writeFileSync(path.join(require('os').tmpdir(),'nid-extract-result.txt'), out.join('\n')); console.log(out.join('\n')); process.exit(1); }
+if (VGT === null) { fs.writeFileSync(path.join(require('os').tmpdir(), 'opencode', 'nid-extract-result.txt'), out.join('\n')); console.log(out.join('\n')); process.exit(1); }
 const LK = VGT - 0xB50n;
 say('lkbase(1215-session) = 0x' + LK.toString(16));
 
@@ -96,5 +96,5 @@ for (let off = 0x114000; off < 0x118000; off += 8) {
 say('NID string hits: ' + hits.length);
 for (const h of hits) say('  holder=0x' + h.holderOff.toString(16) + ' strOff=0x' + h.strOff.toString(16) + ' ' + h.str + ' -> ' + h.name);
 
-fs.writeFileSync(path.join(require('os').tmpdir(),'nid-extract-result.txt'), out.join('\n'));
+fs.writeFileSync(path.join(require('os').tmpdir(), 'opencode', 'nid-extract-result.txt'), out.join('\n'));
 console.log(out.join('\n'));

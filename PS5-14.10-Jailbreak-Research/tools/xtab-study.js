@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const LOG = path.join(__dirname, 'ws-shell', 'shell-beacons.log');
-const CSV = path.join(require('os').tmpdir(),'ps5rs','data','nids.csv');
+const CSV = path.join(require('os').tmpdir(), 'opencode', 'ps5rs', 'data', 'nids.csv');
 
 const logTxt = fs.readFileSync(LOG, 'utf8');
 const entries = {}, poolHex = {};

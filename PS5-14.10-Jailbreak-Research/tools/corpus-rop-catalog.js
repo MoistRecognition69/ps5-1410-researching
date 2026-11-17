@@ -61,7 +61,7 @@ for (const [name, pat] of Object.entries(pats)) {
   ropOut[name] = hits;
   console.log(name + ': ' + hits.length + (hits.length ? '  first: ' + hits.slice(0, 6).map(h => '0x' + h.toString(16)).join(' ') : ''));
 }
-fs.writeFileSync(path.join(require('os').tmpdir(),'libc-rop-gadgets.json'), JSON.stringify(ropOut));
+fs.writeFileSync(path.join(require('os').tmpdir(), 'opencode', 'libc-rop-gadgets.json'), JSON.stringify(ropOut));
 
 // pair: load then transfer within 0x40
 const hits = [];
@@ -79,4 +79,4 @@ hits.sort((a, b) => a.gap - b.gap);
 for (const h of hits.slice(0, 30)) {
   console.log('libc+0x' + h.at.toString(16) + '  mov rax,[rsi+0x' + h.x.toString(16) + '] +' + h.gap + 'b ' + h.kind + ' [rsi+0x' + h.y.toString(16) + ']  ' + h.bytes);
 }
-fs.writeFileSync(path.join(require('os').tmpdir(),'rsi-dispatcher-hits.json'), JSON.stringify(hits, null, 1));
+fs.writeFileSync(path.join(require('os').tmpdir(), 'opencode', 'rsi-dispatcher-hits.json'), JSON.stringify(hits, null, 1));

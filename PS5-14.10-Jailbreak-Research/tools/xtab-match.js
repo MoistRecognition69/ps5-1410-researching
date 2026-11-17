@@ -22,7 +22,7 @@ const path = require('path');
 
 const LOG = process.argv[2] || path.join(__dirname, 'ws-shell', 'shell-beacons.log');
 const CSV = process.argv[2] && process.argv[3] ? process.argv[3]
-  : path.join(require('os').tmpdir(),'ps5rs','data','nids.csv');
+  : path.join(require('os').tmpdir(), 'opencode', 'ps5rs', 'data', 'nids.csv');
 
 /* ---------- parse the beacon log ---------- */
 const logTxt = fs.readFileSync(LOG, 'utf8');

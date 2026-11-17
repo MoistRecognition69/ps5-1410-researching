@@ -5460,17 +5460,36 @@ function _startWsShell(){
             var vF=pdS[fS];
             if(vF>=0x880000000n&&vF<0x900000000n&&!(vF>=ptS&&vF<ptS+0x400n)){
               var tS3=S.absRead(vF,0x18);
-              if(tS3[2]===ptS||tS3[0]===vF||tS3[1]===vF){fsB=vF;break;}
+              if(tS3[2]===ptS||tS3[0]===vF||tS3[1]===vF){
+                /* the mutual-ref candidate C=vF: the TCB self-pointer lives
+                 * INSIDE C (the readback: [C+8]=C+0x40, a pointer to the
+                 * nested TCB whose [0] should = itself) */
+                var cR=S.absRead(vF,0x48);
+                for(var cR2=0;cR2<cR.length;cR2++){
+                  if(cR[cR2]===vF+BigInt(cR2*8)){fsB=cR[cR2];break;}
+                }
+                if(fsB===0n){fsB=vF;}
+                break;
+              }
             }
+          }
+          var fsOK=(fsB!==0n&&fsB>=0x880000000n&&fsB<0x900000000n);
+          var fsSelf=false;
+          if(fsOK){
+            var fsR=S.absRead(fsB,8)[0];
+            fsSelf=(fsR===fsB);
+            if(!fsSelf){fsB=0n;}
           }
           reply.ptS='0x'+ptS.toString(16);
           reply.fsbase='0x'+fsB.toString(16);
+          reply.fsSelf=fsSelf;
           if(fsB===0n){
             reply.pthreadHead=pdS.slice(0,0x40).map(function(v){return '0x'+v.toString(16);});
-            reply.err='no TCB (fsbase) found via the pthread mutual reference';break;
+            reply.err='no validated TCB self-pointer found';break;
           }
-          SF('1b fsbase=0x'+fsB.toString(16)+' (the pthread TCB, mutual-ref validated)');
+          SF('1b fsbase=0x'+fsB.toString(16)+' selfPtr='+(fsSelf?'VALID':'FALLBACK'));
           if(!(fsB>0x800000000n)){reply.err='fsbase implausible';break;}
+          reply.recordSurgical=true;
 
           /* (1) THE BANKED V70 RETURN-SLOT DELTA: four independent boots
            * placed retSlot at cfr-0x328 exactly (0x...9ef8/0x...1ef8/

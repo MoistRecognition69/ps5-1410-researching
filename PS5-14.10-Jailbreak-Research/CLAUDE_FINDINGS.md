@@ -7207,6 +7207,19 @@ fus01/fus02.ps5.update.playstation.net) while passing the auth servers,
 so the sign-in cannot trigger an update, and the Hamidashi demo is a
 14.00-era title that runs on 14.10 without a forced update.
 
+SROP32 IC RESULT + THE TCB NESTING BUG (id=114, 09:23:38): STILL died
+inside the sigreturn call with everything banked. RE-READING the
+original C-structure readback (the srop23-26 discovery): [C+0x00] = 0x0
+(the TCB's [0] should = itself!), [C+0x08] = C+0x40 (a self-reference
+at +8 pointing INTO the structure), [C+0x10] = ptS. A real FreeBSD TCB
+has its self-pointer AT +0 — C is NOT the TCB, it's a structure
+CONTAINING a pointer to the nested TCB at +8. THE REAL FS BASE = the
+value at [C+0x08] = C+0x40, validated by [TCB] === TCB. srop33 = the
+discovery v3: after finding the mutual-ref candidate C, scan C..C+0x48
+for the self-referential qword (V === its own address) — that's the
+REAL TCB — and validate [fsbase]===fsbase before any fire. The FP
+constants + the gates + the ret gadget stay. Dispatcher v=srop33.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

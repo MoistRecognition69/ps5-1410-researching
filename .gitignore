@@ -27,6 +27,11 @@ dist/
 Thumbs.db
 desktop.ini
 
+# Local secrets and device material - never commit
+PS5-14.10-Jailbreak-Research/tools/ws-shell/.certs/
+firmware/
+PS5-14.1010-Research
+
 # Editor files
 .vscode/
 .idea/

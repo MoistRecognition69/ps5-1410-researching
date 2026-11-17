@@ -1,0 +1,13 @@
+{
+  "name": "ps5-ws-shell",
+  "version": "1.0.0",
+  "description": "Interactive WebSocket shell for PS5 WebProcess exploitation research",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "selfsigned": "^2.4.1",
+    "ws": "^8.16.0"
+  }
+}

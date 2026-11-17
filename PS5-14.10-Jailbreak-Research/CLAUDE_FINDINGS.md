@@ -6455,3 +6455,409 @@ THE STATE (the exact resume point):
    frame!) - the sigreturn stub RVA needed (hunt: the corpus sigtramp
    was not in libc; the next: the low-PLT Rosetta over the signal-
    handling callers, or ld.so's own data).
+
+### SESSION 194 (THE #295 IDENTITY CORRECTION - fire18 BUILT, NOT YET DEVICE-RUN): the former fire walk selected a NON-CLIENT table; the fire harness is now gated and the old dispatchProven replies are retracted
+
+THE EXTERNAL CROSS-CHECK (ZigZagBoi1 repo HEAD c6dff674 + issue #295,
+2026-11-17): the FontFace Client secondary table has offset-to-top=-32,
+typeinfo=0, slots 2/4/5 folded empty, slots 3/6/7 valid, slot 8=NULL.
+VP-relative deltas: s0=0x1710B78, s1=0x1710B48, s2/s4/s5=0x324C3D8,
+s3=0x1710478, s6=0x1ABA728, s7=0x1710318. OUR OLD 2026-11-15 capture
+(shell-beacons.log:402-404) MATCHES 9/9. The current fire-era capture
+(shell-beacons.log:126725, VP=S.BASE+0x722BF38) FAILS 8/9: s0 delta
+0x1355628, s1-s0=0x120, s2/s4/s5 distinct, slots 6/7=NULL. Therefore the
+fire-era FO/VP is NOT the intended FontFace Client. Issue #295's immediate
+value is a target-identity gate, not a new syscall/base offset.
+
+LOCAL INSTRUMENT DEFECTS FOUND IN THE SAME AUDIT:
+- FAKEVT copied VP-0x10 into FAKEVT but installed FO=FAKEVT: every real
+  slot was shifted by 0x10. VP is the slot-0 ADDRESS POINT.
+- DIAG5 wrote gettimeofday, then the generic !isDiag3 else overwrote it
+  with thr_self. The FIRE-D s3=lk+0x2C0 beacon proves the overwrite.
+- The generic post-restore readback compared vpOrig!=FAKEVT and set
+  dispatchProven=true. All prior reply.dispatchProven fields are INVALID.
+- FO is already the Client secondary subobject; FO+0x20 is NOT a second
+  vtable. The old DIAG3/DIAG5 secondary swap was another live-field write.
+Thus the old crashes remain suggestive but are NOT clean counterfactual
+proof of the intended Client dispatch. The "one plain fire away" wording
+is superseded.
+
+FIRE18 (working tree; static checks pass; dispatcher v=fire18 verified):
+- The walk prefilters VP == S.BASE+0x724DB28 BEFORE any VP dereference,
+  then requires the -32/0 preheader + all 9 slot deltas. No match = reply
+  error + NO WRITES. ExpectedVP/chain counts are in the reply.
+- fire 7 = identity-only (no FAKEVT/gates/swap/trigger).
+- fire 6 = ALL-REAL CONTROL (correct copied table, FO only, gates off).
+- fire 5 = slot3-only gettimeofday A/B probe (ref/deref real, gates off).
+- plain fire = slot3-only thr_create (no dual-slot/dual-spawn ambiguity).
+- FAKEVT_RAW holds VP-0x10..VP+0x40; installed address point=RAW+0x10;
+  8 real slots + NULL copied. Only FO is swapped, never FO+0x20.
+- Diagnostic branches no longer overwrite DIAG5; proof is pre-restore
+  only; the generic post-restore false positive is excluded.
+- Each command uses a fresh font family; style setters toggle normal/
+  italic instead of relying on an early-returning italic->italic write.
+- node --check passed for the full page + shell-cmd.js; 9 static feature
+  assertions passed; git diff --check passed. NO DEVICE RESULT YET.
+
+THE NEXT SESSION (safe sequence, one guide entry if the page survives):
+1. `fire 7`: require identityOnly=true + clientIdentity.slots='9/9 #295
+   deltas'. If the gate rejects, DO NOT retry writes; inspect chains/
+   expectedVP and use the older walk that produced the 9/9 table.
+2. `fire 6`: require controlSurvived=true. If the all-real control dies,
+   the table/trigger is still wrong; no payload test is meaningful.
+3. `fire 5`: only after a clean control. A slot3 transition crash with
+   DIAG6 alive is the A/B dispatch proof. If it replies, FO0now is read
+   BEFORE restore and dispatchProven is absent unless FO actually changed.
+4. Only after that verdict, plain `fire` for the real slot3 thr_create.
+
+AFTER A PROVEN SPAWN: the repo's CHILD_SYSCALLS_AND_POLL_CLOSE_14_10.md
+provides the child GPR block (RDI+0x48, RSI+0x50, RDX+0x58, RCX+0x60,
+R8+0x68, R9+0x70, RAX+0x78); ARG4_TRAMPOLINE_14_10.md provides lk+0x3B7
+for child-issued syscalls with controlled r10/arg4. Children must exit,
+not accumulate spinning. These are post-spawn tools, not session-194
+proofs.
+
+SESSION-194 LIVE ADDENDUM (fire18 identity-only, id=44): the gate WORKED -
+walkChains=1, expectedVP matches=0, NO WRITES. The live shell then gave the
+root cause with five read-only commands:
+- The boot's own pipeline HAD the correct Client all along: SHELL-WALK
+  IM=0x10007e22d0, FO=0x10002df788, VP=0x841ea9b28 +
+  FACE-IDENTITY-OK. expectedVP matched exactly.
+- v688_self=0x1000278e40 is the certified reclaimed face; [SELF+0x58]
+  =0x100070d410 = the real L1. v688_buf=0x10002f0800 was the later OOB
+  view/scratch; [MBUF+0x58]=0x1000240cc0 = an unrelated hash. FIRE must
+  walk FACE, while retaining MBUF only for FAKEVT/WIT/STK scratch.
+- The real hash at L1-0x10 contains IM=0x10007e22d0. The real IM reads
+  [0x3, 0x10002df788, 0x800000001]: m_ptr=FO is at IM+0x08 (the original
+  p691 W2 read), NOT +0x10. The old fire's +0x10 chain selected a different
+  structure whose q2 happened to be a cage pointer.
+- [FO..+0x28] = [VP, IM, SELF, ...], proving the closed cycle:
+  FO+0x08=IM and FO+0x10=FACE.
+
+FIRE19 (working tree, supersedes fire18 before its first write-capable run):
+walk starts at certified v688_self (MBUF fallback only if absent), uses
+WeakPtrImpl m_ptr@+0x08, and requires BOTH backlinks (FO+8==IM and
+FO+0x10==FACE) in addition to the expected VP/preheader/9-slot fingerprint.
+MBUF remains scratch only. Dispatcher v=fire19. This was derived entirely
+from read-only evidence on the live 06:09:20 session; no gate/FAKEVT/FO
+write or trigger was attempted. Re-enter for the fire19 `fire 7` verdict.
+
+SESSION-194 FIRE19 RESULTS (06:17:11-06:17:39, one live boot):
+- fire 7 id=53: PASS. FO=0x10002df818, VP=S.BASE+0x724DB28, preheader
+  -32/0, 9/9 deltas, backlink + backingIsFACE true. walkChains=1,
+  walkCandidates=1. THE CORRECT CLIENT IS NOW SELECTED.
+- fire 6 id=54: immediate all-real control PASS (FO still FAKEVT, parent
+  alive, restored), BUT the timing audit showed FIRE-7c loaded + FIRE-7d
+  style arrived ~30ms AFTER the immediate restore. It was only an
+  immediate control, not an async-callback control.
+- fire 5 id=55: FO unchanged and no proof, then 7c/7d again arrived AFTER
+  the restore. VERDICT: INCONCLUSIVE, not a no-dispatch negative.
+- plain fire id=56 (the real command holds FAKEVT through the async path):
+  correct Client + slot3-only thr_create + gates + fresh load all ran;
+  witness pre/post=0 and settled=0; 7c/7d completed; parent alive. This
+  splits into (a) slot3 did not dispatch for this trigger, or (b) it
+  dispatched and thr_create cleanly declined on the C++ site's RSI. The
+  early-restored DIAG5 could not distinguish them.
+
+FIRE20 (working tree): DIAG5/6 now HOLD FAKEVT through the .then callback
+and the 500ms settled readback. Immediate positive proof restores at once;
+otherwise the settled block reads FO BEFORE restore, emits B5/B6, posts
+fireSettled.{FO,dispatchProven/controlSurvived}, then restores. This fixes
+the proven 30ms instrumentation blind spot. Next boot: fire7 -> fire6 ->
+wait for B6 settled clean -> fire5 -> wait for B5/crash; only then interpret
+another real fire. Dispatcher v=fire20.
+
+SESSION-194 FIRE20 CONTROL CRASH (id=58, 06:19:18): fire7 passed, then the
+ALL-REAL heap-table fire6 died after the style injection, before FIRE-8 /
+7c / settled. No payload and no gates were present. This is the exact #282
+buffer-vptr wall: a real VP returns, a byte-identical table in an
+ArrayBuffer dies when the actual callback arrives. fire19's immediate
+control had survived only because it restored before the callback. The
+heap FAKEVT is therefore RETIRED for payload/control runs; fire20's crash
+is a POSITIVE route discriminator, not a thr_create verdict.
+
+FIRE21 (working tree): the normal fire + DIAG5/6 now use the REAL module
+VP in place and patch ONLY slot3 (FO keeps its original vptr). DIAG8 is a
+same-value real-VP write control: no payload, no FO/gate writes, no
+trigger; a reply proves the real vtable is writable. DIAG5/6 restore both
+slot3 and FO after immediate proof or the settled window; plain fire also
+restores both after 500ms so follow-ups can reuse the parent. Legacy
+diag2/3/4 alone retain the historical heap FAKEVT. Next boot: fire7 ->
+fire8; only if realVPWritable=true, fire6 -> B6 settled -> fire5 -> B5 or
+crash; plain fire only after that A/B answer. Dispatcher v=fire21.
+
+SESSION-194 FIRE21 REAL-VP WRITE RESULT (id=60, 06:24:08): fire7 passed
+(FO=0x10003e3818, VP=0x81f94db28, 9/9 + closed cycle). fire8 then died
+IMMEDIATELY after FIRE-4r reported the real slot3 address; no FIRE-8 reply.
+The only write was slot3 := its original value, with no FO/gate writes and
+no trigger. Therefore the real module VP is NOT WRITABLE by our ARW on this
+boot (RELRO/write-protected for this primitive). Combined with fire20's
+all-real heap-table callback death, BOTH vtable-payload routes are CLOSED:
+(a) a byte-identical heap table dies at dispatch (#282 buffer-vptr wall);
+(b) the real table cannot be patched. DO NOT run fire5/plain fire in this
+shape. There is no further safe A/B to spend sessions on here.
+
+THE ROUTE RESET: return to the rawcall parent-survival problem. Needed is
+an IDENTIFIED full-frame route (sigreturn(417)/setcontext-class) or an
+identified wrapper/gadget that clears RSI before thr_create; not another
+vtable attempt and not a blind stub sweep. Offline work: the low-PLT
+Rosetta over signal/context callers + banked corpus artifacts; then one
+identified on-device test. The fire19 identity proof and the m_ptr@+0x08 /
+v688_self corrections remain valid and banked, but they do not bypass the
+vtable write/acceptance walls.
+
+### SESSION 195 (THE OFFLINE ROSETTA CORRECTION + CAPTURE-RETURN SROP): the old thr_create RVA was wrong; getcontext/sigreturn/thr_create/thr_exit are now identified and srop1 is built
+
+INDEPENDENT CAPSTONE VERIFICATION (not a subagent claim; raw 1215a text +
+1215b imports, temp disasm-thread-wrappers.py / verify-thread-imports.py):
+- Thunk 0x358 -> PLT i=42 -> GOT 0x1179F0 -> lk+0x13D20.
+  The Thrd_create helper at libc+0x4BDE0 reaches it at 0x4BE47 after
+  mov rdi,rbx; xor esi,esi; xor edx,edx/normal cmov path. Therefore
+  *** THR_CREATE = lk+0x13D20 ***. The old lk+0x13ED0 attribution is
+  RETRACTED; every earlier "thr_create at 0x13ED0" fire is invalid.
+- Thunk 0x288 -> i=29 -> GOT 0x117988 -> lk+0x13ED0.
+  The tiny wrapper at libc+0x2F310 calls it. In the same signal/context
+  wrapper family: 0x2F2E0 -> thunk 0x298/i=30 -> lk+0x13F20
+  (getcontext 421); 0x2F2F0 -> 0x2A8/i=31 -> lk+0x13F40
+  (setcontext 422); 0x2F300 -> 0x2B8/i=32 -> lk+0x416E0
+  (swapcontext 423); 0x2F2D0 -> 0x278/i=28 -> lk+0x142C0
+  (sigaction 416). The import ordering (416,417,421,422,423) and wrapper
+  identities make *** SIGRETURN = lk+0x13ED0, GETCONTEXT = lk+0x13F20,
+  SETCONTEXT = lk+0x13F40 *** the coherent mapping.
+- Thrd_exit at libc+0x4C240 calls thunk 0x418 -> i=54 -> GOT 0x117A50
+  -> *** lk+0x13EC0 = THR_EXIT *** (not the old assumed 0x3B0/0x3F0).
+- Arithmetic warning: thunk 0x2E8 = i=35 -> lk+0x14220, NOT 0x13ED0;
+  thunk 0x718 = i=102 -> lk+0x3B0, NOT the Thrd_exit call. The earlier
+  notes mixed these. 0x3B0+7 remains a proven generic r10 trampoline but
+  is NOT thereby sigreturn or an identified clean-exit target.
+
+THE ROUTE THIS UNLOCKS (no vtable, no libc base, no recovery-RVA guess):
+1. rawcall getcontext(lk+0x13F20, CAP): the kernel writes the exact current
+   native-call frame (421's measured 0x4C0 record). Validate CS=0x43,
+   SS=0x3B, magic=0x480, type=0x10002, saved RIP inside lk, RSP nonzero.
+2. Build the child with the proven manual gates, RIP=thr_exit(lk+0x13EC0),
+   a mapped stack. No parent TLS copy is needed.
+3. Modify only the captured parent frame: RDI=CTX, RSI=WIT (a SAFE
+   writable tid output), RDX=0, D0=0 (the 814b gate), RIP=thr_create
+   (lk+0x13D20). KEEP THE CAPTURED PARENT RSP.
+4. rawcall sigreturn(lk+0x13ED0, CAP): it installs the frame. thr_create's
+   ret follows the ORIGINAL getcontext return path through the native
+   trampoline, so the parent survives without cfr corruption or a recovery
+   offset. The parent, not the child, writes the new tid to WIT. This is the
+   full-register-control version of the original rawcall fire.
+
+SROP1 (working tree, new `sropfire` command; dispatcher v=srop1 verified):
+implements exactly that sequence with blocking SROP-1..5 beacons, capture
+gates that abort before sigreturn on any mismatch, the corrected four RVAs,
+and immediate + settled tid witnesses. Full-page node --check, CLI check,
+and the static target assertions pass. NO DEVICE RUN YET. The next session
+is ONE direct `sropfire`, not any `fire` variant. Verdicts: capture fields +
+parent alive + tid in WIT = spawn / E3; parent alive + WIT=0 = syscall
+decline (now with safe args, so inspect return/recovery rather than vtables);
+death after SROP-3 = the sigreturn/thr_create/recovery point to bisect from
+beacons, not another candidate sweep.
+
+SESSION-195 SROP1 RESULT + THE CONTEXT-ORDER CORRECTION (id=61, 06:40:37):
+the run died immediately after SROP-CALL target=lk+0x13F20, before any
+capture beacon. That static mapping was WRONG: 0x13F20 is SETCONTEXT(422),
+so it consumed the zero frame instead of capturing one. The wrapper family
+is the standard five-function order, and the corrected assignments are:
+- libc+0x2F2D0 -> thunk 0x278/i=28 -> lk+0x142C0 = GETCONTEXT(421)
+- libc+0x2F2E0 -> thunk 0x298/i=30 -> lk+0x13F20 = SETCONTEXT(422)
+- libc+0x2F2F0 -> thunk 0x2A8/i=31 -> lk+0x13F40 = SWAPCONTEXT(423)
+- libc+0x2F300 -> thunk 0x2B8/i=32 -> lk+0x416E0 = MAKECONTEXT helper
+- libc+0x2F310 -> thunk 0x288/i=29 -> lk+0x13ED0 = SIGRETURN(417)
+There is no sigaction wrapper in this five-function sequence; the earlier
+"0x142C0 = sigaction" label is retracted. This ordering also explains the
+srop1 death deterministically without touching the sigreturn/thr_create
+attributions.
+
+SROP2 (working tree): the capture call is corrected to lk+0x142C0; the
+setcontext/swapcontext/makecontext labels and the import-map JSON are
+updated. sigreturn remains lk+0x13ED0, thr_create lk+0x13D20, thr_exit
+lk+0x13EC0. Next session = one direct sropfire with SROP-CALL target
+lk+0x142C0 expected before the capture gates. Dispatcher v=srop2.
+
+SROP2 RESULT + THE SCOPE-PROTOCOL CORRECTION (06:42:41): the second run also
+died immediately after SROP-CALL (this time lk+0x142C0). A code audit found
+the shared instrument defect: sropfire zeroed CAP and never restored the
+native-call scope's +0x38 VM pointer (the V82 lesson from the v17.1 death).
+Thus the target was not proven to be the crash cause in either run. SROP3
+preserves CAP+0x38/+0x40 from the live fakeScope before getcontext. If it
+still dies, the remaining capture-specific question is whether getcontext
+zeroes that slot on output; in that case switch to the V70-era measured-RSP
+manual sigreturn frame instead of another capture attempt. Dispatcher
+v=srop3.
+
+SROP3 LIVE CORRECTION + THE HIGH-STUB ANCHOR (06:45:35): SROP-1b measured
+scope VM=0x0/neighbor=0x0, so the claimed live-VM protocol cannot explain
+the capture death (other rawcalls survive with the same live scope). The
+low-PLT context-wrapper attribution is NOT reliable enough to fire again.
+A stronger independent anchor exists in tools/lk-funcmap.json (the banked
+2092-FDE map): the 13.60 high-stub RVAs are REAL 14.10 function entries,
+not merely historical references. getpid=0x1B860 is an EXACT FDE start
+(length 0x18); getcontext=0x1BA64, sigreturn=0x1CDE0,
+thr_create=0x1B160, thr_exit=0x1B4E0 all land inside 0x18-byte raw-stub
+FDEs, as do setcontext=0x1C7D0 and swapcontext=0x1C8F0. This directly
+supports the external note that the 13.60 wrapper map is layout-stable on
+14.10 and invalidates the conservative "high offsets unusable" dismissal.
+NEXT LIVE DISCRIMINATOR BEFORE ANY MORE SROP: on a fresh boot run fire7
+(read-only lk derivation), then callret(lk+0x1B860). A valid WebProcess
+pid proves the high map with a benign syscall. Only if that returns do we
+switch sropfire to getcontext=0x1BA64, sigreturn=0x1CDE0,
+thr_create=0x1B160, thr_exit=0x1B4E0. No further low-context capture
+attempts.
+
+HIGH-MAP LIVE FALSIFIER (ids 64-66): fire7 derived lk=0x819e5c000.
+callret(lk+0x1B860) returned value=-1 (not the pid), and rawcall
+(lk+0x1B840) died with no time witness. The 13.60 high wrappers are NOT
+valid on this 14.10 WebProcess despite the FDE-size coincidence. Do not use
+the high map.
+
+SROP4 (working tree): getcontext is REMOVED from the fire. The command now
+uses the V70 measured-return route directly: pass1 native stack -> harmless
+lk+0x7A0 rehearsal with ZERO beacons in the window -> pass2 -> deepest
+changed WebKit-text slot = retSlot. Build the sigreturn frame manually with
+RDI=CTX, RSI=WIT, RDX=0, RBP=cfr, RIP=thr_create(lk+0x13D20), CS=0x43,
+RFLAGS=0x202, RSP=retSlot, SS=0x3B, magic/type/subtype and D0=0. Child =
+thr_exit(lk+0x13EC0). Then sigreturn(lk+0x13ED0). No getcontext, no high
+map, no recovery-RVA guess. If no changed slot, it aborts before sigreturn.
+Dispatcher v=srop4.
+
+SROP4 RESULT (06:54:59): the run died BEFORE SROP-2, inside the lk+0x7A0
+"harmless" rehearsal. That old spin candidate is not safe on this build;
+no sigreturn or retSlot evidence was reached. SROP5 replaces the rehearsal
+with the independently E2-proven gettimeofday at lk+0xB50 (writes its small
+signature to the scope and returns). The rest of the measured-return chain
+is unchanged. Dispatcher v=srop5.
+
+SROP5 RESULT + THE ACTUAL SHARED INSTRUMENT BUG (06:56:20): even the proven
+gettimeofday rehearsal died before SROP-2. The common precondition was not
+a target RVA: sropfire had zeroed the full 0x500 at CAP=S.fakeScope, wiping
+the LIVE native-call scope metadata. The ordinary rawcall only clears four
+qwords for a reason. SROP6 removes the CAP wipe entirely (only the separate
+child CTX is zeroed); the parent sigreturn fields are overlaid selectively
+on the live scope. This correction also explains why every capture/rehearsal
+died at its first call irrespective of the target. Dispatcher v=srop6.
+
+SROP6 RESULT (06:59:09): still died before SROP-2, now with vm38=
+0x1000300000, so the live-VM class is not the discriminator. SROP7 adds
+SROP-1c after pass1 and SROP-2a after pass2, and refreshes the baseline
+(pass1b) after the 1c marker so the rehearsal diff remains beacon-free.
+This separates a stack-read death from the gettimeofday rehearsal itself.
+Dispatcher v=srop7.
+
+SROP7 RESULT (07:01:18): SROP-1c posted, SROP-2a did not - the failure is
+inside the second baseline read or the redirected rehearsal. SROP8 removes
+the redirected target entirely: the rehearsal invokes the ORIGINAL
+Math.round implementation (origH), which necessarily returns and exercises
+the same native trampoline whose return slot we need. No gettimeofday, no
+spin stub, no syscall candidate in the measurement path. Dispatcher v=srop8.
+
+SROP8 RESULT (id=71): the original Math.round RETURNED SAFELY (the first
+fully nonfatal srop attempt) but changed=[] and the command correctly
+refused sigreturn. The diff-only assumption was wrong: the original call
+rewrites the SAME return address, so pass1b==pass2 at the live slot. SROP9
+keeps ALL WebKit-text candidates and records the changed bit separately;
+the deepest candidate remains the V70 return-slot rule. No candidate = still
+abort. Dispatcher v=srop9.
+
+SROP9 RESULT (id=72): the original Math.round returned safely again but no
+WebKit-text candidate existed in [cfr-0x400,cfr). A read-only follow-up
+confirmed that range is 0xA-filled. Historical TWR proof shows the live
+redirected rehearsal is required to materialize the slot; the original
+Math.round is not a substitute. SROP10 restores the exact V70 order:
+pass1 -> lk+0x7A0 redirected rehearsal with ZERO beacons -> pass2 ->
+changed slots. Crucially, ALL child/witness/frame writes now happen AFTER
+retSlot is measured; no VM/frame/CTX writes perturb the rehearsal. Only
+then build the parent sigreturn frame and fire. Dispatcher v=srop10.
+
+SROP10 RESULT (id=78): the redirected lk+0x7A0 rehearsal RETURNED NORMALLY,
+but changed=[] again. The rehearsal is therefore nonfatal in the exact V70
+order; the only remaining measurement bug is the changed-only filter. SROP11
+keeps every WebKit-text candidate after that redirected rehearsal and records
+the changed bit separately. If a candidate exists, the parent sigreturn frame
+is built and fired; otherwise it aborts. Dispatcher v=srop11.
+
+SROP11 RESULT + THE CONSTANT-DELTA EXIT FROM THE MEASUREMENT LOOP (id=79):
+still changed=[] / no candidates. Rechecking the four historical TWR proofs
+shows the slot is at **cfr-0x328 on every boot**:
+0x7ef399ef8 vs 0x7ef39a220, 0x7efc01ef8 vs 0x7efc02220,
+0x7ef46de78 vs 0x7ef46e220, 0x7ef6c1ef8 vs 0x7ef6c1e220 -
+all exactly -0x328. The sigreturn call's own native-call push writes that
+slot before thr_create returns, so its pre-fire contents are irrelevant.
+SROP12 deletes the rehearsal and uses retSlot=cfr-0x328 directly. This is a
+banked constant, not a new guess. Dispatcher v=srop12.
+
+SROP12 RESULT (id=82): SROP-1/2/3 all banked, then death after SROP-CALL
+target=lk+0x13ED0. This is the first run to reach the actual sigreturn
+entry; no post-call evidence. SROP13 adds `sropfire rt`: the identical
+manual frame + cfr-0x328 recovery, but RIP=gettimeofday(lk+0xB50), RDI=CAP,
+RSI=0 instead of thr_create. Parent survival + a valid time signature =
+sigreturn and recovery proven; a death isolates sigreturn/frame/recovery
+before any thr_create conclusion. Dispatcher v=srop13.
+
+SROP13 ROUNDTRIP RESULT (id=83, 07:20:27): the gettimeofday control also
+died immediately after SROP-CALL target=lk+0x13ED0. Thus thr_create and the
+child are eliminated as this crash's cause; the failure is in sigreturn's
+frame/recovery or the 0x13ED0 mapping. The minimal thr_create gates are not
+necessarily a valid 417 frame. SROP14 installs the full measured 814a
+shape: selector pack C0=0x1B001300000000, CS/SS/RFLAGS, magic/type/subtype,
+FP/reserved constants at +0x140/+0x158/+0x168/+0x178/+0x188/+0x198/+0x1A8/
++0x1D0/+0x1D8/+0x230/+0x270/+0x278, D0=0, RBP=cfr, and RSP=cfr-0x328.
+Next: `sropfire rt` again before any normal fire. Dispatcher v=srop14.
+
+SROP14 RESULT + THE RECORD-ACCOUNTING FIX (id=84, 07:27:48): the full-814a
+constants frame ALSO died immediately after SROP-CALL target=lk+0x13ED0.
+Three installs (srop12 real, srop13 rt, srop14 rt) died identically with
+three frame shapes, and the 814b-vs-1359a record now explains the class:
+- 814b/1359a [B]: 417 installed a CAPTURED record (ret=0, alive).
+- fire19: 417 REJECTED a garbage frame and returned an error (alive).
+- srop12-14: hand-built frames written far enough to be accepted, then
+  killed by fields the shells never measured.
+Reading the FULL 814a record shows the gap: srop14 wrote ~20 constants and
+left ~50 qwords as live fakeScope bytes - the +0x1E0..0x268 zeros block,
+the +0x280..0x2D8 pointer chain (SCS/fsbase-class, boot-specific), the
++0x2E0..0x4B8 zeros, +0x340=7, +0x480=0x881090080, and the record's GPR
+tail (RBP/R10-R15 at +0x88..+0xB8). SROP15 = THE COMPLETE 814a
+REPLICATION: every qword of CAP+0x00..0x4C0 is written from the measured
+record (constants replicated, zeros written where the record is zero, the
+boot-specific pointer chain zeroed as the neutral candidate), with ONLY
+the live VM pair (+0x38/+0x40) skipped so a 417 error-return stays
+survivable (the fire19 proof). D0 keeps the captured 0x3b003b00000001:
+1359a [B] installed the untouched captured frame alive, so the D0 "gate"
+is not real. Patches after the loop: args (+0x48/50/58), RIP (+0xE0),
+RSP (+0xF8=cfr-0x328). Next: `sropfire rt` first. Dispatcher v=srop15.
+
+SROP15 RESULT + THE HAND-BUILT CLASS IS CLOSED (id=85, 07:43:48): the
+complete 814a replication - every one of the 152 record qwords written,
+constants replicated, zeros written where the record is zero, the
+boot-specific pointer chain zeroed, D0 captured, only the live VM pair
+skipped - ALSO died immediately after SROP-CALL target=lk+0x13ED0. Four
+installs (srop12 real, srop13 rt, srop14 rt, srop15 rt) died with one
+identical beacon pattern across four frame shapes. With every record byte
+accounted for, the remaining kill is the boot-specific pointer chain
+(+0x280..0x2D8, SCS/fsbase-class): the kernel cannot restore zeros there
+without faulting, and those values cannot be known without a live
+capture. NO further hand-built sigreturn frames - ever.
+
+SROP16 = THE IN-SESSION KERNEL CAPTURE. The capture call is
+getcontext(lk+0x142C0) with RDI=B (fakeScope+0x2000), the capture buffer
+pre-cloned with the LIVE scope head (0x48 bytes, VM pair included) so the
+post-call trampoline read of [B+0x38] stays valid. getcontext writes the
+TRUE current record into B - fsbase/gsbase/SCS/FP all real for THIS
+thread - and B+0x48==B (the captured RDI self-pointer) plus magic 0x480
+proves the capture. Modes:
+- `sropfire gc` (FIRST): capture + gates only, no install. It banks the
+  record fields (CS/SS/RFLAGS/magic/type/subtype/D0/RIP/RSP) and answers
+  the one open question: whether the kernel also writes the record
+  preamble (vmAfter vs vm38), which would zero the VM slot mid-call.
+- `sropfire rt`: patch ONLY args/RIP/RSP on the captured record
+  (RDI=CAP tv, RSI=0, RIP=lk+0xB50, RSP=cfr-0x328) and install via
+  sigreturn(RDI=B). Every other byte is kernel-true.
+- plain `sropfire`: the real thr_create patch (RDI=CTX, RSI=WIT) on the
+  captured record.
+Hard capture gates (self==B, magic/type/subtype, CS/SS) abort before any
+install. Verdicts: gc alive+valid = the capture route is real and the
+capture is banked; gc alive but self!=buf = wrong RVA, stop; gc death =
+0x142C0 is not a returning writer. Dispatcher v=srop16.

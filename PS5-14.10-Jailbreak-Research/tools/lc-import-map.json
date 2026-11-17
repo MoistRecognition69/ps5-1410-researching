@@ -3,10 +3,20 @@
  "source": "external game-lane corpus ALL_RESULTS.md: 1215b (import window dump 0x114000-0x118000) + 1215a (libc text dump 0x0-0x114000)",
  "lkbase_of_dump_session": "0x832bdc000 (derived: q(0x1179A8)-0xB50; triple-validated by thr_exit 0x3F0 + thr_new 0x410 anchors)",
  "validation": "94/96 harvest slots reproduced exactly (the 2 beyond the dump end); the 9 printed stubs match; every page count matches",
+ "rosetta_corrections_2026_11_17": {
+  "sigreturn_417": "i=29 / thunk 0x288 / GOT 0x117988 / lk+0x13ED0 (libc wrapper 0x2F310)",
+  "getcontext_421": "i=28 / thunk 0x278 / GOT 0x117980 / lk+0x142C0 (libc wrapper 0x2F2D0)",
+  "setcontext_422": "i=30 / thunk 0x298 / GOT 0x117990 / lk+0x13F20 (libc wrapper 0x2F2E0)",
+  "swapcontext_423": "i=31 / thunk 0x2A8 / GOT 0x117998 / lk+0x13F40 (libc wrapper 0x2F2F0)",
+  "makecontext": "i=32 / thunk 0x2B8 / GOT 0x1179A0 / lk+0x416E0 (libc wrapper 0x2F300)",
+  "thr_create_430": "i=42 / thunk 0x358 / GOT 0x1179F0 / lk+0x13D20 (Thrd_create helper 0x4BDE0 call 0x4BE47)",
+  "thr_exit_431": "i=54 / thunk 0x418 / GOT 0x117A50 / lk+0x13EC0 (Thrd_exit wrapper 0x4C240)",
+  "retraction": "lk+0x13ED0 is sigreturn, NOT thr_create; earlier thr_create-at-0x13ED0 fires and the 0x3B0/0x3F0 clean-exit assumptions are not carried into srop1"
+ },
  "key_findings": {
   "1": "the import table is NOT NID-sorted (verified algorithm 50/50; anchor raw-NID order != slot order)",
-  "2": "the table is build/syscall-number ordered: thr_exit(431)->i=73 and thr_new(455)->i=74 ADJACENT, exactly their number adjacency with nothing between imported; thr_self absent (E2-proven) and thr_create ABSENT (slot 72 -> another module 0x832510840)",
-  "3": "THR_CREATE IS NOT IMPORTED BY LIBC: the rtld/NID-map route was structurally incapable of naming it. The 94 = 9+ syscall stubs (mov rax,imm32; syscall; ret) + real lk functions",
+  "2": "CORRECTED 2026-11-17: thr_create = i=42/lk+0x13D20 and sigreturn = i=29/lk+0x13ED0. The old i=72 absence prediction was only a failed position guess, not evidence of absence.",
+  "3": "CORRECTED 2026-11-17: THR_CREATE IS IMPORTED by the Thrd_create helper at libc+0x4BDE0 (call 0x4BE47). The old not-imported conclusion is retracted.",
   "4": "the +7 universal syscall executor (game lane standard, 1183b-confirmed) works with ANY known stub: only RAX=430 is missing",
   "5": "THE ROP CATALOG IN LIBC (offsets stable - same system .prx in every process): pop rax;ret x30 (first libc+0x5dcd4), pop rdi;ret x9 (first +0x27932), pop rsi;ret x4 (first +0xb2188), pop rcx;ret x23; syscall;ret x0",
   "6": "THE STACK IS ARW-WRITABLE near cfr (below-cfr band proven mapped to -0x8000; ARW = out-of-cage writes 24+ proven) => a pop rax;ret gadget + a written sled = full RAX control with RDI untouched"

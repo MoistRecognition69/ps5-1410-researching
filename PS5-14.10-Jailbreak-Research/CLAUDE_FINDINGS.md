@@ -7138,6 +7138,28 @@ and depth). SURVIVES = the sropfire's handler depth/flow = the killer
 (the fix = the sropfire restructure); DIES = the scope-syscall
 interaction is broken TODAY (vs the E2 era) = the deeper diagnosis.
 
+SESSION 214 FINAL VERDICT - THE WEBPROCESS SROP ROUTE IS EXHAUSTED (the
+restarted console): the pure rehearsal (the head cleaned, the pristine
+scope, no gates/ic/install) died on a FULLY RESTARTED console - and the
+shell's own preflight fake-scope calls (the ret gadget, the realbody
+-6) SURVIVED seconds before. The scope-call path is healthy for
+userland-only targets; ANY syscall target through the fake scope dies.
+The corpus's own docs answer why the record can never be safe: the
+kernel's copyin/copyout of the ucontext crosses the cage-class pages
+(the face buffer, the fake scope = the JSC heap) and the bulk record
+writes collide with the live neighbors - the constraints have NO
+overlap anywhere in the WebProcess address space. The dispatch route
+(RDI=FO) has the same class problem (the face buffer = the cage). THE
+GAME LANE (the Lua loader's fcall_with_rax) = the only architecture
+without the scope-swap/kernel-copyout constraint - the RAX-controlled
+syscalls with the args in registers, the getcontext captures, the
+thr_new spawns - all 383a/384b-proven in that lane on this exact
+firmware. The PSN constraint is manageable: the research DNS spoofer
+BLOCKS the firmware-update hosts (vps_setup.sh blocks
+fus01/fus02.ps5.update.playstation.net) while passing the auth servers,
+so the sign-in cannot trigger an update, and the Hamidashi demo is a
+14.00-era title that runs on 14.10 without a forced update.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

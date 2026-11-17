@@ -2,7 +2,7 @@
 
 **Checkpoint date:** 2026-11-17  
 **Current dispatcher:** `v=srop30`  
-**Status:** the b50 bisect on the restarted console: the scope-call path is HEALTHY for userland-only targets (the ret gadget); gettimeofday through the fake scope dies even on a clean machine with no record writes — so the sropfire architecture is exonerated and the difference is the standalone-command depth (the E2's rawcall shape) vs the sropfire handler depth, or the syscall-target class. The next bisect: the export-table read + the shell's SWEEP command (the E2-replica standalone call).
+**Status:** the WebProcess SROP route is EXHAUSTED (the clean-console verdict): the scope-call path is healthy for userland-only targets but ANY syscall target through the fake scope dies - the kernel's copyin/copyout of the ucontext crosses the cage-class pages and the record writes collide with live neighbors - the constraints have no overlap in the WebProcess. THE ROUTE FORWARD = the game lane (the Lua loader's fcall_with_rax: no scope-swap, RAX-controlled syscalls, the 383a/384b-proven spawns); the PSN constraint is manageable (the DNS spoofer blocks the update hosts while passing the auth servers, and the Hamidashi demo is a 14.00-era title).  
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 
 ## 1. Exact current state

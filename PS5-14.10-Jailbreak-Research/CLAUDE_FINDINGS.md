@@ -7075,6 +7075,57 @@ fundamentally-different delivery: the FontFace DISPATCH call (the
 fire-era's RDI=FO virtual) as the sigreturn RDI carrier, accepting the
 one-shot nature. The game lane remains the recommendation.
 
+### SESSION 208 (THE FULL-REPO READ - the user directive: their state is stale, read the latest)
+
+FOUR SUBAGENT REPORTS on their repo @ c6dff674 (the data-gather commit +
+the VPS/tester program, <24h old). THE FINDINGS:
+1. THEIR STATE.MD IS STALE ("BROWSER PATH EXHAUSTED", PSN sign-in needed)
+   while the README advertises RIP control + the tester program - the
+   maintainer's own concession comments (11/16 23:57, issues #282/#284)
+   admit the S0-1 ret gadget was boot-luck (unverified 0xC3) and the
+   promised p691 fix never landed. The newest bench (#295) disclaims
+   RIP/base claims. Community verdict: "chain reproduces broadly,
+   control does not" (the buffer-vptr acceptance dispute: all nine arm
+   variants die at RIP2-GO with a buffer vptr).
+2. THE DATA-GATHER PROBE (probe-modules.html) is READ-ONLY: no write,
+   no vtable dispatch, no GOT harvest (the deleted comment block
+   promised libkernel/libc pointers; no code performs it). Its real
+   contributions: the SELF-address oracle (the +0x20 pointer write +
+   the fonts.check() range quadruple), the forgeRead read-descriptor
+   (+0x38 via the m_mutableProperties chain - the read address set by
+   ONE put64), the real 72-byte vtable read, and BASE=VP-0xC6A1B28
+   HARDCODED (candidate #1 of three - arithmetically the round-base
+   candidate; any tester BASE inherits the unverified assumption).
+3. *** WHAT WE MISSED - THE COOP_ANALYSIS.MD RECONCILIATION ***: their
+   doc carries the FULL per-slot symbol-level RVA tables for BOTH
+   vtables (PV_RVA=0x724DAC0 11 slots; VP_RVA=0x724DB28 8 valid+2 NULL;
+   VP s0=0x5B3CFB0, s3 fontStateChanged=0x5B3D6B0, s6 ref=0x5793400,
+   s7=0x5B3D810; ref=0x5B3CFC0, deref=0x5B3D7A0, the no-op
+   0x4001750) - THE MATH RECONCILES EXACTLY WITH OUR MEASURED DELTAS:
+   0x724DB28-0x1710B78=0x5B3CFB0 (=their s0_RVA);
+   0x724DB28-0x1ABA728=0x5793400 (=their s6); 0x724DB28-0x1710478=
+   0x5B3D6B0 (=their s3). THEIR RETRACTED 0x724DB28 = OUR
+   INDEPENDENTLY-MEASURED VP RVA (our VP=S.BASE+0x724DB28, derived via
+   the pthread-chain/beacon base) - OUR DATA VERIFIES THEIR FULL
+   MODULE MAP, and the WebKit function addresses are computable per
+   boot from our base (our shell's v79ret=BASE+0x4001750 = their
+   no-op - we have been using their map all along).
+4. THE OTHER MISSED ASSET: docs/webkit_path_5_jail_module.md - the
+   WebProcess has NO syscall filter (no seccomp/capsicum/jail) and
+   sys 593 (dynlib_get_info_ex) copies mapbase/text_size/data_base_off
+   UNCONDITIONALLY (no priv_check) = the SPRX module enumeration = the
+   ASLR defeat for all 20+ loaded modules INCLUDING our missing libc
+   base (the lcnid walk enablement). Our args limitation (RSI/RDX
+   uncontrolled) gates it like everything else, but it is ONE boot to
+   learn the behavior. Also p692-auxv-base-probe.html (the /proc/pid/
+   auxv AT_PHDR route) is untested on-device.
+5. THE ACTIONABLE POSITION: we hold the VERIFIED answer to their
+   tester program's core question (VP RVA 0x724DB28, independently
+   derived) plus the base-derivation method; their full symbol map +
+   our base = the complete WebKit function-address table per boot.
+   Contributable to their issues #284/#285/#295 (RealOrko's exact ask:
+   the 14.10 module section layout).
+
 ### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
 
 Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,

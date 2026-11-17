@@ -7604,3 +7604,47 @@ fingerprint) OR the game lane (trivial there).
 6. THE SHELL TOOLS VALIDATED: the str: ASCII scan (the '/U59' sweep),
 the read-chunk dump loop, the ptrscan exact-value mode (lo=V hi=V+1
 = the NID-value search once we have a NID table location).
+
+### SESSION 227 (THE LK INTERNAL MAP + THE FDE-TABLE ID + THE NID HUNT)
+
+THE OFFLINE LIBC-BAND IDENTIFICATION RETURNED A CLEAN STRUCTURAL
+NEGATIVE: the 1215a prologue voting stayed flat (the dump covers only
+456KB of 1116KB - 40KB windows per 64KB page) AND THE REAL EXPLANATION
+LANDED: *** LIBC.SPRX IS NOT LOADED IN THE WEBPROCESS AT ALL *** -
+the corpus's own module list (webkit_path_5: WebKit, JSC, ICU, PNG,
+JPEG, WebP, Brotli, FreeType, Fontconfig, HarfBuzz, Cairo, LibPSL,
+LibXml2, libSceNKWebKitRequirements, WPE) contains NO libc - the
+WebProcess's C-library functions come from LIBKERNEL'S EXPORTS, and
+our 12-band census ~= that list. THE LIBC-ATTRIBUTION QUESTIONS CANNOT
+BE SETTLED FROM THE WEBPROCESS (no libc .data exists there).
+
+THE REDIRECT - LK'S OWN LINKAGE (the attribution data source):
+1. THE 0x48000 TABLE = THE FDE/UNWIND TABLE, NOT A SYMBOL TABLE: the
+   entries {lo32, hi32=rva-offset} match lk-funcmap.json EXACTLY (the
+   lo32 = the FDE 4th field = the eh_frame/CIE offset: FDE#[0,208,88,
+   48476] -> lo32 0xBD5C; FDE#[1,304,165,77972] -> lo32 0x13094).
+   The `sweep` command has been reading FDE entries all along.
+2. *** PS5 SPRX = NID-ONLY EXPORTS ***: NO symbol-name tables exist in
+   lk's data - the linkage is NID-based only. The name-string hunt is
+   structurally closed.
+3. THE FULL LK DATA MAP (all read this session, banked in the capture
+   files): 0x48000 = the FDE table (2092 entries -> ~0x4C1B0);
+   0x4D000-0x5C000 = the SCEREL RELOCATION TABLE (24-byte records,
+   self-indexing addends, offsets +8-incrementing into 0x17300+);
+   0x5C000-0x751D0 = THE STRING/MESSAGE REGION (pthread error
+   messages, sysctl names - kern.sandbox.id, kern.sdk_version,
+   machdep.rcmgr_* - module paths libSceFontGsm.sprx/libSceSysmodule,
+   and 'allocating TLS+TCB for the primary thread. tls=%p size=%lx,
+   map_size=%lx r=%x' WHICH CORROBORATES THE +0x38 TCB MODEL);
+   0x751D0 = the canary slot.
+4. *** LK+0x44000 = XO TEXT (ONE SESSION PAID) ***: lk's text extends
+   page-aligned TO 0x48000 - there is NO gap; reads at 0x44000 die.
+5. THE NID HUNT: the three known NIDs (sigreturn 0x8ca4a965161b8d9a,
+   getcontext 0x73faa703dcf4aa75, setcontext 0xef2caa18ef5454d9) are
+   NOT in lk+0x48000-0x76000 in ANY form (8-byte LE/BE contiguous,
+   32-bit halves both endian) - THE ONLY REMAINING CANDIDATE = THE
+   TAIL (0x751D8+): the canary's page rest (known-safe) + the pages
+   beyond (0x76000+, one session per unmapped page).
+THE NEXT-BOOT PLAN: (1) read 0x751D8-0x76000 (the canary page rest);
+(2) probe 0x76000 (one page; death = the segment ends there; alive =
+continue page-by-page); (3) scan each page for the three NIDs.

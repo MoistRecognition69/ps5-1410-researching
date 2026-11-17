@@ -6861,3 +6861,124 @@ Hard capture gates (self==B, magic/type/subtype, CS/SS) abort before any
 install. Verdicts: gc alive+valid = the capture route is real and the
 capture is banked; gc alive but self!=buf = wrong RVA, stop; gc death =
 0x142C0 is not a returning writer. Dispatcher v=srop16.
+
+SROP16 GC RESULT + THE VM-SAFE RETRACTION (id=86, 07:50:31): the capture
+probe reached SROP-GC-CALL target=lk+0x142C0 with the VM-SAFE buffer
+(B=fakeScope+0x2000 pre-cloned with the live scope head, VM pair at
+B+0x38) and DIED before any gates beacon. If the wrapper CACHES the VM
+pointer at call entry (the V82 lesson's only consistent reading - see
+below), a TRUE getcontext at 0x142C0 would have SURVIVED its own mid-call
+record write. It did not survive, so:
+1. 0x142C0 is NOT a returning context writer (setcontext/swapcontext/
+   sigreturn class, consuming B or jumping wild), OR
+2. the VM read is UNCACHED (post-call, from the zeroed B+0x38), in which
+   case NO getcontext-class capture can ever survive the scope-swap path.
+THE RETRACTION: the srop1-era "0x13F20 = setcontext, death-proven" label
+is invalid - that death ran with a ZEROED CAP (the SROP2-audit defect),
+which kills ANY target through the cached-VM=0 mechanism. 0x13F20 has
+NEVER been tested with a VM-safe buffer.
+SROP17 adds `sropfire gc2`: the identical VM-safe capture flow targeting
+0x13F20. Outcomes: alive+valid = THE CAPTURE (banked record, proceed to
+rt); alive+invalid fields = a writer with a different signature (e.g.
+makecontext setup), stop and read; death = the uncached-VM model is real
+and the WebProcess scope-swap cannot host ANY context capture - the
+offline pivot is then the loader-env fcall_with_rax hybrid or an
+RDI-independent call primitive. Dispatcher v=srop17.
+
+SROP17 GC2 RESULT + THE REAL DEATH CAUSE FOUND (id=87, 08:01:03): the
+0x13F20 capture ALSO died at GC-CALL with the VM-safe buffer. The
+scope-swap capture class is CLOSED (five deaths: 0x13F20 confounded,
+0x142C0 confounded, 0x142C0 clean, 0x13F20 clean). THE PIVOT: mining the
+corpus's OWN kernel-side 417 disassembly (their docs/FINDINGS.md, the
+0xa07xxx sigreturn body) REDEFINED THE DEATHS:
+- The install's success path copies ONLY: bcopy(user+0x48, tf, 0x90)
+  (the GPRs), bcopy(user+0xD8, tf+0xe0, 0x30) (ERR/RIP/CS/RFLAGS/RSP/SS),
+  FS/GS base from [user+0x480]/[user+0x488] into [r13+0x40]/[r13+0x48]
+  (r13=[td+0x3f8]), and the signal mask from user+0x08.
+- THE +0x280..0x2D8 CHAIN IS NEVER COPIED - the pointer-chain-kill theory
+  is RETRACTED.
+- THE REAL KILL: +0x480 (FS base) held fakeScope garbage in srop12-14 and
+  the LOADER boot's TLS base 0x881090080 in srop15 (the 814a replication
+  faithfully restored ANOTHER PROCESS's stale TLS base) - the resumed JS
+  faults on its first fs-relative TLS access. Four deaths, one cause.
+- The gates confirmed: CS&3==3 (+0xE8), type==0x10002|0x10000 (+0x110),
+  subtype 0x20001..0x20002 (+0x118), and the RFLAGS cookie = an
+  EQUALITY-MASK test against the LIVE trapframe (mask 0xFFFFFFFFFFDAB22A;
+  the installer forces the masked bits to the live values, so our 0x202
+  passes). The 0xF0=0 "three -1 results" lesson (813a) confirmed.
+SROP18 = the srop15 full accounting + THE FIX: the FS base is DISCOVERED
+in-session - the pthread struct (ptS, already from the walk) is scanned
+for the FreeBSD TCB self-pointer ([fsbase]==fsbase) and written to
++0x480; +0x488=0 (the captured GS); +0x08-0x28 zeroed (the empty signal
+mask instead of live scope bytes). The capture modes (gc/gc2) are
+REMOVED. Next: `sropfire rt` first. Dispatcher v=srop18.
+
+SROP18 LIVE RESULT + THE TCB SOLVED (id=88-100, 08:06-08:12): the v1
+discovery (the self-pointer scan of ptS..+0xA00) found NOTHING and
+correctly did NOT fire - THE FIRST INSTALL-ROUTE RUN WHERE THE PARENT
+SURVIVED THE COMMAND. The pthreadHead dump + five forced reads in the
+SAME live session identified the TCB:
+- ptS's +0x1F0 slot (idx 0x3E) = 0x8ff81c080 - a pointer OUTSIDE the
+  pthread's own cluster.
+- [0x8ff81c080..0x18] = {0x0, 0x8ff81c0c0 (TCB+0x40, the self-reference),
+  0x880613b60 (THE PTHREAD back-reference), 0x0}.
+- [0x88069d598] (the walk's hop, proven readable) = {0x880613b60, the
+  lk chain node 0x802fbc218, ...}; [0x802ff2268] (lk data) = 0x880613b60.
+  THREE independent references agree on the pthread = 0x880613b60.
+- The TCB page-offset pattern: 0x881068080 / 0x881090080 (the corpus's
+  GET_FSBASE runs) / 0x8ff81c080 - ALL end in 0x080.
+SROP19 = the discovery v2: scan ptS..+0x400 for 0x88-region pointers,
+read +0x18 at each, accept [C+0x10]===ptS || [C]===C || [C+8]===C (the
+mutual reference), write it to the record's +0x480, +0x488=0. Then the
+normal rt/real flow. Dispatcher v=srop19.
+
+### SESSION 197 (THE ZIGZAGBOI1 CLAIM RE-VERIFIED - the user directive: read their repo before cross-checking)
+
+Our local corpus IS their repo (origin=ZigZagBoi1/PS5-14.10-Research,
+HEAD=13de1acf, in sync). The README's "RIP control confirmed on device"
+does NOT survive their own community's benches:
+- ISSUE #282 (vincenzoiacovone, OPEN): the S0-1 "ret gadget" clean return
+  is BYTE-LUCK - on their boots *(S0-1)=0x00 (padding), every arm crashes
+  at RIP2-GO; the 0x42 poison test is DEAD CODE in the shipped file (PK
+  parsed, never read). ZigZagBoi1 himself CONCEDED (11/16 23:57): "the
+  ret arm survived on our boots but we now understand this was luck...
+  This explains the intermittent RIP2-GO crashes we saw."
+- ISSUE #295 (hex0x42424242, 11/17): the walk reproduces and CONFIRMS OUR
+  FINGERPRINT: VP = the Client SECONDARY vtable (offset-to-top -32,
+  typeinfo 0), slot0 RVA 0x1710B78, s2 = VP-0x324C3D8 (their p691
+  constant 0x324C3DD8 was a typo that "underflows" on their bench),
+  s2==s4==s5, s8 NULL. Explicitly claims no RIP/base/kernel R/W.
+- ISSUE #284 (RealOrko, OPEN): a THIRD read-only lane (unicodeRange
+  Vector reclaim + forged style chain; APNG anchor P&0x3FFF==0x3850,
+  base=P-0x7f850). "No JS-visible write of a chosen module address yet."
+NET VERDICT: their WebKit lane is READ-ONLY (no ARW, no write, no
+byte-independent call primitive, no syscall path - their next_action is
+still "find syscall;ret"). Our closures (vtable routes, high map, blind
+scans) stand and are now corroborated by the #282 admission. Our assets
+beyond theirs: full ARW, PC+RDI rawcall call-and-return, the complete
+libc import map (the #283 SPRX doctrine = our V83/V84 explanation),
+S.BASE (solves their unresolved "RVA to be determined": VP=S.BASE+
+0x724DB28), the srop spawn design. THEIR banked assets we keep: the Lua
+lane spawn proofs (thr_create full-register, thr_new(455) param/0x38,
+the 384b child-as-executor), the kernel-address measurements (probe
+1199b: kernel_text slide +0x55000000, allproc, rootvnode), the pop
+gadget census (class counts only). NO CHANGE to the route: `sropfire
+gc2` remains the next device action.
+
+THE GAME LANE EVALUATION (the user's question, 2026-11-17; decision: DEFERRED):
+the Hamidashi Creative demo loader (their 80w-proven Lua 5.1 lane, the
+payload save shipped in artifacts/usb_pre_reset_2026-10-20/) was assessed
+as a parallel track. It CANNOT touch the WebProcess (process isolation;
+their ~400-syscall/32M-ioctl sweep = zero kernel pointers; no kernel R/W
+on 14.10 anywhere). Its value as an ABI LAB is banked for when needed:
+(1) fcall_with_rax(0x3B7, 421, buf) = the safe in-game getcontext capture,
+record diffs across thr_new-spawned threads/states = the +0x280-0x2D8
+chain semantics; sysarch(GET_FSBASE) correlated against the record = the
+fsbase/gsbase offsets as measured facts; (2) the srop15-record 417-install
+test in-game = the shape validity at zero WebProcess session cost;
+(3) thr_new(455) = the SIMPLER spawn ABI for our srop frame (RDI=&param,
+RSI=0x38, RIP=lk+0x410; 383a/384b prove spawn + the 3-arg/4-arg/6-arg
+child executor end to end); (4) the in-game libc-data NID walk (libc data
+pages readable there) = DIRECT identification of the context stubs,
+ending the five-block-order ambiguity. Prerequisites if revived: the demo
+installed + the payload save staged + PSN sign-in.

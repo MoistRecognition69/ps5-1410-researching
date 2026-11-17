@@ -1,8 +1,8 @@
 # PS5 14.10 Jailbreak — Continuation Handoff
 
 **Checkpoint date:** 2026-11-17  
-**Current dispatcher:** `v=srop16`  
-**Next device command:** `sropfire gc` (capture probe) — then `sropfire rt` only if the capture gates pass  
+**Current dispatcher:** `v=srop19`  
+**Next device command:** `sropfire rt` (the roundtrip with the TCB-discovered FS base)  
 **Authorization:** Sony/HackerOne-sanctioned research on the user's retail PS5. Read the authorization block at the top of `CLAUDE_FINDINGS.md` before continuing.
 
 ## 1. Exact current state
@@ -11,18 +11,19 @@ The next experiment is ready but **has not run**:
 
 ```powershell
 $env:SHELL_PORT = 8443
-node "D:\ps5\PS5-14.10-Jailbreak-Research\tools\ws-shell\shell-cmd.js" sropfire gc
+node "D:\ps5\PS5-14.10-Jailbreak-Research\tools\ws-shell\shell-cmd.js" sropfire rt
 ```
 
-`sropfire gc` is a **capture-only probe**: it calls `getcontext(lk+0x142C0)` with `RDI=B` (a scratch clone of the live scope head) and validates the record the kernel writes. **No sigreturn install happens in `gc` mode.**
+`sropfire rt` is a **gettimeofday sigreturn roundtrip**, not a thread-creation attempt.
 
 Current result before this checkpoint:
 
-- `srop12` (real), `srop13 rt`, `srop14 rt` (full 814a constants) and `srop15 rt` (the COMPLETE 814a replication — all 152 record qwords written, constants replicated, zeros where the record is zero, the boot-specific pointer chain zeroed, D0 captured, only the live VM pair skipped) all died immediately after `SROP-CALL target=lk+0x13ED0` — four installs, four deaths, one identical beacon pattern.
-- With every record byte accounted for, the kill is the **boot-specific pointer chain** (`+0x280..0x2D8`, SCS/fsbase-class): the kernel cannot restore zeros there, and those values cannot be known without a live capture. **The hand-built frame class is closed — permanently.**
-- `srop16` replaces the hand-built parent frame with an **in-session kernel capture**: `getcontext(lk+0x142C0)` with `RDI=B` writes the TRUE current record (real fsbase/gsbase/SCS/FP for this thread) into `B=fakeScope+0x2000`, which is pre-cloned with the live scope head so the post-call trampoline VM read (`[B+0x38]`) stays valid. `B+0x48==B` (the captured RDI self-pointer) + magic `0x480` proves the capture.
+- srop12–15 (four hand-built install shapes, ending with the complete 814a replication) all died after `SROP-CALL target=lk+0x13ED0`; the two capture probes (`gc`=0x142C0, `gc2`=0x13F20, VM-safe buffers) both died at the capture call. The scope-swap capture class is closed.
+- **THE REAL DEATH CAUSE (found in the corpus's own kernel-side 417 disassembly, `docs/FINDINGS.md` 0xa07xxx):** the install sets the thread's **FS/GS base from the record's `+0x480`/`+0x488`** and copies only the GPRs (`+0x48`, 0x90 bytes), the tail (`+0xD8`, 0x30 bytes: ERR/RIP/CS/RFLAGS/RSP/SS), and the signal mask (`+0x08`). The `+0x280..0x2D8` chain is **never copied** (the old pointer-chain-kill theory RETRACTED). All four installs died because `+0x480` held fakeScope garbage (srop12–14) or the loader boot's TLS base `0x881090080` (srop15) — the resumed JS faults on its first fs-relative TLS access.
+- Gate details confirmed: CS `&3==3`, type `0x10002|0x10000`, subtype `0x20001..0x20002`, and the RFLAGS cookie is an equality-mask test against the LIVE trapframe (mask `0xFFFFFFFFFFDAB22A`) whose masked bits the installer forces to the live values — our `0x202` passes.
+- **srop18's fix:** the FS base is discovered in-session — the pthread struct (already walked) is scanned for the FreeBSD TCB self-pointer (`[fsbase]==fsbase`) and written to `+0x480`; `+0x488=0` (the captured GS); the mask region `+0x08-0x28` is zeroed. The record keeps the 814a constants, the captured D0, and the live VM pair (a 417 rejection still returns through the trampoline alive).
 
-Do not run `sropfire rt` or plain `sropfire` before a `gc` run has passed its gates.
+Do not start with plain `sropfire`; run `sropfire rt` first.
 
 ## 2. What is already proven
 
@@ -141,31 +142,21 @@ Same frame and recovery, except:
 
 A valid `reply.roundtrip.valid=true` plus a surviving parent would prove sigreturn and the recovery path before attempting `thr_create`.
 
-## 5. New in srop16
+## 5. New in srop18
 
-The hand-built parent frame is gone. All modes now share the **in-session kernel capture**:
+The capture modes are gone; the fix is surgical. The record at `CAP=fakeScope`:
 
-- `B = fakeScope+0x2000` is pre-cloned with the live scope head (0x48 bytes, VM pair included), so the post-call trampoline read of `[B+0x38]` stays valid.
-- The capture call is `getcontext(lk+0x142C0)` with `RDI=B` (scopeSlot swapped to B). The kernel writes the TRUE current record: fsbase/gsbase/SCS/FP all real for this thread, this boot.
-- `mode=gc` stops after the capture gates — no install. It banks CS/SS/RFLAGS/magic/type/subtype/D0/RIP/RSP and answers the one open question: does the kernel also write the record preamble (`vmAfter` vs `vm38`)? If it does, the VM slot is zeroed mid-call — the V82-class death — and no capture through the scope-swap is survivable.
-- `mode=rt` patches ONLY args (`+0x48/+0x50`), RIP (`+0xE0 = lk+0xB50`) and RSP (`+0xF8 = cfr-0x328`) on the captured record, then installs via `sigreturn(lk+0x13ED0)` with `RDI=B`. Every other byte is kernel-true.
-- The real fire patches `RDI=CTX, RSI=WIT, RIP=thr_create` on the captured record instead.
-- Hard capture gates (`B+0x48==B`, magic `0x480`, type `0x10002`, subtype `0x20001`, CS `0x43`, SS `0x3B`) abort before any install.
+- **`+0x480` = the discovered live FS base** — srop19's v2 rule: scan the pthread struct (`ptS`, from the walk) for `0x88`-region pointers, read `+0x18` at each candidate, and accept the one whose **`+0x10` equals the pthread itself** (the mutual reference) — measured live: `ptS=0x880613b60`, its `+0x1F0` slot = `0x8ff81c080`, and `[TCB+0x10] == ptS`; TCB allocations end in `0x080` across boots/processes (`0x881068080`, `0x881090080`, `0x8ff81c080`). `+0x488 = 0` (the captured GS).
+- **`+0x08-0x28` zeroed** — the empty signal mask instead of live scope bytes (the kernel sets the mask from there).
+- The 814a constants ride along (GPR tail, selector pack, FP/reserved, captured D0 `0x3B003B00000001`), the `+0x280..0x2D8` chain zeroed (never copied — irrelevant), and the live VM pair `+0x38/+0x40` skipped (a 417 rejection still returns through the trampoline alive, the fire19 proof).
+- Patches after the loop: args `+0x48/+0x50/+0x58`, RIP `+0xE0`, RSP `+0xF8 = cfr-0x328`.
+- `reply.fsbase` + `SF 1b` beacon confirm the discovery; if no self-pointer is found, `reply.pthreadHead` dumps the first 0x40 qwords for offline analysis and nothing fires.
 
 ## 6. How to interpret the next run
 
-### `sropfire gc` — the capture verdicts
+### If `sropfire rt` survives with a valid time signature
 
-| Outcome | Meaning | Next |
-|---|---|---|
-| Alive + `capture.valid=true` + `vmAfter==vm38` | `0x142C0` = getcontext, the kernel leaves the preamble, **the capture is banked and VM-safe** | `sropfire rt` |
-| Alive + `capture.valid=true` + `vmAfter==0` | Capture works, but the kernel zeroes the record preamble — the VM slot only survived because nothing read it this time | stop; offline VM-slot analysis before any install |
-| Alive + `capture.valid=false` with fields present | Wrong RVA or partial writer — read the fields, stop | offline |
-| Death after `GC-CALL` | `0x142C0` is not a returning writer (setcontext/swapcontext/sigreturn class) | next candidate `0x13F20` in a NEW session, never two candidates per session |
-
-### If `sropfire rt` survives with a valid time signature (after a passed `gc`)
-
-This proves sigreturn + the captured-record install + the recovery path. Next run:
+Sigreturn + the captured-shape install + the recovery path are all proven, **and the FS-base discovery is confirmed** (`reply.fsbase` sane). Next run:
 
 ```powershell
 node "D:\ps5\PS5-14.10-Jailbreak-Research\tools\ws-shell\shell-cmd.js" sropfire
@@ -173,9 +164,13 @@ node "D:\ps5\PS5-14.10-Jailbreak-Research\tools\ws-shell\shell-cmd.js" sropfire
 
 A small nonzero `reply.witness` with the parent alive is the spawn/E3 milestone.
 
-### If `sropfire rt` dies after `INSTALL target=...13ED0` (with a passed capture)
+### If it dies after `SROP-CALL target=...13ED0` (with a sane `reply.fsbase`)
 
-The captured record was kernel-true; the death would then be in the 417 mapping itself (`0x13ED0`) or the recovery mechanics. Stop firing; the next work is offline revalidation of the five-context-wrapper block (wrapper shapes in the 1215a dump) — no more device installs.
+The FS-base fix didn't complete the picture — the death would then be in the GS base (`+0x488=0` wrong for the WebProcess?) or another copied field's semantic (e.g., the garbage signal mask, or the GPR tail values). Do NOT fire more identical sessions: the next move is a diagnostic variant that installs with RIP = the ORIGINAL return path (the 1359a [B] mechanics control) to isolate install-vs-target, offline-designed first.
+
+### If `reply.fsbase` is empty / `no fsbase self-pointer`
+
+The TCB self-pointer isn't in the scanned pthread window. `reply.pthreadHead` (0x40 qwords) is banked in the reply — analyze offline, widen the scan, or check the alternate TCB locations before any fire.
 
 ### If the command returns but `witness=0`
 

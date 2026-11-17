@@ -7288,6 +7288,32 @@ COMPLETE FP write: all 40 qwords of +0x140..+0x280 (zeros where 814a
 has zeros, constants where it has constants - no gaps, no garbage).
 Dispatcher v=srop35.
 
+SROP35 RESULT + THE GPR RESTORE DISCOVERY (id=118, 09:34:21): the
+complete-FP install STILL died silently. WORKING THE FULL DISASSEMBLY
+BACKWARDS EXPOSED THE REAL MISSING PIECE: the kernel bcopy(user+0x48 ->
+tf, 0x90) = 18 QWORDS = THE FULL REGISTER FILE - and the surgical design
+left those as the scope's SPRAY GARBAGE = the resume at the ret gadget
+continues the trampoline with garbage in every register. The 1359a
+roundtrip survived because its captured record carried the REAL
+register values. THE SLOT ORDER validated by the 814a capture:
++0x88=RBP=0x7efb3a890 (a STACK address = RBP's home), +0x48=RDI=the
+capture buffer itself: rdi+0x48,rsi+0x50,rdx+0x58,rcx+0x60,r8+0x68,
+r9+0x70,rax+0x78,rbx+0x80,rbp+0x88,r10+0x90,r11+0x98,r12+0xA0,
+r13+0xA8,r14+0xB0,r15+0xB8. srop36 = the GPR block written: RDI=CAP
+(the scope - the trampoline's live rdi at the call), RBP=cfr (the
+trampoline's frame pointer), the caller-saved (rsi/rdx/rcx/r8/r9/rax)
+zeroed (reloaded by the caller after any call = zero-tolerant), the
+callee-saved (rbx/r10-r15) ZEROED AS THE TEST (the trampoline's live
+values are unknowable from JS - the frame slots hold the CALLER's
+pushed values). The tuned fake scope IS zeros at +0x48-0xC0 (the
+preflight proves the trampoline tolerates zeros there) = the writes
+change nothing pre-call. VERDICTS: survives = the install + the resume
+PROVEN (the callee-saved zeros tolerated); dies = the trampoline keeps
+live data in callee-saved registers across the call = the resume needs
+register values unobtainable in-process = THE ROUTE CLOSES (the game
+lane's fcall_with_rax captures the true state safely). Dispatcher
+v=srop36.
+
 SROP25 IC RESULT + THE VIEW ANSWER (id=107, 08:28:47): the rehearsal
 through the TUNED fake scope ITSELF died (SROP-CALL target=lk+0xB50, no
 INSTALL-CONTROL beacon) - the content theories are exhausted: the fake

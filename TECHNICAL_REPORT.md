@@ -39,7 +39,9 @@ Purely technical findings from a retail PS5 (firmware 14.10) WebProcess exploita
 | `~0x4000–0x6AD7000` | `.text` — **execute-only** (reads fault; ~111.8 MB) |
 | `0x6AD7000–0x724DB28+` | `.rodata`/vtables/`.data` — readable |
 
-**Known WebKit function RVAs [S + arithmetic-verified]:** `fontStateChanged = 0x5B3D6B0`, dtor pair `0x5B3CFB0/0x5B3CFE0`, `ref = 0x5793400`, `deref = 0x5B3D810`, ICF no-op `0x4001750`, `~FontFace 0x412C450`.
+**Known WebKit function RVAs [device-arithmetic: VP_RVA minus the device-measured slot deltas]:** `fontStateChanged = 0x5B3D6B0`, dtor pair `0x5B3CFB0/0x5B3CFE0`, `ref = 0x5793400`, `deref = 0x5B3D810`, ICF no-op `0x4001750`, `~FontFace 0x412C450`.
+
+**Methodology guard:** no patched/unpatched conclusion in this report derives from Sony's WebKit source drops — firmware-level behavior is established only by on-device measurement or by disassembly of dumped binaries (the kernel body in §7, the libc-based syscall map in §6). Source is used solely for interface/layout facts (the Client slot order, object field offsets), each cross-confirmed at runtime. Runtime module access: WebKit `.text` is execute-only (unreadable, boundary measured); the main binary's `.rodata`/`.data` are runtime-readable (the vtable walk every session; the 114 KB import-GOT dump, `tools/vpmap2-*.jsonl`); satellite-SPRX (libWebKit/libJSC) data segments are untested.
 
 ---
 

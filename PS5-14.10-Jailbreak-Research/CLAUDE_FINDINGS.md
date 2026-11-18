@@ -7685,3 +7685,236 @@ THE CAMPAIGN STATE: E2 complete (ARW + call primitive); the srop
 route closed on the mechanism level; the attribution rests on the
 loader-env evidence; the module map complete (12-band census + lk's
 internal map); all findings committed.
+
+### SESSION 229 (THE GAME LANE CANCELLED - THE CORRECTED DIRECT FIRE DESIGNED + BUILT): the never-run experiment identified - fire30 (the child-ladder spawn witness) implemented, NOT YET FIRED
+
+THE USER DIRECTIVE: ZigZagBoi1 confirmed the game lane is BLOCKED (and
+behind us). The lane is cancelled as a dependency - it was only ever the
+VERIFICATION lane; the spawn architecture does not depend on it.
+
+THE AUDIT THAT OPENED THE ROUTE (all from the existing ledger):
+1. *** THE NEVER-RUN EXPERIMENT ***: every prior direct thr_create fire
+   (v17/v17.2) targeted lk+0x13ED0 - which session 195 proved is
+   SIGRETURN. Those fires are INVALID as thr_create tests, and their
+   "spawn-then-frame-corruption" diagnosis was describing a sigreturn
+   consuming a thr-shaped frame. The corrected THR_CREATE = lk+0x13D20
+   (the Rosetta: Thrd_create helper 0x4BDE0 -> call 0x4BE47 -> thunk
+   0x358 -> i=42 -> GOT 0x1179F0) has NEVER been fired directly.
+2. THE TWS AUTOPSY (the armed instrument from the lc1 era, never fired):
+   (a) it zeroed fakeScope+0x00..0x120 INCLUDING +0x38/+0x40 = the VM
+   pair = the V82 pre-call death built in; (b) it never wrote
+   mc_len@+0x118=0x480 - the 80a gate ("without it = kernel panic
+   class"); (c) its default RVA 0x130 and child RIP lk+0x3F0 are
+   retracted-era values (0x3F0's exit attribution was superseded by
+   thr_exit=lk+0x13EC0, and the child RIP matters little if the gates
+   are right). The "copyin/copyout crosses cage pages" clean-console
+   verdict is OVERSTATED: the E2 gettimeofday witness copies OUT into
+   the cage through the exact same rawcall path every session - the
+   cage is kernel-copyable.
+3. RSI=cfr IS TRAMPOLINE-FIXED (LowLevelInterpreter64 nativeCallTrampoline,
+   the JSC native ABI CallFrame* register; NOT loaded from the scope) -
+   the tid write WILL land at [cfr] = the live CallFrame callee slot -
+   the parent's post-call Callee[cfr] read faults = PARENT DEATH LIKELY.
+   ACCEPTED BY DESIGN: the child, not the parent, carries the witness.
+4. The child gets a FULL register file from the ctx (156c: RIP/RSP/RDI/
+   RSI/RDX/RAX restored; the stubs preserve RSI/RDX across
+   mov rax,N;syscall;ret) = ARGUMENT POWER ON SPAWN DAY ONE.
+
+*** THE FIRE30 ARCHITECTURE (implemented this session, not fired) ***
+- THE PARENT: rawcall(lk+0x13D20) with RDI=fakeScope (the ctx IS the
+  scope; srop27-36 proved gate/GPR writes there survive the pre-call),
+  RSI=cfr (tid out -> [cfr], parent death accepted), RDX=stale ptr
+  (flags - if Sony validates flags==0 the call EINVAL-declines and the
+  parent SURVIVES; the fire measures this).
+- childR (ctx at the scope): RIP=thr_create, RDI=CTX_S, RSI=WIT (a safe
+  scratch slot), RDX=0, RSP=chainR. First act: spawns childS; then its
+  ret walks the chain.
+- childS (CTX_S in the scratch): socket(2,2,0) via the r10 trampoline
+  lk+0x3B7 (mov r10,rcx; syscall; ret; RAX=97 from the ctx) -> a UDP fd
+  appears in the process fd table -> ret -> EXIT_SLOT=thr_exit(lk+0x13EC0).
+- chainR: rungs of [POP_RDI_RBP_RET (VP-4, the device-confirmed 5F 5D
+  C3), CTX_Gn, 0, thr_create] x fd guesses 3..20 - RSI=WIT and RDX=0
+  PERSIST across every stub -> each rung spawns a guess child with no
+  further register setup.
+- childGn: sendto(fd=n, MSG, 32, 0, dest, 16) via lk+0x3B7 (RAX=133,
+  R8=&dest, R9=16 from its own ctx) -> ret -> thr_exit. Wrong fd =
+  EBADF decline (harmless). THE RUNG WHOSE FD MATCHES childS's SOCKET
+  LANDS "FIRE30-PWNED-14.10-SPAWN-OK" AT PC:31337/UDP.
+- THE SCRATCH: a fresh 32KB ArrayBuffer found by a 3-qword marker scan
+  of the OOB view ([view,view+4MB) proven every boot; the certified-
+  flow method). MSG/dest/WIT/EXIT_SLOT/CTX_S/chainR/CTX_G* laid out at
+  fixed offsets.
+- THE GATES (156c/80a, belt+braces): magic@+0x108=0x480 AND
+  mc_len@+0x118=0x480, type@+0x110=0x10000 (the no-FP path - skips the
+  kernel FP call entirely), uc_flags@+0xD0=0, CS at BOTH +0xC0 and
+  +0xE8, RFLAGS@+0xF0=0x202, SS@+0x100=0x3B, the srop35 KFP constants
+  filled (+0x140..0x280, no sparse xsave). Scope protocol: the head
+  cleaning zeroes ONLY +0x00..0x20; buildCtx(live=true) for the scope
+  zeros from +0x48 up - THE VM PAIR IS NEVER TOUCHED (the V82 fix).
+- THE WITNESS CHANNEL: host.py gained a UDP sink (--udp-beacon-port
+  31337, default on) logging every packet to udp-beacons.log. A packet
+  = *** THE SPAWN PROVEN + A 6-ARG SYSCALL EXECUTED BY A CHILD WE
+  AUTHORED = ARGUMENT POWER ***, parent alive or not. The in-band
+  [WIT] tid readback still runs if the parent survives.
+
+THE VERDICT MATRIX (next boot):
+  UDP packet + parent dead  = THE SPAWN (full proof; tid unread but
+                             irrelevant - the child IS the executor)
+  UDP packet + parent alive = the cleanest outcome (tid in the reply)
+  No packet + parent alive + reply = the decline class (read reply.wit;
+                             EINVAL => the flags validation answer;
+                             then re-fire with a chain-legal path)
+  No packet + death after F30-CALL = the failure class: bisect via the
+                             F30-1..5 sync beacons (scratch found? gates
+                             armed?) - the fd race (childS vs the ladder)
+                             is the known soft spot: re-fire fd 21..40.
+THE RISK LEDGER: (a) RDX=stale flags validation -> EINVAL decline
+(measured by this fire); (b) the fd race - mitigated by the 18-rung
+ladder spacing (each rung = a full kernel spawn; childS is one syscall
+on a parallel core); (c) fd>20 -> no packet -> inconclusive (re-fire
+with lo/hi raised); (d) the thr_create RVA rests on the Rosetta static
+chain (the strongest available evidence; byte-proof structurally
+unreachable in-process - session 228).
+
+INSTRUMENT STATE: fire30 in shell.html (node --check clean; 11 static
+assertions pass incl. the V82 live-skip), fire30 dispatch in
+shell-cmd.js, the UDP sink in host.py, dispatcher v=fire30 (the p691
+data-gather dispatch parked). NOT A SINGLE DEVICE SESSION SPENT YET.
+THE NEXT SESSION: boot, wait ready, `node shell-cmd.js fire30 3 20`,
+watch udp-beacons.log.
+
+### SESSION 229b (FIRE-1 RESULT + THE TWO-WAVE WITNESS REDESIGN): the fire ran clean end-to-end - death at/inside the call, no UDP packet - the witness channel was racing the teardown
+
+THE FIRE-1 EVIDENCE (boot V1RCQ2-class, 2026-11-18 ~11:18 UTC):
+F30-1 lk=0x823e74000 canary ok -> F30-2 VP+gadget -> F30-3 scratch
+found by the marker scan -> F30-4 ladder built (19 children) -> F30-5
+gates armed -> F30-CALL -> (no F30-6: the WebProcess died at/inside the
+call; the mem warning on screen). UDP sink EMPTY.
+THE READINGS: (1) a clean EINVAL decline would have SURVIVED and
+replied - death means the call either succeeded (the tid write at
+[cfr] killed the frame post-call) or crashed in-kernel; no kernel
+panic (console alive) = the mc_len gate did its job. (2) IF the call
+succeeded, the stale-huge RDX passed as flags - THE FLAGS VALIDATION
+QUESTION IS LIKELY ANSWERED (not strictly validated). (3) The UDP
+sink was verified working end-to-end locally (the loopback test
+logged) and the firewall was cleared (python.exe has UDP any-port
+allow rules) - the missing packet = the children lost the teardown
+race (the ladder needed 3+ generations of spawns before the first
+sendto while the parent's SIGSEGV tore the process down), OR the
+children faulted at birth, OR the spawn never happened. The fire
+cannot distinguish these - THE WITNESS DESIGN WAS WRONG (racing a
+teardown with a multi-hop ladder), not necessarily the fire.
+
+THE FIRE30b REDESIGN (two waves):
+WAVE 1 - THE INSTANT TCP WITNESS: childR (the parent's direct spawn,
+ctx at the scope) IS the first witness ITSELF: its first instruction =
+sendto(fd_guess, MSG, 32, 0, NULL, 0) via the r10 trampoline - ONE hop
+from the spawn, microseconds, R8=R9=0 (sendto with NULL dest on a
+connected socket = send). The TARGET = the page's OWN POOLED TLS
+CONNECTION to :8443 (it exists BEFORE the fire - the XHR poll channel;
+zero creation, zero dependencies). Raw bytes into the live TLS
+session -> the server's tlsClientError hook (added to server.js) logs
+TLS-DECODE-ERROR = THE SPAWN WITNESS even if the process dies a
+microsecond later. The chain spawns the remaining fd guesses 4..12.
+WAVE 2 (unchanged): childS's UDP socket + fd-guess children sendto to
+PC:31337 (R8=&dest, R9=16) - the clean out-of-band packet if the
+process lives long enough.
+ALSO: the preheader gadget census ([VP-0x10,VP) read + pop rax/rsi/rdx
+scan - banked for the chain design), and the chain rungs accept
+RSI=&MSG/RDX=32 persistence into thr_create (tid lands harmlessly in
+the MSG buffer; flags=32 covered by the huge-flags-passed evidence).
+
+INSTRUMENT STATE: fire30 v2 in shell.html (node --check clean, 9
+assertions pass), server.js tlsClientError hook live, dispatcher
+v=fire30b. NEXT BOOT: re-enter -> fire30 3 20 -> verdict via
+TLS-DECODE-ERROR / UDP packet / beacons.
+
+### SESSION 229c (THE FIRE-3..7 ARC - THE DEBUGGING DAY): the machinery bisect completed - the writer-class rule confirmed - thr_create RVA measurement-validated - the ladder fires but no witness lands
+
+THE DAY'S SESSIONS (fires 3-7, ~10 device boots): every one instrumented
+and every lesson banked:
+1. THE BISECT LADDER: fire31 self (same-value redirect) SURVIVED;
+   fire31 ret (BASE+0x4001750 external no-op) SURVIVED; fire31 gd
+   (gettimeofday) DIED - THE WRITER-CLASS RULE: any target writing
+   into the scope kills the post-call. The git-history correction:
+   sessions 215-217 had ALREADY established this (the E2 witness ran
+   at the later-falsified 0x1B840 map; lk+0xB50 gettimeofday was NEVER
+   actually proven; multi-arg writers = the documented death class).
+   The machinery was never broken - the ledger was under-read.
+2. THE BADMAGIC CONTROL DIED -> the RVA-or-tid question. RESOLVED
+   OFFLINE: the corpus loader-env GOT capture (1215b) MEASURES the
+   slots: 0x117988=lk+0x13ED0 (sigreturn), 0x1179A8=lk+0xB50,
+   0x1179F0=lk+0x13D20 (THR_CREATE), 0x117A50=lk+0x13EC0 (THR_EXIT)
+   - THE ROSETTA IS MEASUREMENT-VALIDATED. lk_base that capture =
+   0x832BDC000 (gettimeofday slot value 0x832BDCB50 minus 0xB50).
+   The badmagic death => THE TID WRITE LANDS AT [cfr] BEFORE/REGARDLESS
+   OF CTX VALIDATION = parent death is STRUCTURAL for thr_create via
+   the rawcall (RSI=cfr is trampoline-fixed).
+3. THE GADGET: fire-2 proved our VP-4 preheader is ZEROS ({-32,0}).
+   THE FIX: the ZigZag device-confirmed pop rdi;pop rbp;ret lives at
+   FSET-4 (BASE+0xC6A1B28-4) - the FontFaceSet table whose preheader
+   the shell reads EVERY session. The VP->FSET delta = 0x5454000.
+4. FIRE-3 (fire30 with the real gadget): the full ladder fired
+   (childR=sendto fd3 + 28 chain children + childS UDP) - NO witness
+   landed (no TLS decode error with our bytes, no UDP packet). The
+   children either never spawn (the ctx gates wrong for the child
+   path) or the sendto fd guesses all miss (if XHR connections are
+   NOT pooled there is no live TLS socket to write into at all).
+5. THE PIVOT: stop firing. Disassemble the REAL 13.60 thr_create
+   handler from the corpus kernel dump (sysent@DATA+0xe6e5c0, entry
+   for syscall 430) offline: the validation order, the exact ctx
+   offsets the handler reads, the child setup path, the tid-write
+   timing. Facts instead of 156c-era guesses.
+
+### SESSION 229d (THE KERNEL TRUTH - THE 13.60 THR_CREATE CHAIN DISASSEMBLED): THE DEFINITIVE CTX CONTRACT - EVERY FIRE SO FAR WAS GATE-REJECTED - THE 156c FIELD MAP WAS WRONG
+
+THE METHOD: the corpus's 13.60 kernel dump (kernel_text.bin, sysent_raw.bin,
+sysent_index.json) + capstone. THE CHAIN: syscall 430 -> stub 0x265C10 ->
+wrapper 0x437cf0 -> kern_thr_create 0x437f30 -> setup cb 0x437d90 ->
+mc converter 0xa0ac60.
+
+THE WRAPPER (0x437cf0): copyin(ctx, 0x500 bytes) -> kern_thr_create(td,
+0, setup_fn, ctx_copy, args[1]). THE TID WRITE = copyout(0x20 bytes of the
+new td+0x294) TO args[1] (THE USER RSI) - 0x20 BYTES (the CallFrame
+header is fully smashed, not 8 bytes) - THE PARENT DEATH IS STRUCTURAL
+AND TOTAL.
+
+THE MCONTEXT CONVERTER GATES (mc = ctx+0x40):
+1. mc_len@ctx+0x88 (mc+0x48) == 0x480 EXACTLY (jne -> EINVAL 0x16=22).
+2. flags@ctx+0x90 (mc+0x50): u32 <= 7. bit0 (1): arms the selector
+   fields cs@ctx+0x96, ds@ctx+0x94, es@ctx+0x84, fs@ctx+0x86 -> copied
+   to the trapframe. bit1 (2): arms fs_base@ctx+0x440, gs_base@ctx+0x448
+   -> installed into the pcb (r8+0x40/0x48). flags=0: NO selectors, NO
+   FS/GS install - the child inherits defaults.
+3. type@ctx+0xD0 (mc+0x90): 0x10000 or 0x10002 (else EINVAL).
+4. subtype@ctx+0xD8 (mc+0x98): with type 0x10000: MUST BE 0x20000
+   (the no-FP path); with type 0x10002: 0x20001/0x20002 (the FP path
+   calls 0x7318f0 = the xsave copy, FP area ctx+0x100, 0x140 bytes).
+5. THE GPR BLOCK: ctx+0x48..0xB8 copied 1:1 to the trapframe
+   (r12 = td+0x40 = the child trapframe): the store table:
+   ctx+0x08->tf+0x00 ... ctx+0x78(RAX)->tf+0x70, ctx+0xA0(RIP)->
+   tf+0xE8, ctx+0xB8(RSP)->tf+0x100, ctx+0x98->tf+0x1c0 etc.
+   THE REGISTER FILE: ctx+0x48=RDI +0x50=RSI +0x58=RDX +0x60=RCX
+   +0x68=R8 +0x70=R9 +0x78=RAX +0x08=RBX +0x10=RBP +0x18=R12
+   +0x20=R13 +0x28=R14 +0x30=R15 +0x38=R10 +0x40=R11.
+6. THE RFLAGS MASK: rflags from tf+0xf8-mask (0xFFFFFFFFFFDAB22A)
+   - the same mask family as sigreturn.
+
+*** THE RECKONING: EVERY FIRE SO FAR WAS GATE-REJECTED. Our ctxs wrote
+type@+0x110 (the kernel reads +0xD0), subtype@+0x118 (kernel: +0xD8),
+RIP@+0xE0 (kernel: +0xA0), RSP@+0xF8 (kernel: +0xB8), CS/SS gates at
++0xC0/+0xE8/+0xF0/+0x100 (kernel: +0x96 with flags bit0) - THE 156c
+"MAP" WAS A MIS-MAPPED ARTEFACT OF THE CORPUS PRINTS. The gates fired
+EINVAL at the type check (reading our zeros) -> every thr_create call
+declined cleanly -> the deaths were the scope-head/tid-write effects,
+NOT the spawn. THE SPAWN NEVER HAPPENED IN ANY FIRE SO FAR.
+
+THE CORRECT FIRE30 CTX (14.10 transfer pending the same offsets class):
+magic-free, kernel-true: ctx+0x88=0x480, ctx+0x90=0 (default TLS/CS!),
+ctx+0xD0=0x10000, ctx+0xD8=0x20000 (THE NO-FP PATH), the GPR block,
+RIP@ctx+0xA0, RSP@ctx+0xB8. The child inherits the parent's selectors
+by default - no CS/SS/RFLAGS writes needed at all.
+
+CAVEAT: this is the 13.60 kernel; 14.10 transfer expected (the corpus
+proves thr_create spawns on 14.10 with rv=0; the mechanics class is
+stable) but the offsets are 13.60-measured.

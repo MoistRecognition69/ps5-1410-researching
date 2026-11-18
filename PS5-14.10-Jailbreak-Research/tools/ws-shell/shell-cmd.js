@@ -231,6 +231,28 @@ if (name === 'status') {
          * safe args and RSP=that slot; child=thr_exit(lk+0x13EC0).
          * No getcontext or recovery-RVA guessing. */
         cmd = { cmd: 'sropfire', mode: clean[1] || '' }; break;
+      case 'fire31':
+        /* THE MINIMAL SPAWN PROOF: gated ctx with child RIP=thr_exit -
+         * the child exits at birth. Survives = read the tid write via a
+         * pre/post window diff around cfr. Modes: gd = gettimeofday
+         * mechanics control; badmagic = invalid-ctx gate probe (a real
+         * thr_create EINVAL-declines and survives). */
+        cmd = { cmd: 'fire31', mode: clean[1] || '' }; break;
+      case 'gadget':
+        /* THE GADGET CENSUS: dumps the vtable neighborhoods (our VP +
+         * ZigZagBoi1's FontFaceSet VP) and scans for chain gadgets
+         * (pop rdi/rsi/rdx/rax, shufs). The pick lands in S.popRdiGadget
+         * for fire30. */
+        cmd = { cmd: 'gadget' }; break;
+      case 'fire30':
+        /* THE CORRECTED DIRECT THR_CREATE FIRE (session 229): the
+         * never-run experiment - rawcall(lk+0x13D20, RDI=gated ctx at
+         * the scope, RSI=cfr (tid out, parent death accepted), RDX=stale
+         * (flags)). v2+: childR IS the first TCP witness (sendto on the
+         * pooled TLS socket), then the chain spawns the fd guesses.
+         * arg3 (optional): an absolute gadget address override.
+         * args: [lo_fd] [hi_fd] [gadgetOverrideHex] */
+        cmd = { cmd: 'fire30', lo: clean[1] || '3', hi: clean[2] || '20', gadget: clean[3] || '' }; break;
       case 'rawcall':
         /* decode-immune call: redirects, calls, DISCARDS the return
          * untouched (raw returns crash the JSValue engine at first touch),

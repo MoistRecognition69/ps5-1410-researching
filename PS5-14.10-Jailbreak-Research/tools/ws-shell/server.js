@@ -432,6 +432,15 @@ if (creds) {
     key: creds.key,
     rejectUnauthorized: false,
   }, requestHandler);
+  /* FIRE30/31 WITNESS CHANNEL: a spawned child's sendto() on the page's
+   * own pooled TLS socket injects raw non-TLS bytes into the stream.
+   * The decode error + the offending bytes ARE the out-of-band spawn
+   * witness (the children cannot speak TLS - the arrival of our marker
+   * bytes in a live session's error is proof a child executed them). */
+  httpsServer.on('tlsClientError', (err, tlsSocket) => {
+    const remote = tlsSocket.remoteAddress || '?';
+    logBeacon('TLS-DECODE-ERROR-from=' + remote + '-msg=' + String(err && err.message || '?').slice(0, 120));
+  });
   setupWss(httpsServer);
   httpsServer.listen(PORT, '0.0.0.0', () => {
     console.log(`\n  \x1b[32mHTTPS + WSS on port ${PORT}\x1b[0m`);

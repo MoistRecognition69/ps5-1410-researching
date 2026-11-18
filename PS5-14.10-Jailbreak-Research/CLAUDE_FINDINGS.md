@@ -7971,3 +7971,43 @@ THE OPEN QUESTIONS (ranked):
    ladder requires 9 sequential spawns + a socket + a sendto before the
    teardown - the race remains; ALSO the close(3..9) rungs could be
    killing the wrong things.
+
+### SESSION 229g (THE 80d-RECONCILED FIRE): the corpus 80d record = THE 14.10-PROVEN ctx map (it SPAWNED rv=0, tid witnessed, child killed, canary intact) - the 13.60 converter disassembly re-read with rsi=mc=ctx+0x40 AGREES - fire fired with the true gates - death, no beacon
+
+THE RECONCILIATION: the 80d capture ("thr_create CORRECT OFFSETS") is
+THE definitive 14.10 ctx map: magic@ctx+0x108=0x480, flags@ctx+0xD0=0,
+type@ctx+0x110=0x10000, subtype@ctx+0x118=0x20000, RIP@ctx+0xE0,
+RSP@ctx+0xF8, GPRs ctx+0x48..0xB8 1:1 (plus the 80d belt+braces:
+CS@+0xC0=0x43, SS@+0x100=0x3B, [rsp]=the RIP). My earlier 13.60
+converter reading treated rsi as ctx - WRONG: rsi = mc = ctx+0x40, and
+every gate offset shifts by +0x40: [rsi+0xC8]=ctx+0x108 (magic),
+[rsi+0x90]=ctx+0xD0 (flags), [rsi+0xD0]=ctx+0x110 (type), [rsi+0xD8]=
+ctx+0x118 (subtype), [rsi+0xA0]=ctx+0xE0 (RIP), [rsi+0xB8]=ctx+0xF8
+(RSP) - THE 13.60 KERNEL AND THE 14.10 CORPUS AGREE ON EVERY FIELD.
+THE FIRE (v=fire37): the 14.10-proven gates armed (all of them),
+F30-1..5 clean, F30-CALL -> death, no UDP, no TLS error. The parent
+death per the return-value theory (ANY nonzero raw return = the JSValue
+conversion death) - the 80d corpus call ALSO returned rv=0 (a ZERO
+return! - their caller survived BECAUSE the spawn SUCCEEDED and the
+return was 0!). THE INSIGHT: on a SUCCESSFUL spawn the raw return = 0 =
+a JSValue-safe value -> THE PARENT SURVIVES. THE PARENT DEATH = THE
+CALL FAILED (nonzero errno) - not the return-value death mechanism as
+such but its COROLLARY: we now have a BINARY WITNESS - the reply posts
+= the spawn succeeded (rv=0), the session dies = the call errored.
+=> THE NEXT FIRE'S INSTRUMENT: the reply IS the witness. If the parent
+survives the fire, the SPAWN HAPPENED (and the tid can be read from a
+safe slot - args[1] points wherever RSI says; our RSI=cfr but the
+kernel does not write the tid for r8=0 per 13.60 - the 80d corpus had
+a real tid-out and read tid=0x18EE3 - THEY passed a real id_ptr; WE can
+read [cfr-adjacent] or simply check the reply).
+THE REMAINING QUESTION: why does our call errno-fail when 80d spawned?
+DELTAS between 80d and us: (a) RSI=cfr vs their buffer - the 13.60
+kernel SKIPS the id write for r8=0... BUT the WRAPPER (0x437cf0) passes
+args[1] as [rbp-0x40] into kern via r8?? - THE KERN TID COPYOUT AT
+0x43812c READS [rbp-0x40] = r8 = 0 in our reading of 13.60... yet the
+80d corpus READ A TID from their buffer - the 14.10 syscall DOES write
+the tid to args[1]. => THE TID WRITE AT [cfr] = 0x20 BYTES SMASHING
+THE CALLFRAME HEADER IS REAL ON 14.10. THE PARENT DEATH ON A SUCCESSFUL
+SPAWN IS THEREFORE STILL EXPECTED. THE DISCRIMINATOR BETWEEN
+successful-spawn-death and errno-death: NONE in-band (both die) - THE
+OUT-OF-BAND WITNESS (UDP) REMAINS MANDATORY.

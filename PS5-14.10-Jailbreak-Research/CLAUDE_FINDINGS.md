@@ -8102,3 +8102,25 @@ THE FIRE (v=fire39): THE CLEANEST ARCHITECTURE OF THE ARC:
 THE KEY PROPERTY: no gadget, no chain, no NX exposure - every child's
 entry RIP is a real lk stub (THR_CREATE or R10TRAMP), and every child's
 RSP points at A_EXIT whose [slot]=THR_EXIT - the clean exit.
+
+### SESSION 229l (FIRE39 RESULT - THE FIRST SURVIVING FIRE): the 156d-model fire - the WebProcess SURVIVED the thr_create call for the first time in the entire arc - but the UDP beacon still did not arrive
+
+THE RESULT: F30-1..5 clean, F30-CALL fired at 13:11:30, the CLI timed
+out (the reply never posted within 60s) BUT THE SESSION IS ALIVE -
+`info` at 13:12 returns pcControl:true, the battery NE-194 scan ran at
+13:11:56 = the engine kept executing 26 seconds past the call.
+*** THE FIRST SURVIVING thr_create FIRE IN THE CAMPAIGN *** - every
+previous fire crashed the WebProcess ("mem warning").
+THE MEANING: the call RETURNED (the JSValue return path survived -
+consistent with rv=0 = a SUCCESSFUL spawn per the return-value theory:
+a zero return is JSValue-safe). OR the errno was benign.
+THE MISSING BEACON: no UDP packet. THE CANDIDATES:
+(a) the spawn succeeded but the children erred (ctx gates wrong for
+14.10, close-range broke needed fds, socket fd landed at a different
+number, sendto hit a wrong dest).
+(b) the spawn failed with rv=0 but an errno return we misread.
+(c) the children spawned but the tid write to cfr corrupted something
+delayed-fatal.
+NEXT: read [A_WIT] (the witness slot) and the scratch contents from
+the SURVIVING session - the tid value there tells whether the kernel
+reached thread allocation. THE SESSION IS STILL LIVE.

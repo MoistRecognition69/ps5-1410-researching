@@ -7918,3 +7918,25 @@ by default - no CS/SS/RFLAGS writes needed at all.
 CAVEAT: this is the 13.60 kernel; 14.10 transfer expected (the corpus
 proves thr_create spawns on 14.10 with rv=0; the mechanics class is
 stable) but the offsets are 13.60-measured.
+
+### SESSION 229e (THE RETURN-VALUE THEORY - THE DAY UNIFIED): the negative raw return = the JSValue conversion death - the spawn may have ALREADY SUCCEEDED
+
+THE THEORY THAT FITS EVERYTHING: the nativeCallTrampoline converts the
+callee RAX into a JSValue on return; a raw errno return (-1 = 0xFFFF...)
+becomes a garbage pointer-class value; the engine's first touch of the
+materialized Math.round result faults -> the session dies ON THE
+RETURN PATH, not in the call. THE EVIDENCE: self/ret controls (0-class
+returns) SURVIVE; EVERY syscall-returning call DIES (gd, badmagic,
+every thr_create fire); the 13.60 kernel disassembly proves the tid
+copyout is SKIPPED when r8=0 (the wrapper passes r8=0 -> NO TID WRITE
+TO [cfr] - the tid-at-cfr theory was WRONG for this syscall path).
+=> THE SPAWN MAY HAVE SUCCEEDED IN THE FIRES and the parent died on
+the errno return; the witnesses failed for independent reasons (the
+fd guesses: the XHR connections are likely NOT pooled - nothing live
+to sendto into; the UDP wave lost the teardown race).
+THE NEXT FIRE DESIGN: (1) the return death is accepted and structural;
+(2) the child witness must be fd-independent: childS creates its OWN
+UDP socket, closes fd 3..8 first (the close-range trick makes the new
+socket's fd deterministic), the sendto children run within microseconds
+of the spawn; (3) the 14.10 kernel-truth transfer check: the 13.60
+field map (mc_len@ctx+0x88 etc) applied via the corpus rv=0 evidence.

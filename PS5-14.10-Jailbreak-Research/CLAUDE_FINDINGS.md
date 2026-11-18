@@ -8156,3 +8156,16 @@ for clean spawning. The options:
     value BEFORE the post-call crash - a race, but the tid value at
     [cfr] IS the positive oracle (it distinguishes "reached thread
     allocation" from "failed before allocation")
+
+### SESSION 229n (FIRE40 - THE ONE-SHOT TID WITNESS): built - the race-read of [cfr] immediately after the thr_create call
+
+THE INSTRUMENT: fire thr_create with the 80d gates (RIP=thr_exit - the
+simplest possible child, exits at birth), then IMMEDIATELY read [cfr]
+before the trampoline post-call can crash the engine. If the 14.10
+kernel accepts our ctx, the tid (a small positive int) lands at [cfr]
+and the race-read catches it. Pre/post window diff over [cfr-0x100,
+cfr+0x40) catches any other kernel writes.
+VERDICTS:
+  tid at [cfr] = *** THE SPAWN PROVEN *** (the ctx passed the gates)
+  unchanged + alive = the call DECLINED (a gate failed)
+  death = the post-call won the race (expected if the spawn succeeded)

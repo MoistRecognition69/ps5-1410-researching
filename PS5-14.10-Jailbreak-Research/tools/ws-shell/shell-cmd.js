@@ -231,6 +231,11 @@ if (name === 'status') {
          * safe args and RSP=that slot; child=thr_exit(lk+0x13EC0).
          * No getcontext or recovery-RVA guessing. */
         cmd = { cmd: 'sropfire', mode: clean[1] || '' }; break;
+      case 'fire40':
+        /* THE ONE-SHOT TID WITNESS: fire thr_create with the 80d gates
+         * and race-read [cfr] for the tid value. tid = spawn proven;
+         * unchanged = declined; death = the post-call won the race. */
+        cmd = { cmd: 'fire40' }; break;
       case 'fire31':
         /* THE MINIMAL SPAWN PROOF: gated ctx with child RIP=thr_exit -
          * the child exits at birth. Survives = read the tid write via a

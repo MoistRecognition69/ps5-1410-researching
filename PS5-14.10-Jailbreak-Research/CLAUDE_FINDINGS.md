@@ -8028,3 +8028,28 @@ THE TRACK A LOGIC: the child-side thr_create controls ALL args from
 its ctx - the flags=0/RSI=writable deltas are FIXED for it. If the
 14.10 syscall validates flags, the child-side call succeeds where the
 parent-side (RDX=stale-ptr) fails: THE BEACON IS THE VERDICT.
+
+### SESSION 229i (FIRE38 RESULT): both paths errored - the ROP route is now primary
+
+THE FIRE (v=fire38): fired clean, death, NO UDP beacon from either
+path (the clean-args child thr_create AND the parent-side close-range
+ladder). BOTH thr_create paths error under the rawcall ABI.
+THE VERDICT PER THE 229h MATRIX: the ROP route (Track B) becomes the
+PRIMARY path to the spawn. THE REMAINING IN-BAND QUESTION: whether the
+parent-side rawcall errno is the stale RDX/RSI alone (fixable only by
+register control = ROP) or something deeper in the scope-as-ctx shape.
+THE ROP PIVOT DESIGN (Track B, the corpus-libc toolkit, offline):
+  setjmp@libc+0xB020: captures RSP/RIP into a buffer (RDI-controlled)
+  longjmp@libc+0xB070: pivots RSP/RIP from the captured buffer
+  pop rdi;ret x9 (0x27932), pop rax;ret x30 (0x5dcd4), pop rsp;ret x5
+  (0xb6597), pop rsi;ret x4 (0xb2188), pop rcx;ret x23, mov [rdi],rax
+  (0x611e7), leave;ret x2
+THE PIVOT: rawcall(setjmp, RDI=scopeA) - the scope's own +0x00..0x20
+receives the captured frame (RSP/RIP) - then ARW-edit the captured
+frame: RSP=cageStack, RIP=pop rax;ret, and rawcall(longjmp, RDI=&the
+edited frame) -> the chain fires with full register control: pop rdi
+-> the armed ctx, pop rsi -> the WIT slot, pop rdx -> 0, pop rax ->
+430, then thr_create -> THE CLEAN-ARGS CALL AT LAST.
+THE BLOCKER: libc's per-session base (the 12 known addrofs + the
+alignment oracle = the lcbase hunt; OR the VP-band import GOT walk =
+the module-band census approach).

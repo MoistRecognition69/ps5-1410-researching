@@ -7940,3 +7940,34 @@ UDP socket, closes fd 3..8 first (the close-range trick makes the new
 socket's fd deterministic), the sendto children run within microseconds
 of the spawn; (3) the 14.10 kernel-truth transfer check: the 13.60
 field map (mc_len@ctx+0x88 etc) applied via the corpus rv=0 evidence.
+
+### SESSION 229f (THE KERNEL-TRUE FIRE - THE CLEANEST FIRE YET): fired with the 13.60-derived ctx map + the close-range deterministic-fd witness - death, no beacon - the 14.10 field-map transfer is now the open question
+
+THE FIRE (v=fire36): F30-1..5 clean (lk 0x82e140000, gadget FSET-4,
+scratch marker-found, the 9-rung close-range ladder: close(3)..close(9)
+-> socket(2,2,0) -> sendto(3,MSG,32,0,&dest,16) -> chain qwords=40),
+F30-CALL lk+0x13D20 -> death (the mem warning). NO UDP beacon. NO
+TLS decode error with our bytes.
+THE ONE BUG OF THE ARC: the v4 ctx-overflow bounds check still used the
+removed `ci` counter -> BigInt(undefined) -> the JS fault caught and
+replied (the session survived JS faults - the in-session iteration was
+possible). FIXED and fired clean.
+THE STATE: with the 13.60 kernel-true ctx (mc_len@+0x88, flags@+0x90=0,
+type@+0xD0=0x10000, subtype@+0xD8=0x20000, RIP@+0xA0, RSP@+0xB8, GPRs
+1:1) the call still kills the parent (expected: the return-value
+theory - ANY nonzero raw return = JSValue death) and the children's
+witness still does not land.
+THE OPEN QUESTIONS (ranked):
+1. THE 14.10 FIELD-MAP TRANSFER: the 13.60 converter is disassembly
+   truth, but 14.10's kernel may differ (the corpus's 14.10-proven
+   gates: the 156c/272a/58e ctxs used WHICH offsets? Their prints said
+   RIP@mc+0x90/RSP@mc+0xA8/CS@mc+0x98 = the ctx+0x50-class - THE
+   CONTRADICTION with the 13.60 kernel map (mc@ctx+0x40: RIP@mc+0x60=
+   ctx+0xA0) MUST BE RESOLVED. The corpus ctxs SPAWNED on 14.10 - their
+   offsets are 14.10-proven even if the 13.60 kernel reads different
+   slots. RESOLUTION PATH: decode the corpus's 156c raw record bytes
+   (the raw capture) against BOTH maps.
+2. THE CHILD WITNESS: even if the spawn succeeds, the close-range
+   ladder requires 9 sequential spawns + a socket + a sendto before the
+   teardown - the race remains; ALSO the close(3..9) rungs could be
+   killing the wrong things.

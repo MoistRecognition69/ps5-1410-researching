@@ -8169,3 +8169,37 @@ VERDICTS:
   tid at [cfr] = *** THE SPAWN PROVEN *** (the ctx passed the gates)
   unchanged + alive = the call DECLINED (a gate failed)
   death = the post-call won the race (expected if the spawn succeeded)
+
+### SESSION 229o (FIRE40 RESULT - THE RACE IS UNWINNABLE): the trampoline post-call crashes before ANY JS can execute - no in-process tid witness is possible through the rawcall
+
+THE EVIDENCE: F40-CALL fired, F40-4 (the race read) NEVER fired. The
+trampoline post-call path reads Callee[cfr] IMMEDIATELY on return -
+before any JS bytecode can execute. If the tid was written there (a
+successful spawn), it faults before our readback gets a chance. If the
+tid was NOT written (a decline), the return should be clean and the
+readback should fire. IT DID NOT FIRE - so either:
+(a) the spawn SUCCEEDED and the tid at [cfr] killed the engine before
+    the race-read (the post-call won) - CONSISTENT
+(b) the call crashed in-kernel or on a different path - ALSO CONSISTENT
+THE CONCLUSION: no in-process witness for the rawcall thr_create path
+is possible. The out-of-band UDP witness from surviving children is
+the ONLY proof, and it has not arrived in any fire.
+THE COMPLETE STRUCTURAL ANALYSIS:
+- The rawcall CANNOT prove the spawn (the race is lost)
+- The rawcall CANNOT produce surviving children (the parent crash
+  tears down the process before the children can beacon)
+- The rawcall gives RDI=scope (ctx), RSI=cfr (tid target = the
+  CallFrame), RDX=stale - WE CONTROL ONLY RDI
+- THE ONLY PATH TO A PROVEN SPAWN: a carrier that gives us RSI/RSI/RDX
+  control = the ROP pivot (needs gadgets in executable text) OR the
+  vtable dispatch (RELRO-closed) OR a completely different primitive
+NEXT MOVES (ranked by cost):
+1. THE SCOPE-SWAP VARIANT: point fakeScope at the 32KB scratch so the
+   ctx lives in clean memory (not corrupting scope neighbors) - this
+   may fix the "the call crashed in-kernel or on a different path"
+   hypothesis (b) above if the scope-neighbor corruption is the
+   actual kill mechanism, not the tid-at-cfr
+2. THE ZERO-CTX CONTROL: fire with an all-zero ctx (no gates) - this
+   MUST EINVAL-decline and survive (the corpus proves it) - if it
+   DIES, the kill is NOT the tid write but something else in the call
+   path entirely (the scope corruption)

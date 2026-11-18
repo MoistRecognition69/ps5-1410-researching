@@ -8053,3 +8053,37 @@ edited frame) -> the chain fires with full register control: pop rdi
 THE BLOCKER: libc's per-session base (the 12 known addrofs + the
 alignment oracle = the lcbase hunt; OR the VP-band import GOT walk =
 the module-band census approach).
+
+### SESSION 229j (THE ZIGGY ROP CORPUS STUDY): the full ROP chain exists in the corpus probes - AND THE NX BUG IN OUR CHAIN EXPOSED
+
+WHAT ZIGGY'S REPO HAS (the corpus we already mirror):
+1. THE COMPLETE WORKING ROP CHAIN (probe 127h, 2026-10-22): gadgets
+   ret=+0x42, pop_rax=+0x992, pop_rsp=+0x9A2, pop_rdi=+0xC9DFE,
+   pop_rsi=+0xD77D, pop_rdx=+0x3B02D7, mov[rdi],rax=+0x92C67 - ALL IN
+   THE EBOOT'S RX .text (verified live: "ret C3 OK, pop_rdi 5F C3 OK,
+   pop_rax 58 C3 OK, pop_rsp 5C C3 OK, mov_w 48 89 07 OK").
+2. 127h RESULT: thr_create spawned the child (ret=-1 but tid=0x18CB0
+   written!) and the ROP chain did NOT execute ("child did not write")
+   - their chain failed too, because their ctx subtype=0 with
+   type=0x10000 (subtype is skipped for type 0x10000 - fine) and their
+   RIP=ret gadget + RSP=chain - the chain sat in an NX stack alloc?
+   no - their chain base = a heap alloc, stacks are RW but heap NX on
+   PS5: "no JIT on PS5" + heap NX = THE ROP CHAIN ITSELF IS IN NX
+   MEMORY - the gadget executes, then the RETURN INTO THE HEAP CHAIN
+   faults... their 127h "child did not write" = THE SAME NX WALL.
+3. THE 156d PROOF (2026-10-25): the CHILD EXECUTES - thr_create with
+   ctx RIP=mov[rdi],rax gadget IN EBOOT RX TEXT, RAX=0xDEADBEEFCAFE,
+   RDI=marker page -> "CHILD EXECUTED: the gadget stored the marker" -
+   THE CHILD CAN EXECUTE ONE GADGET + ONE SYSCALL (via the 0x3B7-class
+   trampoline) - THE DIRECT-CTX-DRIVEN EXECUTION MODEL.
+4. THR_CREATE_430_CONTEXT.md: THE COMPLETE 13.60 KERNEL DECODE - our
+   229d disassembly was correct and the corpus agrees on every gate;
+   +arg2 (RDX) IS NEVER READ (the RDX delta is moot); THE ID WRITE IS
+   8 BYTES AT *arg1 BEFORE ctx validation - RSI=cfr = THE 8-BYTE TID
+   SMASHES THE CALLFRAME HEADER = the parent death mechanism CONFIRMED.
+*** THE NX BUG IN OUR FIRE38 ***: our chain gadget (FSET-4 = the
+WebKit vtable preheader) lives in .rodata = NX - the chain children
+FAULT on the first chain entry. THE FIX: THE GADGET-FREE RECURSIVE CTX
+LADDER - each child's ctx.RIP = THR_CREATE (spawn the next) or the
+R10TRAMP (the syscall leaf), RIP changes per ctx - NO CHAIN, NO GADGET
+- exactly the 156d model.

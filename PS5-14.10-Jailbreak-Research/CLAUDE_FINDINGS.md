@@ -8087,3 +8087,18 @@ FAULT on the first chain entry. THE FIX: THE GADGET-FREE RECURSIVE CTX
 LADDER - each child's ctx.RIP = THR_CREATE (spawn the next) or the
 R10TRAMP (the syscall leaf), RIP changes per ctx - NO CHAIN, NO GADGET
 - exactly the 156d model.
+
+### SESSION 229k (FIRE39 - THE 156d-MODEL FIRE): the gadget-free recursive ctx ladder built - each ctx.RIP IS the next instruction
+
+THE FIRE (v=fire39): THE CLEANEST ARCHITECTURE OF THE ARC:
+- 14 ctxs in the scratch at 0x120 stride, a linked list:
+  ctx[0..6] = spawn rungs: ctx.RIP=THR_CREATE, ctx.RDI=&next-ctx,
+  ctx.RSI=&WIT (the tid write lands in the SAFE scratch - NOT the
+  CallFrame), ctx.RSP=A_EXIT (thr_exit on return)
+- ctx[7..11] = close(3..7) leaves: RIP=R10TRAMP, rax=6, rdi=fd
+- ctx[12] = socket(2,2,0): the UDP socket gets the lowest free fd=3
+- ctx[13] = sendto(3, MSG, 32, 0, &dest, 16) -> the beacon
+- the parent's scope ctx = ctx[0]'s shape: RIP=THR_CREATE, RDI=&ctx[1]
+THE KEY PROPERTY: no gadget, no chain, no NX exposure - every child's
+entry RIP is a real lk stub (THR_CREATE or R10TRAMP), and every child's
+RSP points at A_EXIT whose [slot]=THR_EXIT - the clean exit.

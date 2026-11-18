@@ -8011,3 +8011,20 @@ THE CALLFRAME HEADER IS REAL ON 14.10. THE PARENT DEATH ON A SUCCESSFUL
 SPAWN IS THEREFORE STILL EXPECTED. THE DISCRIMINATOR BETWEEN
 successful-spawn-death and errno-death: NONE in-band (both die) - THE
 OUT-OF-BAND WITNESS (UDP) REMAINS MANDATORY.
+
+### SESSION 229h (BOTH TRACKS): fire38 = the dual-path fire (the clean-args child thr_create + the parent-side close-range witness) + the ROP pivot design started offline
+
+THE DUAL FIRE (v=fire38): the parent's rawcall spawns rung-0 - a child
+whose OWN thr_create call is the corpus's EXACT shape: thr_create(ctx2,
+&WIT, 0) - RSI=a real writable buffer, RDX=0. rung-0 then walks the
+close-range witness chain (close(3..9) -> socket -> sendto(3) to the
+UDP sink). THE PARALLEL WITNESS: the parent's OWN chain also carries
+the close-range ladder (if the parent-side call spawns despite the
+stale args, the UDP beacon fires from either path). THE DISCRIMINATOR:
+UDP beacon arrives = THE SPAWN PROVED (from whichever path); no beacon
++ death = both paths errored - and the ROP route (Track B) becomes the
+primary.
+THE TRACK A LOGIC: the child-side thr_create controls ALL args from
+its ctx - the flags=0/RSI=writable deltas are FIXED for it. If the
+14.10 syscall validates flags, the child-side call succeeds where the
+parent-side (RDX=stale-ptr) fails: THE BEACON IS THE VERDICT.

